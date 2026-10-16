@@ -1,0 +1,22 @@
+/** Country codes Adzuna's search API accepts in the URL path (/v1/api/jobs/{country}/search). */
+export const ADZUNA_COUNTRIES = [
+  { code: "us", name: "United States" },
+  { code: "gb", name: "United Kingdom" },
+  { code: "ca", name: "Canada" },
+  { code: "au", name: "Australia" },
+  { code: "at", name: "Austria" },
+  { code: "be", name: "Belgium" },
+  { code: "br", name: "Brazil" },
+  { code: "ch", name: "Switzerland" },
+  { code: "de", name: "Germany" },
+  { code: "es", name: "Spain" },
+  { code: "fr", name: "France" },
+  { code: "in", name: "India" },
+  { code: "it", name: "Italy" },
+  { code: "mx", name: "Mexico" },
+  { code: "nl", name: "Netherlands" },
+  { code: "nz", name: "New Zealand" },
+  { code: "pl", name: "Poland" },
+  { code: "sg", name: "Singapore" },
+  { code: "za", name: "South Africa" },
+] as const;
