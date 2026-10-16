@@ -1,0 +1,148 @@
+{
+  "jobs": [
+    {
+      "absolute_url": "https://boards.greenhouse.io/figma/jobs/5694259004?gh_jid=5694259004",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "internal_job_id": 5000378004,
+      "location": {
+        "name": "San Francisco, CA • New York, NY"
+      },
+      "metadata": null,
+      "id": 5694259004,
+      "updated_at": "2026-07-22T05:37:08-04:00",
+      "requisition_id": "1932",
+      "title": "Account Executive, SMB ",
+      "company_name": "Figma",
+      "first_published": "2025-11-01T18:28:07-04:00",
+      "language": "en",
+      "application_deadline": null,
+      "content": "&lt;div class=&quot;content-intro&quot;&gt;&lt;p&gt;Figma is growing our team of passionate creatives and builders on a mission to make design accessible to all. Figma’s platform helps teams bring ideas to life—whether you&#39;re brainstorming, creating a prototype, translating designs into code, or iterating with AI. From idea to product, Figma empowers teams to streamline workflows, move faster, and work together in real time from anywhere in the world. If you&#39;re excited to shape the future of design and collaboration, join us!&lt;/p&gt;&lt;/div&gt;&lt;p&gt;We are looking for an Account ",
+      "departments": [
+        {
+          "id": 4016255004,
+          "name": "Sales",
+          "child_ids": [],
+          "parent_id": null
+        }
+      ],
+      "offices": [
+        {
+          "id": 4024285004,
+          "name": "US",
+          "location": null,
+          "child_ids": [],
+          "parent_id": 4033142004
+        }
+      ],
+      "ai_disclaimer": null,
+      "include_ai_disclaimer": null,
+      "ai_opt_out_request_url": "http://app4.greenhouse.io/ai_opt_out_request/job_post/5694259004/ai_opt_out"
+    },
+    {
+      "absolute_url": "https://boards.greenhouse.io/figma/jobs/5426468004?gh_jid=5426468004",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "internal_job_id": 4868517004,
+      "location": {
+        "name": "San Francisco, CA • New York, NY • United States"
+      },
+      "metadata": null,
+      "id": 5426468004,
+      "updated_at": "2026-07-22T05:37:08-04:00",
+      "requisition_id": "1451",
+      "title": "Account Executive, Enterprise",
+      "company_name": "Figma",
+      "first_published": "2025-01-28T18:57:29-05:00",
+      "language": "en",
+      "application_deadline": null,
+      "content": "&lt;div class=&quot;content-intro&quot;&gt;&lt;p&gt;Figma is growing our team of passionate creatives and builders on a mission to make design accessible to all. Figma’s platform helps teams bring ideas to life—whether you&#39;re brainstorming, creating a prototype, translating designs into code, ore plan terms and may be modified by Figma at any time, consistent with applicable law.&lt;/p&gt;&lt;/div&gt;&lt;div class=&quot;title&quot;&gt;Annual Base Salary Range:&lt;/div&gt;&lt;div class=&quot;pay-range&quot;&gt;&lt;span&gt;$165,000&lt;/span&gt;&lt;span class=&quot;divider&quot;&gt;&amp;mdash;&lt;/span&gt;&lt;span&gt;$190,000 USD&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;content-conclusion&quot;&gt;&lt;p&gt;At Figma we celebrate and support our differences. We know employing a team rich in diverse thoughts, experiences, and opinions allows our employees, our product and our community to flourish. Figma is an &lt;a href=&quot;https://www.eeoc.gov/sites/default/files/2022-10/EEOC_KnowYourRights_screen_reader_10_20.pdf&quot;&gt;equal opportunity workplace&lt;/",
+      "departments": [
+        {
+          "id": 4016255004,
+          "name": "Sales",
+          "child_ids": [],
+          "parent_id": null
+        }
+      ],
+      "offices": [
+        {
+          "id": 4024285004,
+          "name": "US",
+          "location": null,
+          "child_ids": [],
+          "parent_id": 4033142004
+        }
+      ],
+      "ai_disclaimer": null,
+      "include_ai_disclaimer": null,
+      "ai_opt_out_request_url": "http://app4.greenhouse.io/ai_opt_out_request/job_post/5426468004/ai_opt_out"
+    },
+    {
+      "absolute_url": "https://boards.greenhouse.io/figma/jobs/5458801004?gh_jid=5458801004",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "internal_job_id": 4883990004,
+      "location": {
+        "name": "London, England"
+      },
+      "metadata": null,
+      "id": 5458801004,
+      "updated_at": "2026-09-29T10:52:19-04:00",
+      "requisition_id": "1496",
+      "title": "Account Executive, Enterprise (London, United Kingdom)",
+      "company_name": "Figma",
+      "first_published": "2025-02-21T09:37:58-05:00",
+      "language": "en",
+      "application_deadline": null,
+      "content": "&lt;div class=&quot;content-intro&quot;&gt;&lt;p&gt;Figma is growing our team of passionate creatives and builders on a mission to make design accessible to all. Figma’s platform helps teams bring ideas to life—whether you&#39;re brainstorming, creating a prototype, translating designs into code, or iterating with AI. From idea to product, Figma empowers teams to streamline workflows, move faster, and work together in real time from anywhere in the world. If you&#39;re excited to shape the future of design and collaboration, join us!&lt;/p&gt;&lt;/div&gt;&lt;div class=&quot;section page-center",
+      "departments": [
+        {
+          "id": 4016255004,
+          "name": "Sales",
+          "child_ids": [],
+          "parent_id": null
+        }
+      ],
+      "offices": [
+        {
+          "id": 4008179004,
+          "name": "London, UK",
+          "location": null,
+          "child_ids": [],
+          "parent_id": 4024286004
+        }
+      ],
+      "ai_disclaimer": null,
+      "include_ai_disclaimer": null,
+      "ai_opt_out_request_url": "http://app4.greenhouse.io/ai_opt_out_request/job_post/5458801004/ai_opt_out"
+    }
+  ],
+  "meta": {
+    "total": 3
+  }
+}

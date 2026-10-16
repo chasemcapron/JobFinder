@@ -1,0 +1,111 @@
+[
+  {
+    "additionalPlain": "The United States base range for this position is $74,000 – $106,000 USD, plus equity. The benefits available for this position include health insurance, six-month paid parental leave, 401(k) retireme",
+    "additional": "<div>The United States base range for this position is $74,000 – $106,000 USD, plus equity. The benefits available for this position include health insurance, six-month paid parental leave, 401(k) ret",
+    "categories": {
+      "commitment": "Permanent",
+      "department": "Operations and Business Support",
+      "location": "New York, NY",
+      "team": "Audio Books & Gated Content",
+      "allLocations": [
+        "New York, NY"
+      ]
+    },
+    "createdAt": 1783608935950,
+    "descriptionPlain": "The Audiobooks Mission is a team in the Product & Technology organisation focused on the ecosystem and strategies of Audiobooks on Spotify. We work across both the creator and consumer audiobooks ecosystems, in order to get the best possible product to market with the best possible content.\nSpotify's Audiobooks team is helping shape the future of audio storytelling by bringing the world's best audiobook experiences to millions of listeners. As Associate Manager, Audiobook Licensing & Author Partnerships, you'll play an important role in growing our catalog while building meaningful relationshi",
+    "description": "<div>\n<p data-start=\"802\" data-end=\"1131\">The Audiobooks Mission is a team in the Product &amp; Technology organisation focused on the ecosystem and strategies of Audiobooks on Spotify. We work across both the creator and consumer audiobooks ecosystems, in order to get the best possible product to market with the best possible content.</p>\n<p data-start=\"1133\" data-end=\"1488\">Spotify's Audiobooks team is helping shape the future of audio storytelling by bringing the world's best audiobook experiences to millions of listeners. As Associate Manager, Audiobook Licensing &amp; Author Partnerships,",
+    "id": "4310f31c-90e1-4e8d-bdcf-dce39c145b8c",
+    "lists": [
+      {
+        "text": "What You'll Do",
+        "content": "<div>\n\n<li data-section-id=\"1ngk6u6\" data-start=\"1935\" data-end=\"2112\">Identify and evaluate audiobook catalogs from independent authors, hybrid publishers, independent presses, and distribution partners that will resonate with Spotify listeners.</li>\n<li data-section-id=\"1wcb1rd\" data-start=\"2113\" data-end=\"2252\">Negotiate audiobook licensing agreements and commercial partnerships that create lon"
+      },
+      {
+        "text": "Who You Are",
+        "content": "<div>\n\n<li data-section-id=\"bg7j1h\" data-start=\"3346\" data-end=\"3492\">You have 3+ years of experience in publishing, digital media, business development, content licensing, content partnerships, or a related field.</li>\n<li data-section-id=\"qb4966\" data-start=\"3493\" data-end=\"3601\">You have experience negotiating and closing commercial licensing, distribution, or partnership agreements.</li>\n<li d"
+      }
+    ],
+    "text": "Associate – Audiobook Licensing & Author Partnerships",
+    "country": "US",
+    "workplaceType": "remote",
+    "opening": "",
+    "openingPlain": "",
+    "descriptionBody": "<div>\n<p data-end=\"1131\" data-start=\"802\">The Audiobooks Mission is a team in the Product &amp; Technology organisation focused on the ecosystem and strategies of Audiobooks on Spotify. We work across both the creator and consumer audiobooks ecosystems, in order to get the best possible product to market with the best possible content.</p>\n<p data-end=\"1488\" data-start=\"1133\">Spotify's Audiobooks team is helping shape the future of audio storytelling by bringing the world's best audiobook experiences to millions of listeners. As Associate Manager, Audiobook Licensing &amp; Author Partnerships,",
+    "descriptionBodyPlain": "The Audiobooks Mission is a team in the Product & Technology organisation focused on the ecosystem and strategies of Audiobooks on Spotify. We work across both the creator and consumer audiobooks ecosystems, in order to get the best possible product to market with the best possible content.\nSpotify's Audiobooks team is helping shape the future of audio storytelling by bringing the world's best audiobook experiences to millions of listeners. As Associate Manager, Audiobook Licensing & Author Partnerships, you'll play an important role in growing our catalog while building meaningful relationshi",
+    "hostedUrl": "https://jobs.lever.co/spotify/4310f31c-90e1-4e8d-bdcf-dce39c145b8c",
+    "applyUrl": "https://jobs.lever.co/spotify/4310f31c-90e1-4e8d-bdcf-dce39c145b8c/apply"
+  },
+  {
+    "additionalPlain": "Spotify is an equal opportunity employer. You are welcome at Spotify for who you are, no matter where you come from, what you look like, or what’s playing in your headphones. Our platform is for every",
+    "additional": "<div><span style=\"font-size: 11pt;\">Spotify is an equal opportunity employer. You are welcome at Spotify for who you are, no matter where you come from, what you look like, or what’s playing in your h",
+    "categories": {
+      "commitment": "Permanent",
+      "department": "Engineering",
+      "location": "Stockholm",
+      "team": "Platform",
+      "allLocations": [
+        "Stockholm",
+        "London"
+      ]
+    },
+    "createdAt": 1790854925650,
+    "descriptionPlain": "LilEngine is leading the Lakehouse, a company-strategic effort to make Apache Iceberg a first-class citizen in Spotify's data ecosystem. We're building it in close collaboration with Google, on open standards, so that different kinds of data are queryable the same way and teams can bring the right engine, from BigQuery to Dataflow to Trino, to the job.\nThe work has two parts. Hecate enables Iceberg for the Parquet datasets that already exist across Spotify, so teams get the benefits without rewriting their data. Alongside it, we're building the foundations of a new Lakehouse architecture that ",
+    "description": "<div>\n<p>LilEngine is leading the Lakehouse, a company-strategic effort to make Apache Iceberg a first-class citizen in Spotify's data ecosystem. We're building it in close collaboration with Google, on open standards, so that different kinds of data are queryable the same way and teams can bring the right engine, from BigQuery to Dataflow to Trino, to the job.</p>\n<p>The work has two parts. Hecate enables Iceberg for the Parquet datasets that already exist across Spotify, so teams get the benefits without rewriting their data. Alongside it, we're building the foundations of a new Lakehouse ar",
+    "id": "926149ab-6999-4058-b35d-41e302b70e05",
+    "lists": [
+      {
+        "text": "What You'll Do",
+        "content": "<div>\n\n<li><strong>Build and evolve the lakehouse:</strong> Help build the foundations that let data workflows read and write Iceberg tables directly, from this cycle's MVP to a production-grade platform.</li>\n<li><strong>Drive adoption:&nbsp;</strong>Help migrate data pipelines from across Spotify onto the new stack, making the move as painless as possible through tooling, standards and hands-on "
+      },
+      {
+        "text": "Who You Are",
+        "content": "<div>\n\n<li>You have solid experience building and operating backend services in production with Java or Scala.</li>\n<li>You're comfortable on GCP and Kubernetes. You can read kubectl output, reason about IAM and quotas, and work with CRDs and operators. You don't need deep expertise in all of these on day one.</li>\n<li>You've worked with Apache Iceberg or JVM-based processing frameworks like Spark"
+      }
+    ],
+    "text": "Backend Engineer - Data Platform",
+    "country": "SE",
+    "workplaceType": "hybrid",
+    "opening": "",
+    "openingPlain": "",
+    "descriptionBody": "<div>\n<p>LilEngine is leading the Lakehouse, a company-strategic effort to make Apache Iceberg a first-class citizen in Spotify's data ecosystem. We're building it in close collaboration with Google, on open standards, so that different kinds of data are queryable the same way and teams can bring the right engine, from BigQuery to Dataflow to Trino, to the job.</p>\n<p>The work has two parts. Hecate enables Iceberg for the Parquet datasets that already exist across Spotify, so teams get the benefits without rewriting their data. Alongside it, we're building the foundations of a new Lakehouse ar",
+    "descriptionBodyPlain": "LilEngine is leading the Lakehouse, a company-strategic effort to make Apache Iceberg a first-class citizen in Spotify's data ecosystem. We're building it in close collaboration with Google, on open standards, so that different kinds of data are queryable the same way and teams can bring the right engine, from BigQuery to Dataflow to Trino, to the job.\nThe work has two parts. Hecate enables Iceberg for the Parquet datasets that already exist across Spotify, so teams get the benefits without rewriting their data. Alongside it, we're building the foundations of a new Lakehouse architecture that ",
+    "hostedUrl": "https://jobs.lever.co/spotify/926149ab-6999-4058-b35d-41e302b70e05",
+    "applyUrl": "https://jobs.lever.co/spotify/926149ab-6999-4058-b35d-41e302b70e05/apply"
+  },
+  {
+    "additionalPlain": "Spotify is an equal opportunity employer. You are welcome at Spotify for who you are, no matter where you come from, what you look like, or what’s playing in your headphones. Our platform is for every",
+    "additional": "<div><span style=\"font-size: 11pt;\">Spotify is an equal opportunity employer. You are welcome at Spotify for who you are, no matter where you come from, what you look like, or what’s playing in your h",
+    "categories": {
+      "commitment": "Permanent",
+      "department": "Markets and Subscriber Growth",
+      "location": "Taiwan (Home Mix)",
+      "team": "Music Marketing",
+      "allLocations": [
+        "Taiwan (Home Mix)"
+      ]
+    },
+    "createdAt": 1776346962281,
+    "descriptionPlain": "We are looking for a strategic-minded, execution-oriented Artists & Label Partnerships Manager for Taiwan, to join Spotify’s Music team based in Taipei. In this role, you will be part of the Music team in Southeast Asia, reporting to the regional Head of Artists & Label Partnerships.\n \nYou will sit at the heart of the music ecosystem, moving between high-level release strategies and the day-to-day tactical execution that drives artist and business growth. This role is perfect for a music industry professional who thrives on building relationships and navigating the intersection of technology a",
+    "description": "<div>We are looking for a strategic-minded, execution-oriented Artists &amp; Label Partnerships Manager for Taiwan, to join Spotify’s Music team based in Taipei. In this role, you will be part of the Music team in Southeast Asia, reporting to the regional Head of Artists &amp; Label Partnerships.</div>\n<div>&nbsp;</div>\n<div>You will sit at the heart of the music ecosystem, moving between high-level release strategies and the day-to-day tactical execution that drives artist and business growth. This role is perfect for a music industry professional who thrives on building relationships and nav",
+    "id": "77526d53-3811-4336-9c0d-72f6ac0242c7",
+    "lists": [
+      {
+        "text": "What You'll Do",
+        "content": "\n<li>Focusing on the Taiwan music landscape, You will be the primary point of contact for local and global music partners based in Taiwan, ensuring that Spotify remains the most valued partner for artists and our industry partners, utilising on-platform promotion and off-platform marketing to ensure Spotify is the premiere platform for artist development</li>\n<li>Develop and execute a holistic mus"
+      },
+      {
+        "text": "Who You Are",
+        "content": "\n<li>You have at least 7+ years of working experience with label and artist relations in an established digital music service, record label, media or tech company. Regional and global experience would be an added advantage</li>\n<li>You have a deep understanding and established network within the local music industry in Taiwan and have built relevant contacts with labels and artists to effectively "
+      }
+    ],
+    "text": "Artist Label Partnerships Manager, Taiwan",
+    "country": "TW",
+    "workplaceType": "onsite",
+    "opening": "",
+    "openingPlain": "",
+    "descriptionBody": "<div>We are looking for a strategic-minded, execution-oriented Artists &amp; Label Partnerships Manager for Taiwan, to join Spotify&rsquo;s Music team based in Taipei. In this role, you will be part of the Music team in Southeast Asia, reporting to the regional Head of Artists &amp; Label Partnerships.</div>\n<div>&nbsp;</div>\n<div>You will sit at the heart of the music ecosystem, moving between high-level release strategies and the day-to-day tactical execution that drives artist and business growth. This role is perfect for a music industry professional who thrives on building relationships a",
+    "descriptionBodyPlain": "We are looking for a strategic-minded, execution-oriented Artists & Label Partnerships Manager for Taiwan, to join Spotify’s Music team based in Taipei. In this role, you will be part of the Music team in Southeast Asia, reporting to the regional Head of Artists & Label Partnerships.\n \nYou will sit at the heart of the music ecosystem, moving between high-level release strategies and the day-to-day tactical execution that drives artist and business growth. This role is perfect for a music industry professional who thrives on building relationships and navigating the intersection of technology a",
+    "hostedUrl": "https://jobs.lever.co/spotify/77526d53-3811-4336-9c0d-72f6ac0242c7",
+    "applyUrl": "https://jobs.lever.co/spotify/77526d53-3811-4336-9c0d-72f6ac0242c7/apply"
+  }
+]

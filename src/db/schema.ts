@@ -111,7 +111,8 @@ export const profiles = pgTable("profiles", {
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
 });
 
-export const JOB_SOURCES = ["greenhouse", "lever", "ashby", "adzuna", "usajobs"] as const;
+// "mock" is local sample data, used only when no real source can run (see lib/jobs/sources/mock.ts).
+export const JOB_SOURCES = ["greenhouse", "lever", "ashby", "adzuna", "usajobs", "mock"] as const;
 export type JobSource = (typeof JOB_SOURCES)[number];
 
 export const jobs = pgTable(

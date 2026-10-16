@@ -24,3 +24,16 @@ One line each: decision — why.
 - Upload limit 4 MB, Server Action body limit raised to 5 MB — Vercel rejects request bodies over 4.5 MB.
 - pdf.js needs DOMMatrix, normally from @napi-rs/canvas, which has no Windows-ARM64 build; a pure-JS polyfill (@thednp/dommatrix) is used only when the native one can't load — text extraction doesn't render, so it's sufficient.
 - Resumes over 60,000 characters are rejected with a message rather than silently truncated.
+- Greenhouse/Lever/Ashby adapters were written against live responses captured 2026-10-15 (trimmed copies are the test fixtures); Adzuna/USAJobs adapters follow their official docs because no keys were available — both are lenient (string-or-number, optional fields) and marked "not yet verified live" in code.
+- Lever and Ashby don't return a company name, so it's derived from the board slug ("spotify" → "Spotify").
+- Ashby's `isRemote` is true for hybrid roles, so `workplaceType` decides remote; Lever uses `workplaceType` too.
+- Locations are parsed into city/state/country (ISO-2) with a small gazetteer of major cities and the abbreviations seen in real data ("NYC, SF", "US-SEA"); multi-location postings use the first parseable place for filters; the raw string is kept for display and search. 94% of 1,143 live postings resolve a country.
+- Salary: structured fields when the source has them (annualized from hourly/monthly), otherwise parsed from the description (Greenhouse puts pay ranges in the HTML). Adzuna's *predicted* salaries are skipped — they carry extra attribution terms.
+- Dedupe key = normalized company + title + place; when two sources have the same job the direct ATS copy wins over USAJobs/Adzuna (richer description, direct apply link).
+- Each source "task" (one per target company, one per Adzuna/USAJobs query) runs in parallel (max 8) with a 12s timeout; a failed or slow source is recorded in `search_runs.source_results` and shown in the UI, never failing the run.
+- Adzuna's free tier is ~250 calls/day, so a run makes at most 2 Adzuna queries (and 2 USAJobs queries), built from the top target titles + first preferred location.
+- Keyword prefilter: title similarity 40 + skills 35 + keywords 15 + preferences 10, with penalties for remote/level/location mismatches; jobs under 10 aren't saved as matches. Claude re-scores only the top MAX_AI_SCORES_PER_RUN (default 20) jobs that don't already have an AI score newer than the last profile change, in batches of 10.
+- Each job's description is cut to 2,500 characters in the Claude scoring prompt — that's where the role summary lives; the rest is mostly boilerplate, and it bounds cost per run.
+- Sample/mock postings (`source = "mock"`) are used when MOCK_JOBS=true, or when there's nothing real to query — the app always has something to show offline.
+- Jobs not seen by any search in 21 days are hidden from results (treated as closed).
+- The refresh API refuses to start a second run for the same user while one is in flight (409).

@@ -1,0 +1,66 @@
+{
+  "LanguageCode": "EN",
+  "SearchParameters": {},
+  "SearchResult": {
+    "SearchResultCount": 2,
+    "SearchResultCountAll": 2,
+    "SearchResultItems": [
+      {
+        "MatchedObjectId": "123456789",
+        "MatchedObjectDescriptor": {
+          "PositionID": "ABC-12345",
+          "PositionTitle": "IT SPECIALIST (INFOSEC/NETWORK)",
+          "PositionURI": "https://www.usajobs.gov/job/123456789",
+          "ApplyURI": ["https://www.usajobs.gov/job/123456789/apply"],
+          "PositionLocationDisplay": "Washington, District of Columbia",
+          "PositionLocation": [
+            {
+              "LocationName": "Washington, District of Columbia",
+              "CountryCode": "United States",
+              "CountrySubDivisionCode": "District of Columbia",
+              "CityName": "Washington, District of Columbia",
+              "Longitude": -77.032,
+              "Latitude": 38.89
+            }
+          ],
+          "OrganizationName": "Defense Information Systems Agency",
+          "DepartmentName": "Department of Defense",
+          "JobCategory": [{ "Name": "Information Technology Management", "Code": "2210" }],
+          "JobGrade": [{ "Code": "GS" }],
+          "PositionSchedule": [{ "Name": "Full-time", "Code": "1" }],
+          "QualificationSummary": "One year of specialized experience at the GS-12 level…",
+          "PositionRemuneration": [
+            { "MinimumRange": "99200.0", "MaximumRange": "128956.0", "RateIntervalCode": "PA", "Description": "Per Year" }
+          ],
+          "PublicationStartDate": "2026-10-01T00:00:00.0000",
+          "ApplicationCloseDate": "2026-10-30T23:59:59.9970",
+          "UserArea": {
+            "Details": {
+              "JobSummary": "Serve as an IT Specialist responsible for network security.",
+              "MajorDuties": ["Monitor network traffic", "Respond to incidents"],
+              "LowGrade": "13",
+              "HighGrade": "13"
+            },
+            "IsRadialSearch": false
+          }
+        },
+        "RelevanceRank": 0
+      },
+      {
+        "MatchedObjectId": "987654321",
+        "MatchedObjectDescriptor": {
+          "PositionTitle": "IT Specialist (APPSW)",
+          "PositionURI": "https://www.usajobs.gov/job/987654321",
+          "PositionLocationDisplay": "Anywhere in the U.S. (remote job)",
+          "PositionLocation": [{ "LocationName": "Anywhere in the U.S. (remote job)", "CountryCode": "United States" }],
+          "OrganizationName": "Internal Revenue Service",
+          "JobGrade": [{ "Code": "GS" }],
+          "PositionRemuneration": [{ "MinimumRange": 50, "MaximumRange": 65, "RateIntervalCode": "PH" }],
+          "PublicationStartDate": "2026-10-05T00:00:00.0000",
+          "UserArea": { "Details": { "JobSummary": "Develop applications.", "MajorDuties": "Write code.", "LowGrade": "11" } }
+        },
+        "RelevanceRank": 1
+      }
+    ]
+  }
+}
