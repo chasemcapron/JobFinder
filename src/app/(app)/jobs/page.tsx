@@ -5,6 +5,7 @@ import { formatDateTime } from "@/lib/format";
 import { activeFilterCount, filterMatches, filtersToSearchParams, locationFacets, paginate, parseFilters } from "@/lib/jobs/filters";
 import { lastSearchRun, listMatches } from "@/lib/jobs/results";
 import { requireUser } from "@/lib/session";
+import { ApplyActions } from "./apply-actions";
 import { FilterPanel } from "./filter-panel";
 import { FiltersToggle } from "./filters-toggle";
 import { JobCard } from "./job-card";
@@ -110,7 +111,7 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
             ) : (
               <ul className="flex flex-col gap-3">
                 {items.map((m) => (
-                  <JobCard key={m.job.id} match={m} />
+                  <JobCard key={m.job.id} match={m} actions={<ApplyActions jobId={m.job.id} application={m.application} />} />
                 ))}
               </ul>
             )}

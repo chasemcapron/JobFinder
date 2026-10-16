@@ -34,7 +34,13 @@ export type MatchResult = {
   aiScored: boolean;
   reasons: string;
   matchedKeywords: string[];
-  application: { id: string; status: ApplicationStatus; appliedAt: Date; sheetSyncStatus: SheetSyncStatus } | null;
+  application: {
+    id: string;
+    status: ApplicationStatus;
+    appliedAt: Date;
+    sheetSyncStatus: SheetSyncStatus;
+    sheetSyncError: string | null;
+  } | null;
 };
 
 export async function listMatches(userId: string, db?: Db): Promise<MatchResult[]> {
@@ -70,6 +76,7 @@ export async function listMatches(userId: string, db?: Db): Promise<MatchResult[
       applicationStatus: applications.status,
       appliedAt: applications.appliedAt,
       sheetSyncStatus: applications.sheetSyncStatus,
+      sheetSyncError: applications.sheetSyncError,
     })
     .from(jobMatches)
     .innerJoin(jobs, eq(jobs.id, jobMatches.jobId))
@@ -86,7 +93,13 @@ export async function listMatches(userId: string, db?: Db): Promise<MatchResult[
     matchedKeywords: r.matchedKeywords,
     application:
       r.applicationId && r.applicationStatus && r.appliedAt && r.sheetSyncStatus
-        ? { id: r.applicationId, status: r.applicationStatus, appliedAt: r.appliedAt, sheetSyncStatus: r.sheetSyncStatus }
+        ? {
+            id: r.applicationId,
+            status: r.applicationStatus,
+            appliedAt: r.appliedAt,
+            sheetSyncStatus: r.sheetSyncStatus,
+            sheetSyncError: r.sheetSyncError,
+          }
         : null,
   }));
 }

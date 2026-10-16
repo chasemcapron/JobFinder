@@ -42,3 +42,10 @@ One line each: decision — why.
 - Location dropdowns are facets built from the actual results (states narrow to the chosen country, cities to the chosen state), with counts.
 - Applied jobs are dimmed by default, with "hide" and "only applied" options; also added minimum-score and sort-by-newest, which the brief didn't ask for but cost little.
 - In comma lists like "Seattle, Chicago, US", a middle token only becomes the state/region if it really is one (US state, or a non-city elsewhere) — prevents cities leaking into the State filter.
+- Sheets rows are written with `values:batchGet` (find the last used row across the mapped columns) + `values.update` at that exact row, not `values.append` — append starts writing at the detected table's first column, which shifts every value when a table doesn't start at A. Unmapped columns are sent as null, which the API skips, so existing cells/formulas are untouched.
+- Default mapping is the brief's example (Company A, Title B, Date Applied C, Link D, Location E, Status F); Source and Match score are optional extra fields. Duplicate columns are rejected.
+- Text from postings is written with USER_ENTERED, so anything starting with = + - @ gets an apostrophe prefix (stored as text, not run as a formula); the date is left unescaped so Sheets parses it as a date.
+- The application is saved before any Sheets call; failures are stored on the row (`sheet_sync_status` = failed + error) and shown with a Retry button. "No sheet set" / "Google not connected" are `not_configured`, not failures. A synced application is never appended twice.
+- Status changes and removals only affect the app, not the sheet — the brief only asks to append, and editing someone's own sheet in place is risky without knowing its layout.
+- Google access tokens are refreshed server-side from the stored refresh token (60 s before expiry); revoked access or a missing Sheets scope produces a "sign out and back in" message.
+- "Test connection" in Settings reads the sheet's tabs and header row, so the user can see which letter holds which column before relying on the mapping.

@@ -1,21 +1,27 @@
 import type { Metadata } from "next";
 import { ActionForm } from "@/components/action-form";
-import { Badge, Card, CardHeader, inputClass, Label, PageHeader } from "@/components/ui";
-import { EXPERIENCE_LEVELS } from "@/db/schema";
-import { featureStatus } from "@/lib/env";
+import { Alert, Badge, Card, CardHeader, inputClass, Label, PageHeader } from "@/components/ui";
+import { EXPERIENCE_LEVELS, SHEET_FIELDS } from "@/db/schema";
+import { env, featureStatus } from "@/lib/env";
+import { DEFAULT_COLUMN_MAP, SHEET_FIELD_LABELS } from "@/lib/google/sheets";
 import { EXPERIENCE_LABELS } from "@/lib/jobs/experience";
 import { ADZUNA_COUNTRIES } from "@/lib/jobs/sources/adzuna-countries";
 import { listTargetCompanies } from "@/lib/profile";
 import { requireUser } from "@/lib/session";
 import { addTargetCompany, savePreferences, saveSheetSettings } from "./actions";
+import { SheetTest } from "./sheet-test";
 import { TargetCompanyRow } from "./target-company-row";
 
 export const metadata: Metadata = { title: "Settings · Job Finder" };
+// "Test connection" calls the Google Sheets API.
+export const maxDuration = 30;
 
 export default async function SettingsPage() {
   const { profile } = await requireUser();
   const companies = await listTargetCompanies(profile.userId);
   const features = featureStatus();
+  const columnMap = profile.sheetColumnMap ?? DEFAULT_COLUMN_MAP;
+  const googleConfigured = env.googleConfigured;
 
   return (
     <div className="flex flex-col gap-6">
@@ -137,8 +143,15 @@ export default async function SettingsPage() {
       <Card id="sheet">
         <CardHeader
           title="Google Sheet"
-          description="When you mark a job as applied, a row is appended to this sheet. Paste the sheet URL or ID."
+          description="When you mark a job as applied, a row is added below the last row of this sheet. Your sheet's own columns are kept: map each field to the column it belongs in, and leave the rest blank."
         />
+        {!googleConfigured ? (
+          <div className="mb-4">
+            <Alert tone="warning">
+              Google sign-in isn&apos;t configured on this deployment, so applications are saved here but not synced to a sheet.
+            </Alert>
+          </div>
+        ) : null}
         <ActionForm action={saveSheetSettings}>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -166,7 +179,34 @@ export default async function SettingsPage() {
               />
             </div>
           </div>
+          <fieldset>
+            <legend className="mb-2 text-sm font-medium">Column mapping</legend>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {SHEET_FIELDS.map((field) => (
+                <div key={field}>
+                  <Label htmlFor={`col_${field}`}>{SHEET_FIELD_LABELS[field]}</Label>
+                  <input
+                    id={`col_${field}`}
+                    name={`col_${field}`}
+                    className={`${inputClass} uppercase`}
+                    defaultValue={columnMap[field] ?? ""}
+                    placeholder="—"
+                    maxLength={3}
+                    autoComplete="off"
+                    aria-describedby="col-help"
+                  />
+                </div>
+              ))}
+            </div>
+            <p id="col-help" className="mt-2 text-xs text-muted">
+              Column letters (A, B, … AA). Blank = don&apos;t write that field. Save, then use Test connection to see your
+              header row.
+            </p>
+          </fieldset>
         </ActionForm>
+        <div className="mt-4 border-t border-border pt-4">
+          <SheetTest disabled={!profile.sheetId || !googleConfigured} />
+        </div>
       </Card>
 
       <Card>

@@ -1,10 +1,74 @@
-import { EmptyState, PageHeader } from "@/components/ui";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { SyncStatus } from "@/components/sync-status";
+import { buttonClass, EmptyState, PageHeader } from "@/components/ui";
+import { listApplications } from "@/lib/applications";
+import { formatRelativeDate } from "@/lib/format";
+import { formatLocation } from "@/lib/jobs/location";
+import { requireUser } from "@/lib/session";
+import { localDate } from "@/lib/time";
+import { ApplicationRowActions } from "./row-actions";
 
-export default function Page() {
+export const metadata: Metadata = { title: "Applications · Job Finder" };
+// Retry sync calls the Sheets API.
+export const maxDuration = 30;
+
+export default async function ApplicationsPage() {
+  const { profile } = await requireUser();
+  const rows = await listApplications(profile.userId);
+  const failed = rows.filter((r) => r.app.sheetSyncStatus === "failed").length;
+
   return (
     <>
-      <PageHeader title="Applications" />
-      <EmptyState title="Nothing here yet">Jobs you mark as applied will be listed here.</EmptyState>
+      <PageHeader
+        title="Applications"
+        description={
+          rows.length
+            ? `${rows.length} application${rows.length === 1 ? "" : "s"}${failed ? ` · ${failed} not yet in your sheet` : ""}`
+            : undefined
+        }
+        action={
+          profile.sheetId ? null : (
+            <Link href="/settings#sheet" className={buttonClass("secondary", "sm")}>
+              Connect a Google Sheet
+            </Link>
+          )
+        }
+      />
+      {rows.length === 0 ? (
+        <EmptyState
+          title="No applications yet"
+          action={
+            <Link href="/jobs" className={buttonClass("secondary")}>
+              Browse jobs
+            </Link>
+          }
+        >
+          Click &ldquo;Mark applied&rdquo; on a job to track it here{profile.sheetId ? " and add it to your Google Sheet" : ""}.
+        </EmptyState>
+      ) : (
+        <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+          {rows.map(({ app, job }) => (
+            <li key={app.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <a href={job.applyUrl} target="_blank" rel="noreferrer" className="font-semibold hover:underline">
+                  {job.title}
+                </a>
+                <p className="text-sm text-muted">
+                  {job.company} · {formatLocation(job, job.locationRaw)}
+                </p>
+                <p className="mt-1 text-xs text-muted" title={app.appliedAt.toISOString()}>
+                  Applied {localDate(app.appliedAt)} ({formatRelativeDate(app.appliedAt)})
+                </p>
+                <div className="mt-2">
+                  <SyncStatus applicationId={app.id} status={app.sheetSyncStatus} error={app.sheetSyncError} />
+                </div>
+              </div>
+              <ApplicationRowActions applicationId={app.id} status={app.status} />
+            </li>
+          ))}
+        </ul>
+      )}
     </>
   );
 }

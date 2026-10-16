@@ -55,7 +55,7 @@ const rows = [
   row({ title: "Data Engineer", city: "London", state: "England", country: "GB", locationRaw: "London", postedAt: daysAgo(20) }, { score: 50 }),
   row({ title: "Payments Engineer", experienceLevel: null, source: "adzuna", postedAt: null, firstSeenAt: daysAgo(10) }, {
     score: 80,
-    application: { id: "a1", status: "applied", appliedAt: daysAgo(1), sheetSyncStatus: "synced" },
+    application: { id: "a1", status: "applied", appliedAt: daysAgo(1), sheetSyncStatus: "synced", sheetSyncError: null },
   }),
 ];
 
