@@ -100,8 +100,13 @@ function parseSegment(segment: string): Omit<ParsedLocation, "remote"> | null {
       country = c;
       tokens.pop();
       if (tokens.length >= 2) {
-        const region = tokens.pop()!;
-        state = (country === "US" ? usStateCode(region) : null) ?? region;
+        // "Austin, Texas, US" has a region; "Seattle, Chicago, US" is just a list of cities.
+        const region = tokens[tokens.length - 1];
+        const isRegion = country === "US" ? Boolean(usStateCode(region)) : !CITIES[region.toLowerCase()];
+        if (isRegion) {
+          tokens.pop();
+          state = country === "US" ? usStateCode(region) : region;
+        }
       }
     }
   }

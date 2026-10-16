@@ -37,3 +37,8 @@ One line each: decision — why.
 - Sample/mock postings (`source = "mock"`) are used when MOCK_JOBS=true, or when there's nothing real to query — the app always has something to show offline.
 - Jobs not seen by any search in 21 days are hidden from results (treated as closed).
 - The refresh API refuses to start a second run for the same user while one is in flight (409).
+- Results filtering runs in memory over the user's match rows (max 2,000, newest-seen jobs only) via a pure `filterMatches` — simple, fully unit-testable, and fast at personal scale; only the first 3,000 description characters are loaded for keyword search.
+- Filters live in the URL (shareable, back button works, form works without JS); selects apply instantly, the search box debounces 400 ms; keyword search ANDs terms and supports "quoted phrases".
+- Location dropdowns are facets built from the actual results (states narrow to the chosen country, cities to the chosen state), with counts.
+- Applied jobs are dimmed by default, with "hide" and "only applied" options; also added minimum-score and sort-by-newest, which the brief didn't ask for but cost little.
+- In comma lists like "Seattle, Chicago, US", a middle token only becomes the state/region if it really is one (US state, or a non-city elsewhere) — prevents cities leaking into the State filter.

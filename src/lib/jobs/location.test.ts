@@ -36,6 +36,7 @@ describe("parseLocation", () => {
     ["SEA, SF, NY, Toronto", { city: "Seattle", state: "WA", country: "US", remote: false }],
     ["Luxembourg", { city: "Luxembourg", state: null, country: "LU", remote: false }],
     ["Taipei City", { city: "Taipei", state: null, country: "TW", remote: false }],
+    ["Seattle, Chicago, US", { city: "Seattle", state: "WA", country: "US", remote: false }],
   ])("%s", (raw, expected) => {
     expect(parseLocation(raw)).toEqual(expected);
   });

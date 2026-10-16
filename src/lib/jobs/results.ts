@@ -1,4 +1,4 @@
-import { and, desc, eq, gt } from "drizzle-orm";
+import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
 import { applications, jobMatches, jobs, searchRuns, type ApplicationStatus, type JobRow, type SheetSyncStatus } from "@/db/schema";
 
@@ -7,6 +7,7 @@ export const STALE_AFTER_DAYS = 21;
 
 /** Upper bound on rows loaded per page view; filtering happens in memory (see filters.ts). */
 const MAX_RESULTS = 2000;
+const SEARCHABLE_DESCRIPTION_CHARS = 3000;
 
 export type MatchResult = {
   job: Pick<
@@ -58,7 +59,8 @@ export async function listMatches(userId: string, db?: Db): Promise<MatchResult[
         salaryMax: jobs.salaryMax,
         salaryCurrency: jobs.salaryCurrency,
         firstSeenAt: jobs.firstSeenAt,
-        description: jobs.description,
+        // Only used for keyword search; the head of a posting carries the signal.
+        description: sql<string>`left(${jobs.description}, ${sql.raw(String(SEARCHABLE_DESCRIPTION_CHARS))})`,
       },
       score: jobMatches.score,
       aiScored: jobMatches.aiScored,
