@@ -104,6 +104,12 @@ export default async function SettingsPage() {
             <input type="checkbox" name="emailEnabled" defaultChecked={profile.emailEnabled} className="size-4 accent-accent" />
             Email me the top new matches every morning (7:00 AM Central)
           </label>
+          <p className="-mt-2 text-xs text-muted">
+            Up to 10 matches scoring 40+ that haven&apos;t been emailed or applied to.{" "}
+            <a href="/api/digest/preview" target="_blank" rel="noreferrer" className="underline">
+              Preview the email
+            </a>
+          </p>
         </ActionForm>
       </Card>
 

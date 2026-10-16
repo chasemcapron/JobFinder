@@ -49,3 +49,10 @@ One line each: decision — why.
 - Status changes and removals only affect the app, not the sheet — the brief only asks to append, and editing someone's own sheet in place is risky without knowing its layout.
 - Google access tokens are refreshed server-side from the stored refresh token (60 s before expiry); revoked access or a missing Sheets scope produces a "sign out and back in" message.
 - "Test connection" in Settings reads the sheet's tabs and header row, so the user can see which letter holds which column before relying on the mapping.
+- `vercel.json` schedules `/api/cron/morning` at both 12:00 and 13:00 UTC; the route sends only when it's 7 AM in America/Chicago, gated on the hour (not the minute) because Vercel Hobby crons can fire anytime within the scheduled hour. Two cron entries also fits Hobby's cron limit.
+- Once-per-day is enforced per user with `profiles.last_digest_date` (Chicago date), claimed with a compare-and-set update *before* searching, so overlapping or retried invocations can't double-send; if sending fails, the claim is released so the next invocation retries.
+- The cron route rejects every request when CRON_SECRET is unset (503) and compares the bearer token in constant time. `?force=1` skips the hour check for manual testing but still respects once-per-day.
+- Digest = up to 10 matches with score ≥ 40 that aren't in `email_log` and aren't applied to; nothing is sent when there are none. If the morning search fails, the digest still goes out from existing matches.
+- Users are processed sequentially and no new user is started after 35 s, to stay inside the 60 s function limit; fine for a personal app (one or a few users).
+- Without RESEND_API_KEY/EMAIL_FROM the email is printed to the server log and still recorded in `email_log` (channel "console"), so the whole flow is testable locally. Adzuna jobs carry the "Jobs by Adzuna" link in the email too.
+- Added `/api/digest/preview` (signed-in only) and a Settings link to it — renders what the next digest would contain without sending or logging.

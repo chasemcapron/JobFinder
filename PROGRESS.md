@@ -11,7 +11,7 @@ Each phase is committed only after lint, typecheck, tests, and build pass.
 - [x] Phase 4: Job search (adapters, normalize, dedupe, store, score, "Refresh jobs")
 - [x] Phase 5: Results and filters
 - [x] Phase 6: Application tracking + Google Sheets (column mapping, retry)
-- [ ] Phase 7: Morning email (Vercel Cron, CRON_SECRET, Chicago 7 AM gating)
+- [x] Phase 7: Morning email (Vercel Cron, CRON_SECRET, Chicago 7 AM gating)
 - [ ] Phase 8: Polish (empty/error/loading states, mobile, full README)
 
 ## Log
@@ -22,11 +22,13 @@ Each phase is committed only after lint, typecheck, tests, and build pass.
 - **Phase 4**: Adapters for Greenhouse, Lever, Ashby (verified against live responses), Adzuna and USAJobs (from docs; no keys). `runJobSearch(userId)` fetches in parallel with timeouts → normalizes → dedupes → stores → keyword prefilter → Claude scores the top N → saves matches. "Refresh jobs" button with loading/result/failed-source states. Live E2E run: 1,143 postings from the 5 seeded boards in 1.4s, 420 ranked matches.
 - **Phase 5**: Results sorted by match score with apply links; filters for country, state, city, remote, experience level, source, date posted, keyword search, applied (dim/hide/only), min score, sort; pagination; mobile collapsible filter panel. Verified 16 filter combinations over HTTP against 894 real matches.
 - **Phase 6**: "Mark applied" on each job saves to `applications`, then writes a row to the user's Google Sheet using a configurable column mapping (defaults A–F). Sheets failures keep the application and show Retry. Applications page with status changes and removal. Settings: sheet URL/ID, tab, column mapping, Test connection. Verified end to end over HTTP in a production build (save, validation, not-configured path, retry, status change, remove); the Sheets HTTP calls and token refresh are covered by unit tests with mocked fetch.
+- **Phase 7**: `/api/cron/morning` (CRON_SECRET bearer check) scheduled at 12:00 and 13:00 UTC in `vercel.json`; sends only at 7 AM Chicago, once per day. Runs `runJobSearch`, then emails up to 10 new matches (not already emailed or applied) via Resend + React Email: title, company, location, score, reason, apply link. Mock mode prints the email to the server log. Preview route + Settings link. Verified over HTTP: auth rejections, hour gate, forced send, same-day skip, email_log effect.
 
 ## Not verified yet (needs keys)
 
 - Claude calls (resume extraction and match scoring) are implemented per the current SDK docs and type-check, but have never run against the real API. With no key, the heuristic paths are what has been exercised.
 - Google Sheets sync and token refresh have only run against mocked HTTP; they need a real Google OAuth client and sheet to verify.
+- Real email delivery through Resend (needs an API key and a verified sender); the Resend call itself is untested, only the mock path.
 - Adzuna and USAJobs adapters are tested against fixtures built from their documented response shapes, not live responses. Bad-credential responses (401) were checked live and are handled.
 
 ## Blocked / needs you
