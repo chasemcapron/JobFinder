@@ -1,0 +1,22 @@
+Alex Example
+alex@example.com | 555-010-0000 | Springfield, IL
+
+SUMMARY
+Backend engineer with 6 years of experience building payment and data platforms.
+
+EXPERIENCE
+Senior Software Engineer at Example Payments | 2021 - Present
+- Built payment reconciliation services in TypeScript and Node.js on AWS Lambda
+- Designed PostgreSQL schemas and Kafka pipelines processing millions of payments per day
+- Led migration from Jenkins to GitHub Actions; introduced Terraform for infrastructure
+
+Software Engineer, Sample Analytics | 2018 - 2021
+- Developed Python and Django APIs for analytics dashboards
+- Wrote data pipelines with Airflow and Spark; reporting in Tableau
+- Containerized services with Docker and Kubernetes
+
+EDUCATION
+B.S. Computer Science, State University
+
+SKILLS
+TypeScript, Python, Node.js, React, PostgreSQL, Redis, AWS, Docker, Kubernetes, Kafka, payments, reconciliation
