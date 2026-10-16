@@ -6,6 +6,7 @@ import { env, featureStatus } from "@/lib/env";
 import { DEFAULT_COLUMN_MAP, SHEET_FIELD_LABELS } from "@/lib/google/sheets";
 import { EXPERIENCE_LABELS } from "@/lib/jobs/experience";
 import { ADZUNA_COUNTRIES } from "@/lib/jobs/sources/adzuna-countries";
+import { lastSearchRun } from "@/lib/jobs/results";
 import { listTargetCompanies } from "@/lib/profile";
 import { requireUser } from "@/lib/session";
 import { addTargetCompany, savePreferences, saveSheetSettings } from "./actions";
@@ -18,7 +19,8 @@ export const maxDuration = 30;
 
 export default async function SettingsPage() {
   const { profile } = await requireUser();
-  const companies = await listTargetCompanies(profile.userId);
+  const [companies, lastRun] = await Promise.all([listTargetCompanies(profile.userId), lastSearchRun(profile.userId)]);
+  const lastResults = new Map((lastRun?.sourceResults ?? []).map((r) => [r.source, r]));
   const features = featureStatus();
   const columnMap = profile.sheetColumnMap ?? DEFAULT_COLUMN_MAP;
   const googleConfigured = env.googleConfigured;
@@ -128,7 +130,14 @@ export default async function SettingsPage() {
         ) : (
           <ul className="mb-4 divide-y divide-border rounded-md border border-border">
             {companies.map((c) => (
-              <TargetCompanyRow key={c.id} id={c.id} ats={c.ats} slug={c.slug} enabled={c.enabled} />
+              <TargetCompanyRow
+                key={c.id}
+                id={c.id}
+                ats={c.ats}
+                slug={c.slug}
+                enabled={c.enabled}
+                lastResult={lastResults.get(`${c.ats}:${c.slug}`)}
+              />
             ))}
           </ul>
         )}

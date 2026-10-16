@@ -126,5 +126,15 @@ export function featureStatus(): FeatureStatus[] {
       configured: Boolean(env.cronSecret),
       note: env.cronSecret ? "Set" : "Cron route rejects all requests until CRON_SECRET is set",
     },
+    ...(env.isProduction && env.demoLoginEnabled
+      ? [
+          {
+            key: "demo",
+            label: "Demo sign-in",
+            configured: false,
+            note: "ENABLE_DEMO_LOGIN=true in production: anyone can sign in as the demo user. Remove it.",
+          },
+        ]
+      : []),
   ];
 }

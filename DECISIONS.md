@@ -56,3 +56,8 @@ One line each: decision — why.
 - Users are processed sequentially and no new user is started after 35 s, to stay inside the 60 s function limit; fine for a personal app (one or a few users).
 - Without RESEND_API_KEY/EMAIL_FROM the email is printed to the server log and still recorded in `email_log` (channel "console"), so the whole flow is testable locally. Adzuna jobs carry the "Jobs by Adzuna" link in the email too.
 - Added `/api/digest/preview` (signed-in only) and a Settings link to it — renders what the next digest would contain without sending or logging.
+- Error boundaries at two levels: `(app)/error.tsx` inside the app shell, and `app/error.tsx` for failures in the signed-in layout itself (e.g. database unreachable), plus `global-error.tsx`; production shows the error digest for log lookup instead of the hidden message.
+- Basic security headers (X-Frame-Options DENY, nosniff, strict referrer, no camera/mic/geolocation) and no `X-Powered-By`.
+- `outputFileTracingIncludes` adds pdf.js's worker to the /resume function: pdf.js loads it with a computed import that file tracing can't follow. Verified by uploading a PDF to a standalone build, which (like Vercel) ships only traced files.
+- Settings shows each target company's result from the last search (posting count, or the error), so broken slugs are easy to spot.
+- README documents that Google OAuth apps in Testing mode get refresh tokens that expire after 7 days — the brief asks for Testing mode, so Sheets sync needs a re-login about weekly; the app says so when it happens.

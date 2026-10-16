@@ -1,4 +1,5 @@
 import { Badge, buttonClass, cx } from "@/components/ui";
+import { applicationStatusLabel } from "@/lib/applications";
 import { formatRelativeDate, formatSalary } from "@/lib/format";
 import { EXPERIENCE_LABELS } from "@/lib/jobs/experience";
 import { formatLocation } from "@/lib/jobs/location";
@@ -59,7 +60,11 @@ export function JobCard({ match, actions }: { match: MatchResult; actions?: Reac
                 {job.company} · {formatLocation(job, job.locationRaw)}
               </p>
             </div>
-            {application ? <Badge tone="green">Applied · {application.status}</Badge> : null}
+            {application ? (
+              <Badge tone="green">
+                {application.status === "applied" ? "Applied" : `Applied · ${applicationStatusLabel(application.status)}`}
+              </Badge>
+            ) : null}
           </div>
           <p className="mt-2 text-sm">{match.reasons}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
