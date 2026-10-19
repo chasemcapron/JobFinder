@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Alert, Button } from "@/components/ui";
+import { Alert, Button, Icon } from "@/components/ui";
 import type { RunSummary } from "@/lib/jobs/search";
 
 type State = { kind: "idle" } | { kind: "running" } | { kind: "done"; summary: RunSummary } | { kind: "error"; message: string };
@@ -30,19 +30,24 @@ export function RefreshButton({ label = "Refresh jobs" }: { label?: string }) {
   }
 
   return (
-    <div className="flex flex-col items-start gap-2 sm:items-end">
-      <Button onClick={refresh} disabled={busy} aria-busy={busy}>
+    <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:max-w-md sm:items-end">
+      <Button onClick={refresh} loading={busy}>
         {busy ? (
-          <>
-            <Spinner /> Searching…
-          </>
+          "Searching…"
         ) : (
-          label
+          <>
+            <Icon name="refresh" className="size-4" />
+            {label}
+          </>
         )}
       </Button>
-      {state.kind === "running" ? <p className="text-xs text-muted">Fetching every source in parallel; this can take up to a minute.</p> : null}
-      {state.kind === "error" ? <Alert tone="error">{state.message}</Alert> : null}
-      {state.kind === "done" ? <RunResult summary={state.summary} /> : null}
+      <div aria-live="polite" className="contents">
+        {state.kind === "running" ? (
+          <p className="text-xs text-muted sm:text-right">Fetching every source in parallel; this can take up to a minute.</p>
+        ) : null}
+        {state.kind === "error" ? <Alert tone="error">{state.message}</Alert> : null}
+        {state.kind === "done" ? <RunResult summary={state.summary} /> : null}
+      </div>
     </div>
   );
 }
@@ -50,7 +55,10 @@ export function RefreshButton({ label = "Refresh jobs" }: { label?: string }) {
 function RunResult({ summary }: { summary: RunSummary }) {
   const failed = summary.sources.filter((s) => !s.ok);
   return (
-    <Alert tone={summary.status === "ok" ? "success" : summary.status === "partial" ? "warning" : "error"}>
+    <Alert
+      tone={summary.status === "ok" ? "success" : summary.status === "partial" ? "warning" : "error"}
+      title={summary.status === "ok" ? "Search complete" : summary.status === "partial" ? "Search finished with problems" : "Search failed"}
+    >
       <p>
         {summary.jobsFetched.toLocaleString()} postings fetched, {summary.jobsNew.toLocaleString()} new,{" "}
         {summary.matchesScored.toLocaleString()} matches ranked
@@ -58,7 +66,9 @@ function RunResult({ summary }: { summary: RunSummary }) {
       </p>
       {failed.length ? (
         <details className="mt-1">
-          <summary className="cursor-pointer">{failed.length} source{failed.length === 1 ? "" : "s"} failed</summary>
+          <summary className="cursor-pointer">
+            {failed.length} source{failed.length === 1 ? "" : "s"} failed
+          </summary>
           <ul className="mt-1 list-disc pl-5">
             {failed.map((s) => (
               <li key={s.source}>
@@ -71,8 +81,4 @@ function RunResult({ summary }: { summary: RunSummary }) {
       {summary.errors.length ? <p className="mt-1">{summary.errors[0]}</p> : null}
     </Alert>
   );
-}
-
-export function Spinner() {
-  return <span aria-hidden className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />;
 }
