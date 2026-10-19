@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SyncStatus } from "@/components/sync-status";
-import { buttonClass, EmptyState, PageHeader } from "@/components/ui";
+import { buttonClass, Card, EmptyState, Icon, PageHeader } from "@/components/ui";
 import { listApplications } from "@/lib/applications";
 import { formatRelativeDate } from "@/lib/format";
 import { formatLocation } from "@/lib/jobs/location";
@@ -37,6 +37,7 @@ export default async function ApplicationsPage() {
       />
       {rows.length === 0 ? (
         <EmptyState
+          icon={<Icon name="briefcase" />}
           title="No applications yet"
           action={
             <Link href="/jobs" className={buttonClass("secondary")}>
@@ -47,18 +48,28 @@ export default async function ApplicationsPage() {
           Click &ldquo;Mark applied&rdquo; on a job to track it here{profile.sheetId ? " and add it to your Google Sheet" : ""}.
         </EmptyState>
       ) : (
-        <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+        <Card padding="none">
+        <ul className="divide-y divide-border">
           {rows.map(({ app, job }) => (
-            <li key={app.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
+            <li key={app.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between sm:px-6">
               <div className="min-w-0">
-                <a href={job.applyUrl} target="_blank" rel="noreferrer" className="font-semibold hover:underline">
-                  {job.title}
+                <a
+                  href={job.applyUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex max-w-full items-start gap-1.5 font-semibold tracking-tight hover:text-accent-text hover:underline"
+                >
+                  <span className="min-w-0 text-balance">{job.title}</span>
+                  <Icon name="external-link" className="mt-1 size-3.5 text-muted" />
                 </a>
                 <p className="text-sm text-muted">
                   {job.company} · {formatLocation(job, job.locationRaw)}
                 </p>
-                <p className="mt-1 text-xs text-muted" title={app.appliedAt.toISOString()}>
-                  Applied {localDate(app.appliedAt)} ({formatRelativeDate(app.appliedAt)})
+                <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted" title={app.appliedAt.toISOString()}>
+                  <Icon name="calendar" className="size-3.5" />
+                  <span>
+                    Applied {localDate(app.appliedAt)} ({formatRelativeDate(app.appliedAt)})
+                  </span>
                 </p>
                 <div className="mt-2">
                   <SyncStatus applicationId={app.id} status={app.sheetSyncStatus} error={app.sheetSyncError} />
@@ -68,6 +79,7 @@ export default async function ApplicationsPage() {
             </li>
           ))}
         </ul>
+        </Card>
       )}
     </>
   );

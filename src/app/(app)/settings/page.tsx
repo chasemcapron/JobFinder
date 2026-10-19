@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { ActionForm } from "@/components/action-form";
-import { Alert, Badge, Card, CardHeader, inputClass, Label, PageHeader } from "@/components/ui";
+import { Alert, Badge, Card, CardHeader, FieldHint, Icon, inputClass, Label, linkClass, PageHeader, selectClass } from "@/components/ui";
 import { EXPERIENCE_LEVELS, SHEET_FIELDS } from "@/db/schema";
 import { env, featureStatus } from "@/lib/env";
 import { DEFAULT_COLUMN_MAP, SHEET_FIELD_LABELS } from "@/lib/google/sheets";
@@ -26,11 +26,12 @@ export default async function SettingsPage() {
   const googleConfigured = env.googleConfigured;
 
   return (
-    <div className="flex flex-col gap-6">
+    <>
       <PageHeader title="Settings" description="Search preferences, target companies, Google Sheet, and email." />
+      <div className="flex flex-col gap-6">
 
       <Card>
-        <CardHeader title="Search preferences" description="Used to build search queries and to rank matches." />
+        <CardHeader icon={<Icon name="search" />} title="Search preferences" description="Used to build search queries and to rank matches." />
         <ActionForm action={savePreferences}>
           <div className="grid gap-4 md:grid-cols-2">
             <div>
@@ -45,7 +46,7 @@ export default async function SettingsPage() {
                 defaultValue={profile.searchKeywords.join(", ")}
                 placeholder="e.g. TypeScript, React, data pipelines"
               />
-              <p className="mt-1 text-xs text-muted">Added on top of the keywords extracted from your resume.</p>
+              <FieldHint>Added on top of the keywords extracted from your resume.</FieldHint>
             </div>
             <div>
               <Label htmlFor="preferredLocations" hint="(comma or newline separated)">
@@ -63,7 +64,7 @@ export default async function SettingsPage() {
           </div>
 
           <fieldset>
-            <legend className="mb-2 text-sm font-medium">Experience levels</legend>
+            <legend className="mb-2 text-[13px] font-medium">Experience levels</legend>
             <div className="flex flex-wrap gap-x-5 gap-y-2">
               {EXPERIENCE_LEVELS.map((level) => (
                 <label key={level} className="flex items-center gap-2 text-sm">
@@ -78,13 +79,13 @@ export default async function SettingsPage() {
                 </label>
               ))}
             </div>
-            <p className="mt-1 text-xs text-muted">Leave all unchecked to consider every level.</p>
+            <FieldHint>Leave all unchecked to consider every level.</FieldHint>
           </fieldset>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <Label htmlFor="remotePreference">Remote</Label>
-              <select id="remotePreference" name="remotePreference" defaultValue={profile.remotePreference} className={inputClass}>
+              <select id="remotePreference" name="remotePreference" defaultValue={profile.remotePreference} className={selectClass}>
                 <option value="any">Remote or on-site</option>
                 <option value="remote_only">Remote only</option>
                 <option value="onsite_only">On-site / hybrid only</option>
@@ -92,7 +93,7 @@ export default async function SettingsPage() {
             </div>
             <div>
               <Label htmlFor="adzunaCountry">Adzuna search country</Label>
-              <select id="adzunaCountry" name="adzunaCountry" defaultValue={profile.adzunaCountry} className={inputClass}>
+              <select id="adzunaCountry" name="adzunaCountry" defaultValue={profile.adzunaCountry} className={selectClass}>
                 {ADZUNA_COUNTRIES.map((c) => (
                   <option key={c.code} value={c.code}>
                     {c.name}
@@ -108,7 +109,7 @@ export default async function SettingsPage() {
           </label>
           <p className="-mt-2 text-xs text-muted">
             Up to 10 matches scoring 40+ that haven&apos;t been emailed or applied to.{" "}
-            <a href="/api/digest/preview" target="_blank" rel="noreferrer" className="underline">
+            <a href="/api/digest/preview" target="_blank" rel="noreferrer" className={linkClass}>
               Preview the email
             </a>
           </p>
@@ -117,6 +118,7 @@ export default async function SettingsPage() {
 
       <Card>
         <CardHeader
+          icon={<Icon name="building" />}
           title="Target companies"
           description={
             <>
@@ -126,9 +128,11 @@ export default async function SettingsPage() {
           }
         />
         {companies.length === 0 ? (
-          <p className="mb-4 text-sm text-muted">No target companies yet.</p>
+          <p className="mb-4 rounded-control border border-dashed border-border-strong px-3 py-4 text-center text-sm text-muted">
+            No target companies yet.
+          </p>
         ) : (
-          <ul className="mb-4 divide-y divide-border rounded-md border border-border">
+          <ul className="mb-4 divide-y divide-border rounded-control border border-border">
             {companies.map((c) => (
               <TargetCompanyRow
                 key={c.id}
@@ -157,6 +161,7 @@ export default async function SettingsPage() {
 
       <Card id="sheet">
         <CardHeader
+          icon={<Icon name="sheet" />}
           title="Google Sheet"
           description="When you mark a job as applied, a row is added below the last row of this sheet. Your sheet's own columns are kept: map each field to the column it belongs in, and leave the rest blank."
         />
@@ -195,7 +200,7 @@ export default async function SettingsPage() {
             </div>
           </div>
           <fieldset>
-            <legend className="mb-2 text-sm font-medium">Column mapping</legend>
+            <legend className="mb-2 text-[13px] font-medium">Column mapping</legend>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {SHEET_FIELDS.map((field) => (
                 <div key={field}>
@@ -213,10 +218,10 @@ export default async function SettingsPage() {
                 </div>
               ))}
             </div>
-            <p id="col-help" className="mt-2 text-xs text-muted">
+            <FieldHint id="col-help">
               Column letters (A, B, … AA). Blank = don&apos;t write that field. Save, then use Test connection to see your
               header row.
-            </p>
+            </FieldHint>
           </fieldset>
         </ActionForm>
         <div className="mt-4 border-t border-border pt-4">
@@ -225,19 +230,20 @@ export default async function SettingsPage() {
       </Card>
 
       <Card>
-        <CardHeader title="Integrations" description="What's live and what's running in mock mode on this deployment." />
+        <CardHeader icon={<Icon name="settings" />} title="Integrations" description="What's live and what's running in mock mode on this deployment." />
         <ul className="divide-y divide-border">
           {features.map((f) => (
-            <li key={f.key} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+            <li key={f.key} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
               <span className="font-medium">{f.label}</span>
               <span className="flex items-center gap-2 text-muted">
                 {f.note}
-                <Badge tone={f.configured ? "green" : "amber"}>{f.configured ? "Live" : "Mock"}</Badge>
+                <Badge tone={f.configured ? "success" : "warning"} dot>{f.configured ? "Live" : "Mock"}</Badge>
               </span>
             </li>
           ))}
         </ul>
       </Card>
-    </div>
+      </div>
+    </>
   );
 }
