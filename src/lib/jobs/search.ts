@@ -5,6 +5,7 @@ import { getClaude } from "@/lib/ai/claude";
 import { env } from "@/lib/env";
 import { ensureProfile, listEnabledTargetCompanies } from "@/lib/profile";
 import { scoreWithClaude } from "./ai-score";
+import { isInTargetCountry } from "./location";
 import { dedupeJobs } from "./normalize";
 import { keywordScore, MIN_KEYWORD_SCORE, profileHasTerms } from "./scoring";
 import { buildSourceTasks, runSourceTasks } from "./sources";
@@ -54,8 +55,8 @@ export async function runJobSearch(userId: string, opts: Options): Promise<RunSu
     const tasks = (opts.buildTasks ?? buildSourceTasks)(profile, targets);
     const { jobs: fetched, results: sources } = await runSourceTasks(tasks, profile);
 
-    // 2. Dedupe across sources
-    const unique = dedupeJobs(fetched);
+    // 2. Dedupe across sources and keep US jobs only
+    const unique = dedupeJobs(fetched).filter(isInTargetCountry);
     const now = new Date();
 
     // 3. Store (insert new, touch existing)

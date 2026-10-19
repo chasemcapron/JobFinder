@@ -54,7 +54,7 @@ Copy `.env.example` to `.env.local` and fill in what you have. Nothing is requir
 | `ANTHROPIC_API_KEY` | Claude resume parsing and scoring | https://console.anthropic.com → API Keys |
 | `ANTHROPIC_MODEL` | Optional | Defaults to `claude-opus-5-5` |
 | `MAX_AI_SCORES_PER_RUN` | Optional cost cap | Jobs Claude scores per search (default 20) |
-| `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` | Adzuna source | https://developer.adzuna.com → Register → your app's ID and key |
+| `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` | Adzuna source (**paid**: leave unset to keep the app free) | https://developer.adzuna.com → Register → your app's ID and key |
 | `USAJOBS_API_KEY` | USAJobs source | https://developer.usajobs.gov/apirequest/ (key arrives by email) |
 | `USAJOBS_USER_AGENT` | USAJobs source | The email address you registered with |
 | `RESEND_API_KEY` | Sending the morning email | https://resend.com → API Keys |

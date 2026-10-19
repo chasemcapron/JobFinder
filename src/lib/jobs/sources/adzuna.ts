@@ -15,7 +15,7 @@ import { fetchJson, parseItems } from "./http";
  * Kept deliberately lenient (numbers-or-strings, everything optional) until verified.
  *
  * Terms: every displayed Adzuna ad must carry an "Adzuna" link (see AdzunaAttribution).
- * Free keys are limited to ~250 calls/day, so each run makes at most MAX_ADZUNA_QUERIES calls.
+ * Adzuna isn't free, so this source stays off unless keys are set; each run makes at most MAX_ADZUNA_QUERIES calls.
  */
 export const MAX_ADZUNA_QUERIES = 2;
 

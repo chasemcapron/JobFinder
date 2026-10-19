@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createPglite, schema, type Db } from "@/db";
 import { mockJobs } from "@/lib/jobs/sources/mock";
 import { runSourceTasks } from "@/lib/jobs/sources";
+import { listMatches } from "@/lib/jobs/results";
 import { runJobSearch } from "@/lib/jobs/search";
 import type { SourceTask } from "@/lib/jobs/types";
 import { ensureProfile, SEED_TARGET_COMPANIES } from "@/lib/profile";
@@ -46,7 +47,7 @@ describe("runJobSearch", () => {
       expect.objectContaining({ source: "lever:broken", ok: false, error: "HTTP 500" }),
     ]);
     expect(summary.jobsFetched).toBe(12);
-    expect(summary.jobsNew).toBe(12);
+    expect(summary.jobsNew).toBe(10); // the sample data includes 2 non-US jobs, which aren't stored
     expect(summary.aiScored).toBe(0); // no ANTHROPIC_API_KEY in tests
 
     const matches = await db
@@ -61,7 +62,7 @@ describe("runJobSearch", () => {
     expect(matches.some((m) => m.title === "Senior Product Designer")).toBe(false);
 
     const [run] = await db.select().from(schema.searchRuns).where(eq(schema.searchRuns.id, summary.runId));
-    expect(run).toMatchObject({ status: "partial", jobsFetched: 12, jobsNew: 12 });
+    expect(run).toMatchObject({ status: "partial", jobsFetched: 12, jobsNew: 10 });
     expect(run.finishedAt).toBeInstanceOf(Date);
   });
 
@@ -73,15 +74,40 @@ describe("runJobSearch", () => {
     };
     const first = await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [sampleTask, dupe] });
     expect(first.jobsFetched).toBe(24);
-    expect(first.jobsNew).toBe(12);
+    expect(first.jobsNew).toBe(10);
     const second = await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [sampleTask] });
     expect(second.jobsNew).toBe(0);
     expect(second.status).toBe("ok");
     const all = await db.select().from(schema.jobs);
-    expect(all).toHaveLength(12);
+    expect(all).toHaveLength(10);
     // one row per job; the higher-priority source's copy is the one stored
-    expect(new Set(all.map((j) => j.dedupeKey)).size).toBe(12);
+    expect(new Set(all.map((j) => j.dedupeKey)).size).toBe(10);
     expect(all.every((j) => j.source === "adzuna")).toBe(true);
+  });
+
+  it("keeps only US jobs (and ones with no parsed country) and hides older non-US rows", async () => {
+    const [base] = mockJobs();
+    // Sources hand over already-parsed locations, so set the country the parser would produce.
+    const at = (externalId: string, locationRaw: string, country: string | null) => ({ ...base, externalId, title: `Senior Backend Engineer ${externalId}`, locationRaw, country, dedupeKey: externalId });
+    const world: SourceTask = {
+      label: "world",
+      source: "mock",
+      run: async () => [at("chi", "Chicago, IL", "US"), at("lon", "London, England, United Kingdom", "GB"), at("tor", "Toronto, Ontario, Canada", "CA"), at("na", "N/A", null)],
+    };
+    const summary = await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [world] });
+    expect(summary.jobsFetched).toBe(4);
+    const stored = (await db.select({ externalId: schema.jobs.externalId }).from(schema.jobs)).map((j) => j.externalId).sort();
+    expect(stored).toEqual(["chi", "na"]);
+
+    // A non-US job stored before this change is hidden from the list.
+    const [old] = await db
+      .insert(schema.jobs)
+      .values({ ...base, externalId: "old-uk", dedupeKey: "old-uk", locationRaw: "London", country: "GB", city: "London", state: null, remote: false, description: "" })
+      .returning();
+    await db.insert(schema.jobMatches).values({ userId, jobId: old.id, score: 99, keywordScore: 99, reasons: "old" });
+    const listed = await listMatches(userId, db);
+    expect(listed.some((m) => m.job.country === "GB")).toBe(false);
+    expect(listed.some((m) => m.job.locationRaw === "Chicago, IL")).toBe(true);
   });
 
   it("reports total failure as an error status", async () => {

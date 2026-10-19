@@ -6,6 +6,7 @@ import { applications, emailLog, jobMatches, jobs, profiles, users } from "@/db/
 import { MorningDigestEmail, type DigestJob } from "@/emails/morning-digest";
 import { env } from "@/lib/env";
 import { formatLocation } from "@/lib/jobs/location";
+import { inTargetCountry } from "@/lib/jobs/results";
 import { runJobSearch, type RunSummary } from "@/lib/jobs/search";
 import { adzunaHomepage } from "@/lib/jobs/sources/adzuna";
 import { APP_TIME_ZONE, localDate, localHour } from "@/lib/time";
@@ -45,6 +46,7 @@ export async function pickDigestJobs(userId: string, db: Db, limit = DIGEST_MAX_
         eq(jobMatches.userId, userId),
         gte(jobMatches.score, DIGEST_MIN_SCORE),
         gt(jobs.lastSeenAt, recent),
+        inTargetCountry,
         isNull(emailLog.id),
         isNull(applications.id),
       ),

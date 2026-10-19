@@ -58,7 +58,7 @@ All 8 phases. The app runs locally with zero configuration: embedded Postgres, d
 2. **Google Cloud**: new project → enable the *Google Sheets API* → OAuth consent screen (External, **Testing**, add yourself as a test user, add the `spreadsheets` scope) → OAuth client (Web application) with redirect URIs `http://localhost:3000/api/auth/callback/google` and `https://<vercel-domain>/api/auth/callback/google` → `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`. In Testing mode Google refresh tokens expire after 7 days, so expect to sign in again about weekly for Sheets sync.
 3. **Anthropic**: console.anthropic.com → API key → `ANTHROPIC_API_KEY`. The default model is `claude-opus-5-5`; set `ANTHROPIC_MODEL` to use a cheaper one. Cost is capped by `MAX_AI_SCORES_PER_RUN` (default 20 jobs per search).
 4. **Resend**: API key → `RESEND_API_KEY`; verify a domain and set `EMAIL_FROM` (or use `onboarding@resend.dev`, which only delivers to your Resend account's email).
-5. **Adzuna** (optional): developer.adzuna.com → app ID + key. The free tier allows about 250 calls/day; the app makes at most 2 per search.
+5. **Adzuna** (optional, **not free**: needs a paid plan, so leave it unset to stay free): developer.adzuna.com → app ID + key. The app makes at most 2 calls per search.
 6. **USAJobs** (optional): developer.usajobs.gov/apirequest → the key arrives by email; `USAJOBS_USER_AGENT` = that email.
 7. Generate secrets: `AUTH_SECRET` (`npx auth secret`) and `CRON_SECRET` (`openssl rand -hex 32`).
 

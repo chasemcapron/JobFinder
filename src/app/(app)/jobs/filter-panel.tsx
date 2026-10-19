@@ -60,11 +60,7 @@ export function FilterPanel({
 
   function onChange(e: FormEvent<HTMLFormElement>) {
     const target = e.target as HTMLInputElement;
-    // Narrower location fields don't make sense once a broader one changes.
-    if (target.name === "country" && formRef.current) {
-      (formRef.current.elements.namedItem("state") as HTMLSelectElement).value = "";
-      (formRef.current.elements.namedItem("city") as HTMLSelectElement).value = "";
-    }
+    // A city doesn't make sense once the state changes. (Jobs are US-only, so there's no country.)
     if (target.name === "state" && formRef.current) {
       (formRef.current.elements.namedItem("city") as HTMLSelectElement).value = "";
     }
@@ -103,19 +99,8 @@ export function FilterPanel({
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-1">
         <div>
-          <Label htmlFor="country">Country</Label>
-          <select id="country" name="country" defaultValue={filters.country ?? ""} key={`c-${filters.country}`} className={selectClass}>
-            <option value="">Any</option>
-            {facets.countries.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label} ({o.count})
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <Label htmlFor="state">State / region</Label>
-          <select id="state" name="state" defaultValue={filters.state ?? ""} key={`s-${filters.country}-${filters.state}`} className={selectClass}>
+          <Label htmlFor="state">State</Label>
+          <select id="state" name="state" defaultValue={filters.state ?? ""} key={`s-${filters.state}`} className={selectClass}>
             <option value="">Any</option>
             {facets.states.map((o) => (
               <option key={o.value} value={o.value}>
