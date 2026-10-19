@@ -167,10 +167,10 @@ export function Spinner({ className }: { className?: string }) {
 
 const buttonVariants = {
   primary: "bg-accent text-accent-foreground shadow-xs hover:bg-accent-hover",
-  secondary: "border border-border-strong bg-surface text-foreground shadow-xs hover:bg-surface-subtle",
+  secondary: "border border-border-strong bg-surface-subtle text-foreground shadow-xs hover:bg-surface-raised",
   ghost: "text-foreground hover:bg-surface-subtle",
   subtle: "bg-accent-subtle text-accent-text hover:bg-accent-subtle/70",
-  danger: "border border-danger-border bg-surface text-danger-fg shadow-xs hover:bg-danger-bg",
+  danger: "border border-danger-border bg-transparent text-danger-fg shadow-xs hover:bg-danger-bg",
 } as const;
 
 const buttonSizes = {
@@ -229,17 +229,29 @@ export const linkClass =
 
 const cardPadding = { none: "", sm: "p-3 sm:p-4", md: "p-4 sm:p-6" } as const;
 
+const cardEdge: Record<Tone, string> = {
+  neutral: "border-l-4 border-l-border-strong",
+  accent: "border-l-4 border-l-accent",
+  success: "border-l-4 border-l-success",
+  warning: "border-l-4 border-l-warning",
+  danger: "border-l-4 border-l-danger",
+  info: "border-l-4 border-l-info",
+};
+
+/** `edge` adds a 4px coloured left edge in a tone (e.g. `matchTone(score)` on job cards). */
 export function Card({
   className,
   padding = "md",
   interactive = false,
+  edge,
   ...props
-}: ComponentProps<"section"> & { padding?: keyof typeof cardPadding; interactive?: boolean }) {
+}: ComponentProps<"section"> & { padding?: keyof typeof cardPadding; interactive?: boolean; edge?: Tone }) {
   return (
     <section
       className={cx(
         "rounded-card border border-border bg-surface shadow-card",
         cardPadding[padding],
+        edge && cardEdge[edge],
         interactive && "transition-colors hover:border-border-strong",
         className,
       )}
@@ -263,7 +275,7 @@ export function CardHeader({
     <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
       <div className="flex min-w-0 items-start gap-3">
         {icon ? (
-          <span className="grid size-8 shrink-0 place-items-center rounded-control border border-border bg-surface-subtle text-muted">
+          <span className="grid size-8 shrink-0 place-items-center rounded-control bg-section-bg text-section-fg">
             {icon}
           </span>
         ) : null}
@@ -281,7 +293,7 @@ export function CardHeader({
 
 /** For <input>, <textarea> and <select>. Use `selectClass` for a select with the custom chevron. */
 export const inputClass = cx(
-  "block w-full min-w-0 rounded-control border border-border-strong bg-surface px-3 py-[7px] text-sm text-foreground shadow-xs",
+  "block w-full min-w-0 rounded-control border border-border-strong bg-background px-3 py-[7px] text-sm text-foreground shadow-xs",
   "transition-[border-color,box-shadow] duration-150 placeholder:text-muted",
   "focus:border-accent focus:ring-3 focus:ring-accent/25 focus:outline-none focus-visible:outline-none",
   "disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:opacity-70",
@@ -431,6 +443,38 @@ export function EmptyState({
   );
 }
 
+const SECTION_ICONS: { section: string; icon: IconName }[] = [
+  { section: "jobs", icon: "briefcase" },
+  { section: "applications", icon: "inbox" },
+  { section: "resume", icon: "file" },
+  { section: "settings", icon: "settings" },
+];
+
+/** Coloured icon tile for the current section; the icon shows via the [data-section] ancestor (see SectionScope). */
+function SectionTile() {
+  return (
+    <span
+      aria-hidden
+      className="hidden size-11 shrink-0 place-items-center rounded-card bg-section-bg text-section-fg shadow-xs ring-1 ring-section/30 [[data-section]_&]:grid [&_svg]:size-5"
+    >
+      {SECTION_ICONS.map(({ section, icon }) => (
+        <span
+          key={section}
+          className={cx(
+            "hidden",
+            section === "jobs" && "[[data-section=jobs]_&]:block",
+            section === "applications" && "[[data-section=applications]_&]:block",
+            section === "resume" && "[[data-section=resume]_&]:block",
+            section === "settings" && "[[data-section=settings]_&]:block",
+          )}
+        >
+          <Icon name={icon} />
+        </span>
+      ))}
+    </span>
+  );
+}
+
 export function PageHeader({
   title,
   description,
@@ -444,10 +488,13 @@ export function PageHeader({
 }) {
   return (
     <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
-      <div className="min-w-0">
-        {eyebrow ? <p className="mb-1 text-xs font-medium tracking-wide text-muted uppercase">{eyebrow}</p> : null}
-        <h1 className="text-2xl font-semibold tracking-tight text-balance">{title}</h1>
-        {description ? <p className="mt-1.5 max-w-2xl text-sm text-muted">{description}</p> : null}
+      <div className="flex min-w-0 items-start gap-3.5">
+        <SectionTile />
+        <div className="min-w-0">
+          {eyebrow ? <p className="mb-1 text-xs font-medium tracking-wide text-section-fg uppercase">{eyebrow}</p> : null}
+          <h1 className="font-display text-[1.75rem] leading-9 font-bold tracking-tight text-balance">{title}</h1>
+          {description ? <p className="mt-1 max-w-2xl text-sm text-muted">{description}</p> : null}
+        </div>
       </div>
       {action ? <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div> : null}
     </div>
@@ -544,17 +591,20 @@ export function ScoreMeter({ score, showValue = true, className }: { score: numb
 
 /* ------------------------------------------------------------------ Misc */
 
-/** The app's logo mark: an accent tile with a target. */
+/** The app's logo mark: a charcoal tile holding four flat colour squares. */
 export function BrandMark({ size = "md" }: { size?: "md" | "lg" }) {
   return (
     <span
       aria-hidden
       className={cx(
-        "grid shrink-0 place-items-center bg-linear-to-br from-accent to-accent-hover text-accent-foreground shadow-xs",
-        size === "lg" ? "size-11 rounded-card [&_svg]:size-6" : "size-7 rounded-control",
+        "grid shrink-0 grid-cols-2 gap-[3px] border border-border-strong bg-surface-subtle shadow-xs",
+        size === "lg" ? "size-12 rounded-card p-[7px]" : "size-7 rounded-control p-[4px]",
       )}
     >
-      <Icon name="target" />
+      <span className="rounded-[3px] bg-pink" />
+      <span className="rounded-[3px] bg-orange" />
+      <span className="rounded-[3px] bg-blue" />
+      <span className="rounded-[3px] bg-green" />
     </span>
   );
 }

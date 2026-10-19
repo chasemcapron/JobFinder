@@ -4,14 +4,15 @@ import { SubmitButton } from "@/components/action-form";
 import { Alert, BrandMark, Divider, Icon, type IconName } from "@/components/ui";
 import { env } from "@/lib/env";
 
-const FEATURES: { icon: IconName; title: string; body: string }[] = [
+const FEATURES: { icon: IconName; title: string; body: string; tile: string }[] = [
   {
     icon: "target",
+    tile: "bg-info-bg text-info-fg",
     title: "Matched to your resume",
     body: "Postings from Greenhouse, Lever, Ashby, Adzuna, and USAJobs, ranked by fit.",
   },
-  { icon: "sheet", title: "Tracked in your Google Sheet", body: "Mark a job applied and it's logged as a new row." },
-  { icon: "mail", title: "A morning digest", body: "The top new matches in your inbox every day." },
+  { icon: "sheet", tile: "bg-success-bg text-success-fg", title: "Tracked in your Google Sheet", body: "Mark a job applied and it's logged as a new row." },
+  { icon: "mail", tile: "bg-warning-bg text-warning-fg", title: "A morning digest", body: "The top new matches in your inbox every day." },
 ];
 
 function GoogleLogo() {
@@ -44,13 +45,18 @@ export default async function Home({ searchParams }: PageProps<"/">) {
     <main className="relative isolate flex w-full flex-1 flex-col items-center justify-center px-4 py-12 sm:py-20">
       <div
         aria-hidden
-        className="absolute inset-x-0 top-0 -z-10 h-[28rem] bg-[radial-gradient(ellipse_60%_60%_at_50%_0%,color-mix(in_oklab,var(--accent)_16%,transparent),transparent)]"
-      />
+        className="absolute inset-x-0 top-0 grid h-[3px] grid-cols-4"
+      >
+        <span className="bg-pink" />
+        <span className="bg-orange" />
+        <span className="bg-blue" />
+        <span className="bg-green" />
+      </div>
 
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center text-center">
           <BrandMark size="lg" />
-          <h1 className="mt-5 text-3xl font-semibold tracking-tight">Job Finder</h1>
+          <h1 className="font-display mt-5 text-4xl font-bold tracking-tight">Job Finder</h1>
           <p className="mt-2 text-balance text-muted">Find jobs that fit your resume, and keep track of where you applied.</p>
         </div>
 
@@ -58,7 +64,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
           <ul className="flex flex-col gap-4">
             {FEATURES.map((f) => (
               <li key={f.title} className="flex gap-3">
-                <span className="grid size-8 shrink-0 place-items-center rounded-control bg-accent-subtle text-accent-text">
+                <span className={`grid size-8 shrink-0 place-items-center rounded-control ${f.tile}`}>
                   <Icon name={f.icon} />
                 </span>
                 <div className="min-w-0">
