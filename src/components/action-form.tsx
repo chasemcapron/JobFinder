@@ -2,7 +2,7 @@
 
 import { useActionState, type ReactNode } from "react";
 import { useFormStatus } from "react-dom";
-import { Alert, Button, cx } from "./ui";
+import { Alert, Button, cx, type ButtonSize, type ButtonVariant } from "./ui";
 
 export type ActionState = { ok: boolean; message: string } | null;
 export type FormAction = (prev: ActionState, formData: FormData) => Promise<ActionState>;
@@ -43,15 +43,21 @@ export function SubmitButton({
   pendingLabel,
   variant = "primary",
   size = "md",
+  icon,
+  className,
 }: {
   label: string;
   pendingLabel?: string;
-  variant?: "primary" | "secondary" | "ghost" | "danger";
-  size?: "sm" | "md";
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  /** Shown before the label; replaced by a spinner while pending. */
+  icon?: ReactNode;
+  className?: string;
 }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" variant={variant} size={size} disabled={pending} aria-busy={pending}>
+    <Button type="submit" variant={variant} size={size} loading={pending} className={className}>
+      {pending ? null : icon}
       {pending ? (pendingLabel ?? "Saving…") : label}
     </Button>
   );
