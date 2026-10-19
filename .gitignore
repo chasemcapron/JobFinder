@@ -49,3 +49,4 @@ next-env.d.ts
 /skills-lock.json
 /.claude/skills/
 /.claude/settings.local.json
+/.claude/worktrees/
