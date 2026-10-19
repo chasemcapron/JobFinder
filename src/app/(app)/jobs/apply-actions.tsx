@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { markAppliedAction, removeApplicationAction } from "@/app/(app)/applications/actions";
 import { SyncStatus } from "@/components/sync-status";
-import { Alert, Button } from "@/components/ui";
+import { Alert, Button, Icon } from "@/components/ui";
 import type { SheetSyncStatus } from "@/db/schema";
 
 /** "Mark applied" on a job card; once applied, shows sheet sync state and an undo. */
@@ -23,7 +23,7 @@ export function ApplyActions({
       <>
         <Button
           size="sm"
-          disabled={pending}
+          loading={pending}
           onClick={() =>
             startTransition(async () => {
               setError(null);
@@ -33,9 +33,20 @@ export function ApplyActions({
             })
           }
         >
-          {pending ? "Saving…" : "Mark applied"}
+          {pending ? (
+            "Saving…"
+          ) : (
+            <>
+              <Icon name="check" className="size-3.5" />
+              Mark applied
+            </>
+          )}
         </Button>
-        {error ? <Alert tone="error">{error}</Alert> : null}
+        {error ? (
+          <Alert tone="error" className="w-full">
+            {error}
+          </Alert>
+        ) : null}
       </>
     );
   }
@@ -46,7 +57,7 @@ export function ApplyActions({
       <Button
         variant="ghost"
         size="sm"
-        disabled={pending}
+        loading={pending}
         onClick={() => startTransition(() => removeApplicationAction(application.id))}
         title="Remove from your applications (doesn't change your sheet)"
       >

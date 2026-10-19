@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useTransition, type FormEvent } from "react";
-import { Button, inputClass, Label } from "@/components/ui";
+import { Button, inputClass, Label, selectClass } from "@/components/ui";
 import { EXPERIENCE_LEVELS } from "@/db/schema";
 import { EXPERIENCE_LABELS } from "@/lib/jobs/experience";
 import type { FacetOption, JobFilters } from "@/lib/jobs/filters";
@@ -104,7 +104,7 @@ export function FilterPanel({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-1">
         <div>
           <Label htmlFor="country">Country</Label>
-          <select id="country" name="country" defaultValue={filters.country ?? ""} key={`c-${filters.country}`} className={inputClass}>
+          <select id="country" name="country" defaultValue={filters.country ?? ""} key={`c-${filters.country}`} className={selectClass}>
             <option value="">Any</option>
             {facets.countries.map((o) => (
               <option key={o.value} value={o.value}>
@@ -115,7 +115,7 @@ export function FilterPanel({
         </div>
         <div>
           <Label htmlFor="state">State / region</Label>
-          <select id="state" name="state" defaultValue={filters.state ?? ""} key={`s-${filters.country}-${filters.state}`} className={inputClass}>
+          <select id="state" name="state" defaultValue={filters.state ?? ""} key={`s-${filters.country}-${filters.state}`} className={selectClass}>
             <option value="">Any</option>
             {facets.states.map((o) => (
               <option key={o.value} value={o.value}>
@@ -126,7 +126,7 @@ export function FilterPanel({
         </div>
         <div>
           <Label htmlFor="city">City</Label>
-          <select id="city" name="city" defaultValue={filters.city ?? ""} key={`ci-${filters.state}-${filters.city}`} className={inputClass}>
+          <select id="city" name="city" defaultValue={filters.city ?? ""} key={`ci-${filters.state}-${filters.city}`} className={selectClass}>
             <option value="">Any</option>
             {facets.cities.map((o) => (
               <option key={o.value} value={o.value}>
@@ -137,7 +137,7 @@ export function FilterPanel({
         </div>
         <div>
           <Label htmlFor="remote">Remote</Label>
-          <select id="remote" name="remote" defaultValue={filters.remote} key={`r-${filters.remote}`} className={inputClass}>
+          <select id="remote" name="remote" defaultValue={filters.remote} key={`r-${filters.remote}`} className={selectClass}>
             <option value="any">Remote or on-site</option>
             <option value="remote">Remote only</option>
             <option value="onsite">On-site / hybrid</option>
@@ -145,7 +145,7 @@ export function FilterPanel({
         </div>
         <div>
           <Label htmlFor="posted">Date posted</Label>
-          <select id="posted" name="posted" defaultValue={filters.posted} key={`p-${filters.posted}`} className={inputClass}>
+          <select id="posted" name="posted" defaultValue={filters.posted} key={`p-${filters.posted}`} className={selectClass}>
             {POSTED_OPTIONS.map(([v, l]) => (
               <option key={v} value={v}>
                 {l}
@@ -155,7 +155,7 @@ export function FilterPanel({
         </div>
         <div>
           <Label htmlFor="minScore">Minimum score</Label>
-          <select id="minScore" name="minScore" defaultValue={String(filters.minScore)} key={`m-${filters.minScore}`} className={inputClass}>
+          <select id="minScore" name="minScore" defaultValue={String(filters.minScore)} key={`m-${filters.minScore}`} className={selectClass}>
             {[0, 25, 50, 60, 70, 80, 90].map((n) => (
               <option key={n} value={n}>
                 {n === 0 ? "Any" : `${n}+`}
@@ -166,10 +166,10 @@ export function FilterPanel({
       </div>
 
       <fieldset key={`l-${filters.levels.join()}`}>
-        <legend className="mb-1 text-sm font-medium">Experience level</legend>
+        <legend className="mb-1.5 text-sm font-medium">Experience level</legend>
         <div className="grid grid-cols-2 gap-1 lg:grid-cols-1">
           {EXPERIENCE_LEVELS.map((l) => (
-            <label key={l} className="flex items-center gap-2 text-sm">
+            <label key={l} className="flex min-h-7 cursor-pointer items-center gap-2 text-sm">
               <input type="checkbox" name="level" value={l} defaultChecked={filters.levels.includes(l)} className="size-4 accent-accent" />
               {EXPERIENCE_LABELS[l]}
             </label>
@@ -178,10 +178,10 @@ export function FilterPanel({
       </fieldset>
 
       <fieldset key={`src-${filters.sources.join()}`}>
-        <legend className="mb-1 text-sm font-medium">Source</legend>
+        <legend className="mb-1.5 text-sm font-medium">Source</legend>
         <div className="grid grid-cols-2 gap-1 lg:grid-cols-1">
           {SOURCE_OPTIONS.map(([v, l]) => (
-            <label key={v} className="flex items-center gap-2 text-sm">
+            <label key={v} className="flex min-h-7 cursor-pointer items-center gap-2 text-sm">
               <input type="checkbox" name="source" value={v} defaultChecked={filters.sources.includes(v)} className="size-4 accent-accent" />
               {l}
             </label>
@@ -192,7 +192,7 @@ export function FilterPanel({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-1">
         <div>
           <Label htmlFor="applied">Applied jobs</Label>
-          <select id="applied" name="applied" defaultValue={filters.applied} key={`a-${filters.applied}`} className={inputClass}>
+          <select id="applied" name="applied" defaultValue={filters.applied} key={`a-${filters.applied}`} className={selectClass}>
             <option value="dim">Show dimmed</option>
             <option value="hide">Hide</option>
             <option value="only">Only applied</option>
@@ -200,7 +200,7 @@ export function FilterPanel({
         </div>
         <div>
           <Label htmlFor="sort">Sort by</Label>
-          <select id="sort" name="sort" defaultValue={filters.sort} key={`so-${filters.sort}`} className={inputClass}>
+          <select id="sort" name="sort" defaultValue={filters.sort} key={`so-${filters.sort}`} className={selectClass}>
             <option value="score">Best match</option>
             <option value="date">Newest</option>
           </select>
