@@ -29,9 +29,11 @@ Each phase is committed only after lint, typecheck, tests, and build pass.
 
 ## Not verified (needs keys or a deploy)
 
+- ~~**Database on Neon**~~: migrated and in use locally since 2026-10-19.
+
 - **Claude calls** (resume extraction, match scoring): written per the current SDK and type-checked, but never run against the real API. Everything tested so far used the built-in heuristics. Intentionally unused for now: the app is meant to run free, so no API key is set.
-- **Google sign-in and Sheets sync**: only tested against mocked Google HTTP responses; the demo login stood in for Google.
-- **Resend delivery**: only the console mock path has run.
+- ~~**Google sign-in and Sheets sync**~~: verified 2026-10-19 against a real tracker sheet (found and fixed: pre-filled Status columns pushed rows far down).
+- ~~**Resend delivery**~~: real digest sent 2026-10-19 via Resend (10 jobs) from `onboarding@resend.dev`.
 - **Adzuna and USAJobs**: adapters follow the official docs, with fixtures built from the documented shapes. Only bad-credential (401) responses were checked live. If a real field differs, that posting is skipped rather than failing the run; after adding keys, click Refresh jobs and check the result banner for errors and whether those sources return postings.
 - **Vercel itself** (cron registration, function limits): nothing was deployed.
 
