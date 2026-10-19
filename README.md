@@ -173,6 +173,7 @@ To preview the email without sending: Settings → **Preview the email** (or `/a
 ## Troubleshooting
 
 - **`EPERM` errors in `.next` or `.data` on Windows:** OneDrive (or another sync tool) is syncing build output. Keep the project outside a synced folder, or delete `.next` and rebuild.
+- **Every page errors with `Failed query: CREATE SCHEMA IF NOT EXISTS "drizzle"` (cause: "PGlite failed to initialize properly"):** the embedded database can't write to `.data/pglite`. On OneDrive this happens when sync marks the folders ReadOnly: Windows ignores that on folders, but PGlite doesn't. Stop the dev server, run `attrib -R .data /S /D` and `attrib -R .data\* /S /D`, then start it again. To avoid it for good, set `DATABASE_URL` (PGlite is then unused), or point `PGLITE_DATA_DIR` at a folder outside OneDrive.
 - **"Cannot load @napi-rs/canvas" warning:** harmless. PDF text extraction falls back to a pure-JS matrix on platforms without a native canvas build (e.g. Windows on ARM).
 - **Sheets: "Google access was revoked or expired":** sign out and sign in with Google again (see the Testing-mode note above).
 - **A target company shows "No … board named":** the slug is wrong or the company moved ATS; check its careers page.
