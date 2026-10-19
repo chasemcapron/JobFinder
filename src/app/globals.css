@@ -20,6 +20,11 @@
   --c-pink: #ee4c86;
   --section: var(--c-blue); /* set per route by [data-section] below */
 
+  /* Match score: green strong, yellow medium, red weak (charcoal text on each is AA) */
+  --score-high: #34c26b;
+  --score-mid: #f5c518;
+  --score-low: #f25c5c;
+
   /* Neutrals: layered charcoal */
   --background: #1c1c1e;
   --surface: #262629;
@@ -143,6 +148,9 @@
   --color-orange: var(--c-orange);
   --color-green: var(--c-green);
   --color-blue: var(--c-blue);
+  --color-score-high: var(--score-high);
+  --color-score-mid: var(--score-mid);
+  --color-score-low: var(--score-low);
 
   --color-success: var(--success);
   --color-success-bg: var(--success-bg);

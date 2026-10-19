@@ -1,4 +1,5 @@
 import { Body, Container, Head, Heading, Hr, Html, Link, Preview, Section, Text } from "@react-email/components";
+import { scoreTier } from "@/components/ui";
 
 export type DigestJob = {
   title: string;
@@ -26,12 +27,12 @@ const c = {
   accentForeground: "#ffffff",
 };
 
-/** Same thresholds and colors as the in-app ScoreBadge (75 / 55 / 35). */
+/** Same tiers as the in-app ScoreBadge: green strong, yellow medium, red weak (text pairs are AA). */
 function scoreColors(score: number) {
-  if (score >= 75) return { bg: "#ecfdf3", fg: "#05603a", border: "#abefc6" };
-  if (score >= 55) return { bg: "#eff6ff", fg: "#1d4ed8", border: "#bfdbfe" };
-  if (score >= 35) return { bg: "#fffaeb", fg: "#93370d", border: "#fedf89" };
-  return { bg: "#f2f2f4", fg: "#3f3f46", border: "#e4e4e7" };
+  const tier = scoreTier(score);
+  if (tier === "high") return { bg: "#ecfdf3", fg: "#05603a", border: "#abefc6" };
+  if (tier === "mid") return { bg: "#fef9c3", fg: "#713f12", border: "#fde68a" };
+  return { bg: "#fef3f2", fg: "#b42318", border: "#fecdca" };
 }
 
 const fontFamily = "-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";

@@ -156,9 +156,9 @@ export function FilterPanel({
         <div>
           <Label htmlFor="minScore">Minimum score</Label>
           <select id="minScore" name="minScore" defaultValue={String(filters.minScore)} key={`m-${filters.minScore}`} className={selectClass}>
-            {[0, 25, 50, 60, 70, 80, 90].map((n) => (
+            {[0, 40, 50, 60, 70, 80].map((n) => (
               <option key={n} value={n}>
-                {n === 0 ? "Any" : `${n}+`}
+                {n === 0 ? "Any" : n === 40 ? "40+ (medium)" : n === 60 ? "60+ (strong)" : `${n}+`}
               </option>
             ))}
           </select>

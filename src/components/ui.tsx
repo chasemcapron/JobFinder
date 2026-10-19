@@ -109,6 +109,7 @@ const ICONS = {
     </>
   ),
   upload: <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />,
+  download: <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />,
   filter: <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />,
   sheet: (
     <>
@@ -229,30 +230,29 @@ export const linkClass =
 
 const cardPadding = { none: "", sm: "p-3 sm:p-4", md: "p-4 sm:p-6" } as const;
 
-const cardEdge: Record<Tone, string> = {
-  neutral: "border-l-4 border-l-border-strong",
-  accent: "border-l-4 border-l-accent",
-  success: "border-l-4 border-l-success",
-  warning: "border-l-4 border-l-warning",
-  danger: "border-l-4 border-l-danger",
-  info: "border-l-4 border-l-info",
+/** Full 2px outline in a match-score colour (job cards). */
+const cardOutline: Record<ScoreTier, string> = {
+  high: "border-2 border-score-high",
+  mid: "border-2 border-score-mid",
+  low: "border-2 border-score-low",
 };
 
-/** `edge` adds a 4px coloured left edge in a tone (e.g. `matchTone(score)` on job cards). */
+/** `outline` draws the whole card border in a score colour, e.g. `outline={scoreTier(score)}`. */
 export function Card({
   className,
   padding = "md",
   interactive = false,
-  edge,
+  outline,
   ...props
-}: ComponentProps<"section"> & { padding?: keyof typeof cardPadding; interactive?: boolean; edge?: Tone }) {
+}: ComponentProps<"section"> & { padding?: keyof typeof cardPadding; interactive?: boolean; outline?: ScoreTier }) {
   return (
     <section
       className={cx(
-        "rounded-card border border-border bg-surface shadow-card",
+        "rounded-card bg-surface shadow-card",
+        outline ? cardOutline[outline] : "border border-border",
         cardPadding[padding],
-        edge && cardEdge[edge],
-        interactive && "transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-raised",
+        interactive && "transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-raised",
+        interactive && !outline && "hover:border-border-strong",
         className,
       )}
       {...props}
@@ -571,36 +571,45 @@ export function Stat({
 
 /* ------------------------------------------------------------ Match score */
 
-/** Score (0-100) to tone. Same thresholds as the jobs page: 75 / 55 / 35. */
-export function matchTone(score: number): Tone {
-  return score >= 75 ? "success" : score >= 55 ? "info" : score >= 35 ? "warning" : "neutral";
+/** Match strength: green = strong (60+), yellow = medium (40-59), red = weak (under 40). */
+export type ScoreTier = "high" | "mid" | "low";
+
+export const SCORE_THRESHOLDS = { high: 60, mid: 40 } as const;
+
+export function scoreTier(score: number): ScoreTier {
+  return score >= SCORE_THRESHOLDS.high ? "high" : score >= SCORE_THRESHOLDS.mid ? "mid" : "low";
 }
 
-/** Solid tier tiles: green 75+, blue 55+, orange 35+, grey below. Text pairs are AA. */
-const scoreSolid: Record<Tone, string> = {
-  success: "bg-success text-ink",
-  info: "bg-blue text-white",
-  warning: "bg-warning text-ink",
-  neutral: "bg-surface-raised text-foreground",
-  accent: "bg-accent text-accent-foreground",
-  danger: "bg-danger text-ink",
+/** Score (0-100) to a status tone, for places that use Badge/Alert tones. */
+export function matchTone(score: number): Tone {
+  return { high: "success", mid: "warning", low: "danger" }[scoreTier(score)] as Tone;
+}
+
+/** Solid score fills; charcoal text on each is AA (7.3 / 10.4 / 5.2 : 1). */
+const scoreSolid: Record<ScoreTier, string> = {
+  high: "bg-score-high text-ink",
+  mid: "bg-score-mid text-ink",
+  low: "bg-score-low text-ink",
 };
 
-/** Square match-score tile, e.g. `<ScoreBadge score={82} label="KW" />`. */
-export function ScoreBadge({ score, label, title }: { score: number; label?: string; title?: string }) {
+const tierLabel: Record<ScoreTier, string> = { high: "strong", mid: "medium", low: "weak" };
+
+/**
+ * Square match-score tile showing just the number, coloured by strength.
+ * `unranked` (no resume yet) renders a neutral tile instead of red.
+ */
+export function ScoreBadge({ score, title, unranked = false }: { score: number; title?: string; unranked?: boolean }) {
+  const tier = scoreTier(score);
   return (
     <span
       title={title}
       className={cx(
-        "inline-flex size-11 shrink-0 flex-col items-center justify-center rounded-control tabular-nums shadow-xs",
-        scoreSolid[matchTone(score)],
+        "inline-flex size-11 shrink-0 items-center justify-center rounded-control tabular-nums shadow-xs",
+        unranked ? "bg-surface-raised text-muted" : scoreSolid[tier],
       )}
     >
-      <span className="sr-only">Match score </span>
-      <span className="text-base leading-none font-semibold">{Math.round(score)}</span>
-      {label ? (
-        <span className="mt-0.5 text-[9px] leading-none font-semibold tracking-wide uppercase opacity-80">{label}</span>
-      ) : null}
+      <span className="sr-only">{unranked ? "Not ranked yet, score " : `Match score (${tierLabel[tier]}) `}</span>
+      <span className="text-lg leading-none font-bold">{Math.round(score)}</span>
     </span>
   );
 }
@@ -618,7 +627,7 @@ export function ScoreMeter({ score, showValue = true, className }: { score: numb
         aria-valuenow={value}
         className="h-1.5 min-w-12 flex-1 overflow-hidden rounded-pill bg-surface-subtle"
       >
-        <div className={cx("h-full rounded-pill", toneSolid[matchTone(value)])} style={{ width: `${value}%` }} />
+        <div className={cx("h-full rounded-pill", scoreSolid[scoreTier(value)])} style={{ width: `${value}%` }} />
       </div>
       {showValue ? <span className="w-7 text-right text-xs font-medium text-muted tabular-nums">{value}</span> : null}
     </div>

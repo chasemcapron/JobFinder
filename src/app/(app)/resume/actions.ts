@@ -9,6 +9,7 @@ import { coerceExperienceLevel } from "@/lib/jobs/experience";
 import { parseList } from "@/lib/parse-input";
 import { analyzeResume, type ResumeAnalysis } from "@/lib/resume/analyze";
 import { detectResumeKind, extractResumeText, MAX_RESUME_BYTES, cleanExtractedText } from "@/lib/resume/extract-text";
+import { commitResumeFile, storePendingResume } from "@/lib/resume/file-store";
 import { currentUserId } from "@/lib/session";
 
 export type AnalyzeState =
@@ -19,7 +20,8 @@ export type AnalyzeState =
 /** Step 1: extract text from the upload (or pasted text) and analyze it. Nothing is saved yet. */
 export async function analyzeResumeAction(_prev: AnalyzeState, formData: FormData): Promise<AnalyzeState> {
   try {
-    if (!(await currentUserId())) return { ok: false, message: "You're signed out. Sign in again." };
+    const userId = await currentUserId();
+    if (!userId) return { ok: false, message: "You're signed out. Sign in again." };
 
     const file = formData.get("file");
     const pasted = String(formData.get("text") ?? "");
@@ -30,8 +32,11 @@ export async function analyzeResumeAction(_prev: AnalyzeState, formData: FormDat
       if (file.size > MAX_RESUME_BYTES) return { ok: false, message: "That file is over 4 MB." };
       const kind = detectResumeKind(file.name, file.type);
       if (!kind) return { ok: false, message: "Upload a PDF or .docx file, or paste the text instead." };
-      text = await extractResumeText(Buffer.from(await file.arrayBuffer()), kind);
+      const data = Buffer.from(await file.arrayBuffer());
+      text = await extractResumeText(data, kind);
       fileName = file.name;
+      // Kept for the preview; it only becomes the saved resume when the profile is saved.
+      if (kind !== "text") await storePendingResume(userId, { kind, fileName, data });
     } else if (pasted.trim()) {
       text = cleanExtractedText(pasted);
     } else {
@@ -57,6 +62,8 @@ export async function saveResumeProfile(_prev: SaveState, formData: FormData): P
     const resumeText = String(formData.get("resumeText") ?? "").trim();
     const fileName = String(formData.get("fileName") ?? "").trim() || null;
     const db = await getDb();
+    const before = await db.query.profiles.findFirst({ where: eq(profiles.userId, userId), columns: { resumeText: true } });
+    const resumeTextChanged = Boolean(resumeText) && resumeText !== (before?.resumeText ?? "");
     await db
       .update(profiles)
       .set({
@@ -69,6 +76,7 @@ export async function saveResumeProfile(_prev: SaveState, formData: FormData): P
         updatedAt: new Date(),
       })
       .where(eq(profiles.userId, userId));
+    await commitResumeFile(userId, { resumeTextChanged, fileName });
     revalidatePath("/resume");
     return { ok: true, message: "Profile saved. Refresh jobs to re-rank matches." };
   } catch (err) {

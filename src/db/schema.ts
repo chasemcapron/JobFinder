@@ -1,5 +1,6 @@
 import {
   boolean,
+  customType,
   index,
   integer,
   jsonb,
@@ -254,6 +255,29 @@ export const searchRuns = pgTable(
     error: text("error"),
   },
   (t) => [index("search_runs_user_started_idx").on(t.userId, t.startedAt)],
+);
+
+const bytea = customType<{ data: Uint8Array; driverData: Uint8Array }>({
+  dataType: () => "bytea",
+});
+
+/**
+ * The original resume file, for the preview on /resume. One "pending" row holds the
+ * latest upload until the user saves; saving promotes it to "saved".
+ */
+export const resumeFiles = pgTable(
+  "resume_files",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    slot: text("slot").$type<"pending" | "saved">().notNull(),
+    kind: text("kind").$type<"pdf" | "docx">().notNull(),
+    fileName: text("file_name").notNull(),
+    data: bytea("data").notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.slot] })],
 );
 
 export type User = typeof users.$inferSelect;

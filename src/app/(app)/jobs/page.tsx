@@ -112,7 +112,7 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
             ) : (
               <ul className="flex flex-col gap-3">
                 {items.map((m) => (
-                  <JobCard key={m.job.id} match={m} actions={<ApplyActions jobId={m.job.id} application={m.application} />} />
+                  <JobCard key={m.job.id} match={m} ranked={hasProfile} actions={<ApplyActions jobId={m.job.id} application={m.application} />} />
                 ))}
               </ul>
             )}

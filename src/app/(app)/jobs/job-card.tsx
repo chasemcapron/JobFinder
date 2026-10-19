@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Badge, buttonClass, Card, cx, Icon, matchTone, ScoreBadge, SourceBadge } from "@/components/ui";
+import { Badge, buttonClass, Card, cx, Icon, ScoreBadge, scoreTier, SourceBadge } from "@/components/ui";
 import { applicationStatusLabel } from "@/lib/applications";
 import { formatRelativeDate, formatSalary } from "@/lib/format";
 import { EXPERIENCE_LABELS } from "@/lib/jobs/experience";
@@ -28,7 +28,8 @@ function Meta({ icon, children }: { icon: "building" | "map-pin" | "calendar"; c
 // Sources sometimes send a placeholder instead of a location; showing "N/A" adds nothing.
 const PLACEHOLDER_LOCATION = /^(n\/?a|none|tbd|unknown|-+)$/i;
 
-export function JobCard({ match, actions }: { match: MatchResult; actions?: ReactNode }) {
+/** `ranked` is false until the user has a resume or keywords; scores are then all 0 and shown neutral. */
+export function JobCard({ match, actions, ranked = true }: { match: MatchResult; actions?: ReactNode; ranked?: boolean }) {
   const { job, application } = match;
   const salary = formatSalary(job.salaryMin, job.salaryMax, job.salaryCurrency);
   const posted = formatRelativeDate(job.postedAt ?? job.firstSeenAt);
@@ -38,14 +39,14 @@ export function JobCard({ match, actions }: { match: MatchResult; actions?: Reac
       <Card
         padding="sm"
         interactive
-        edge={matchTone(match.score)}
+        outline={ranked ? scoreTier(match.score) : undefined}
         className={cx("flex flex-col gap-3", application && "opacity-65 transition-opacity focus-within:opacity-100 hover:opacity-100")}
       >
         <div className="flex items-start gap-3">
           <ScoreBadge
             score={match.score}
-            label={match.aiScored ? "AI" : "KW"}
-            title={match.aiScored ? "Match score from Claude" : "Keyword match score"}
+            unranked={!ranked}
+            title={match.aiScored ? "Match score from Claude" : "Match score: how well this job fits your resume"}
           />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">

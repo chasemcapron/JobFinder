@@ -1,19 +1,27 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/ui";
 import { env } from "@/lib/env";
+import { getSavedResume } from "@/lib/resume/file-store";
 import { requireUser } from "@/lib/session";
 import { ResumeEditor } from "./resume-editor";
+import { ResumePreview } from "./resume-preview";
 
 export const metadata: Metadata = { title: "Resume · Job Finder" };
 
 export default async function ResumePage() {
-  const { profile } = await requireUser();
+  const { user, profile } = await requireUser();
+  const file = await getSavedResume(user.id);
   return (
     <>
       <PageHeader
         title="Resume"
         description="Upload your resume to extract skills, target titles, seniority, and keywords. Review and edit before saving."
       />
+      {profile.resumeText || file ? (
+        <div className="mb-6">
+          <ResumePreview file={file} resumeText={profile.resumeText ?? ""} savedAt={profile.resumeText ? profile.updatedAt : null} />
+        </div>
+      ) : null}
       <ResumeEditor
         aiEnabled={Boolean(env.anthropicApiKey)}
         saved={{
