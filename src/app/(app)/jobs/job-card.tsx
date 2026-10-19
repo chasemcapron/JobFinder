@@ -25,10 +25,14 @@ function Meta({ icon, children }: { icon: "building" | "map-pin" | "calendar"; c
   );
 }
 
+// Sources sometimes send a placeholder instead of a location; showing "N/A" adds nothing.
+const PLACEHOLDER_LOCATION = /^(n\/?a|none|tbd|unknown|-+)$/i;
+
 export function JobCard({ match, actions }: { match: MatchResult; actions?: ReactNode }) {
   const { job, application } = match;
   const salary = formatSalary(job.salaryMin, job.salaryMax, job.salaryCurrency);
   const posted = formatRelativeDate(job.postedAt ?? job.firstSeenAt);
+  const location = formatLocation(job, job.locationRaw).trim();
   return (
     <li>
       <Card
@@ -59,7 +63,7 @@ export function JobCard({ match, actions }: { match: MatchResult; actions?: Reac
               <Meta icon="building">
                 <span className="font-medium text-foreground">{job.company}</span>
               </Meta>
-              <Meta icon="map-pin">{formatLocation(job, job.locationRaw)}</Meta>
+              {location && !PLACEHOLDER_LOCATION.test(location) ? <Meta icon="map-pin">{location}</Meta> : null}
               {posted ? <Meta icon="calendar">Posted {posted}</Meta> : null}
             </div>
           </div>
@@ -86,7 +90,7 @@ export function JobCard({ match, actions }: { match: MatchResult; actions?: Reac
         </div>
 
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
-          <a href={job.applyUrl} target="_blank" rel="noreferrer" className={buttonClass("secondary", "sm")}>
+          <a href={job.applyUrl} target="_blank" rel="noreferrer" className={buttonClass("primary", "sm")}>
             Apply
             <Icon name="external-link" className="size-3.5" />
           </a>

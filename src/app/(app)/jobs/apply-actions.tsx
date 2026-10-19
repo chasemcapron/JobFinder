@@ -22,6 +22,7 @@ export function ApplyActions({
     return (
       <>
         <Button
+          variant="secondary"
           size="sm"
           loading={pending}
           onClick={() =>
