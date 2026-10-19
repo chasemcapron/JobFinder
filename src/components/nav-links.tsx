@@ -2,14 +2,26 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
 import { cx, Icon, type IconName } from "./ui";
 
-const LINKS: readonly { href: string; label: string; icon: IconName }[] = [
-  { href: "/jobs", label: "Jobs", icon: "briefcase" },
-  { href: "/applications", label: "Applications", icon: "inbox" },
-  { href: "/resume", label: "Resume", icon: "file" },
-  { href: "/settings", label: "Settings", icon: "settings" },
+const LINKS: readonly { href: string; label: string; icon: IconName; section: string; activeClass: string; iconClass: string }[] = [
+  { href: "/jobs", label: "Jobs", icon: "briefcase", section: "jobs", activeClass: "bg-blue text-white", iconClass: "text-[#8fbcff]" },
+  { href: "/applications", label: "Applications", icon: "inbox", section: "applications", activeClass: "bg-orange text-ink", iconClass: "text-[#ffb066]" },
+  { href: "/resume", label: "Resume", icon: "file", section: "resume", activeClass: "bg-green text-ink", iconClass: "text-[#6fdc97]" },
+  { href: "/settings", label: "Settings", icon: "settings", section: "settings", activeClass: "bg-pink text-ink", iconClass: "text-[#ff93b9]" },
 ];
+
+/** Tags its children with the current section so tokens like `text-section-fg` pick up the section colour. */
+export function SectionScope({ children, className, id }: { children: ReactNode; className?: string; id?: string }) {
+  const pathname = usePathname();
+  const section = LINKS.find((l) => pathname === l.href || pathname.startsWith(`${l.href}/`))?.section;
+  return (
+    <main id={id} data-section={section} className={className}>
+      {children}
+    </main>
+  );
+}
 
 /** Tab-bar grid under the header on phones, inline pills from `sm` up. */
 export function NavLinks() {
@@ -27,11 +39,11 @@ export function NavLinks() {
               "flex flex-col items-center gap-1 rounded-control px-2 py-1.5 text-xs font-medium whitespace-nowrap transition-colors",
               "sm:flex-row sm:gap-2 sm:px-3 sm:text-sm",
               active
-                ? "bg-surface-subtle text-foreground shadow-[inset_0_0_0_1px_var(--border)]"
+                ? cx("font-semibold shadow-xs", link.activeClass)
                 : "text-muted hover:bg-surface-subtle/70 hover:text-foreground",
             )}
           >
-            <Icon name={link.icon} className={active ? "text-accent-text" : undefined} />
+            <Icon name={link.icon} className={active ? undefined : link.iconClass} />
             {link.label}
           </Link>
         );

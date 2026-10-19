@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Badge, buttonClass, Card, cx, Icon, ScoreBadge } from "@/components/ui";
+import { Badge, buttonClass, Card, cx, Icon, matchTone, ScoreBadge, SourceBadge } from "@/components/ui";
 import { applicationStatusLabel } from "@/lib/applications";
 import { formatRelativeDate, formatSalary } from "@/lib/format";
 import { EXPERIENCE_LABELS } from "@/lib/jobs/experience";
@@ -38,6 +38,7 @@ export function JobCard({ match, actions }: { match: MatchResult; actions?: Reac
       <Card
         padding="sm"
         interactive
+        edge={matchTone(match.score)}
         className={cx("flex flex-col gap-3", application && "opacity-65 transition-opacity focus-within:opacity-100 hover:opacity-100")}
       >
         <div className="flex items-start gap-3">
@@ -85,7 +86,7 @@ export function JobCard({ match, actions }: { match: MatchResult; actions?: Reac
               Jobs by Adzuna
             </a>
           ) : (
-            <span>via {SOURCE_LABELS[job.source] ?? job.source}</span>
+            <SourceBadge source={job.source}>via {SOURCE_LABELS[job.source] ?? job.source}</SourceBadge>
           )}
         </div>
 

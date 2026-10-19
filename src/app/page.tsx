@@ -1,17 +1,25 @@
 import { redirect } from "next/navigation";
 import { auth, signIn } from "@/auth";
 import { SubmitButton } from "@/components/action-form";
-import { Alert, BrandMark, Divider, Icon, type IconName } from "@/components/ui";
+import { Alert, Divider, Icon, type IconName } from "@/components/ui";
 import { env } from "@/lib/env";
 
-const FEATURES: { icon: IconName; title: string; body: string }[] = [
+const FEATURES: { icon: IconName; title: string; body: string; tile: string }[] = [
   {
     icon: "target",
+    tile: "bg-blue text-white",
     title: "Matched to your resume",
     body: "Postings from Greenhouse, Lever, Ashby, Adzuna, and USAJobs, ranked by fit.",
   },
-  { icon: "sheet", title: "Tracked in your Google Sheet", body: "Mark a job applied and it's logged as a new row." },
-  { icon: "mail", title: "A morning digest", body: "The top new matches in your inbox every day." },
+  { icon: "sheet", tile: "bg-green text-ink", title: "Tracked in your Google Sheet", body: "Mark a job applied and it's logged as a new row." },
+  { icon: "mail", tile: "bg-orange text-ink", title: "A morning digest", body: "The top new matches in your inbox every day." },
+];
+
+const TILES: { icon: IconName; cls: string }[] = [
+  { icon: "briefcase", cls: "-rotate-6 bg-blue text-white" },
+  { icon: "inbox", cls: "rotate-3 bg-orange text-ink" },
+  { icon: "file", cls: "-rotate-3 bg-green text-ink" },
+  { icon: "settings", cls: "rotate-6 bg-pink text-ink" },
 ];
 
 function GoogleLogo() {
@@ -44,21 +52,32 @@ export default async function Home({ searchParams }: PageProps<"/">) {
     <main className="relative isolate flex w-full flex-1 flex-col items-center justify-center px-4 py-12 sm:py-20">
       <div
         aria-hidden
-        className="absolute inset-x-0 top-0 -z-10 h-[28rem] bg-[radial-gradient(ellipse_60%_60%_at_50%_0%,color-mix(in_oklab,var(--accent)_16%,transparent),transparent)]"
-      />
+        className="stripe absolute inset-x-0 top-0 grid h-1 grid-cols-4"
+      >
+        <span className="bg-pink" />
+        <span className="bg-orange" />
+        <span className="bg-blue" />
+        <span className="bg-green" />
+      </div>
 
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center text-center">
-          <BrandMark size="lg" />
-          <h1 className="mt-5 text-3xl font-semibold tracking-tight">Job Finder</h1>
-          <p className="mt-2 text-balance text-muted">Find jobs that fit your resume, and keep track of where you applied.</p>
+          <div aria-hidden className="flex gap-2.5">
+            {TILES.map((t) => (
+              <span key={t.icon} className={`grid size-12 place-items-center rounded-card shadow-xs transition-transform duration-200 hover:-translate-y-1 ${t.cls}`}>
+                <Icon name={t.icon} className="size-6" />
+              </span>
+            ))}
+          </div>
+          <h1 className="font-display mt-5 text-4xl font-bold tracking-tight">Job Finder</h1>
+          <p className="mt-2 text-balance text-muted">Find jobs that fit your resume, then keep track of where you applied. Time to get hired.</p>
         </div>
 
         <div className="rounded-card border border-border bg-surface p-6 shadow-raised sm:p-8">
           <ul className="flex flex-col gap-4">
             {FEATURES.map((f) => (
               <li key={f.title} className="flex gap-3">
-                <span className="grid size-8 shrink-0 place-items-center rounded-control bg-accent-subtle text-accent-text">
+                <span className={`grid size-8 shrink-0 place-items-center rounded-control ${f.tile}`}>
                   <Icon name={f.icon} />
                 </span>
                 <div className="min-w-0">

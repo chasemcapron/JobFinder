@@ -35,6 +35,7 @@ A personal web app: matches job postings to the owner's resume, tracks applicati
 | email | `src/emails/morning-digest.tsx` | React Email morning digest (preview at `/api/digest/preview`) |
 
 - Design tokens (light and dark) are CSS variables in `src/app/globals.css`, exposed to Tailwind v4 through `@theme inline`. Change colors there, not per component.
+- The theme is dark-first charcoal with section colours: `data-section` (set by `SectionScope`) drives `--section`, `--section-fg`, `--section-bg`, `--section-on`, so primary buttons, links and icon tiles recolour per page. Use `bg-section text-section-on` for solid section fills.
 - Shared primitives live in `src/components/ui.tsx`: `Button`, `Card`, `Badge`, `Alert`, `EmptyState`, `PageHeader`, `inputClass`. Extend these rather than restyling inline. Forms use `ActionForm` / `SubmitButton` from `src/components/action-form.tsx`.
 - Pages are Server Components that read from the database. Interactive pieces are small `"use client"` files next to them. Keep data fetching on the server.
 - Every route has loading and error states (`loading.tsx`, `error.tsx`). Keep them when restructuring.
