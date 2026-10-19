@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -18,8 +18,14 @@ const display = Bricolage_Grotesque({
 });
 
 export const metadata: Metadata = {
-  title: "Job Finder",
+  title: { default: "Job Finder", template: "%s · Job Finder" },
   description: "Find job postings that match your resume, track applications, and get a morning digest.",
+  applicationName: "Job Finder",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#1c1c1e",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
