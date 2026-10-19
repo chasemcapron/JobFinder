@@ -16,17 +16,17 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     <>
       <a
         href="#main"
-        className="sr-only z-50 rounded-control bg-surface px-3 py-2 text-sm font-medium shadow-raised focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
+        className="sr-only z-50 rounded-control bg-surface px-3 py-2 text-sm font-medium focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
       >
         Skip to content
       </a>
-      <header className="sticky top-0 z-40 border-b border-border bg-surface/85 backdrop-blur-md">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5 sm:px-6">
-          <Link href="/jobs" className="flex items-center gap-2.5 rounded-control font-semibold tracking-tight">
+      <header className="sticky top-0 z-40 border-b border-border bg-background">
+        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-8 gap-y-2 px-4 pt-3 sm:px-6 sm:py-3">
+          <Link href="/jobs" className="flex items-center gap-3 rounded-control text-lg font-medium tracking-tight">
             <BrandMark />
             Job Finder
           </Link>
-          <div className="order-last -mx-1 w-[calc(100%+0.5rem)] sm:order-none sm:mx-0 sm:w-auto sm:flex-1">
+          <div className="order-last -mx-4 w-[calc(100%+2rem)] border-t border-border sm:order-none sm:mx-0 sm:w-auto sm:flex-1 sm:border-0">
             <NavLinks />
           </div>
           <div className="ml-auto flex items-center gap-2 sm:ml-0">

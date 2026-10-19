@@ -166,11 +166,11 @@ export function Spinner({ className }: { className?: string }) {
 /* ---------------------------------------------------------------- Buttons */
 
 const buttonVariants = {
-  primary: "bg-accent text-accent-foreground shadow-xs hover:bg-accent-hover",
-  secondary: "border border-border-strong bg-surface text-foreground shadow-xs hover:bg-surface-subtle",
+  primary: "bg-accent text-accent-foreground hover:bg-accent-hover",
+  secondary: "border border-border-strong bg-surface-subtle text-foreground hover:bg-surface-raised",
   ghost: "text-foreground hover:bg-surface-subtle",
   subtle: "bg-accent-subtle text-accent-text hover:bg-accent-subtle/70",
-  danger: "border border-danger-border bg-surface text-danger-fg shadow-xs hover:bg-danger-bg",
+  danger: "border border-danger-border bg-danger-bg text-danger-fg hover:bg-danger-border",
 } as const;
 
 const buttonSizes = {
@@ -238,9 +238,9 @@ export function Card({
   return (
     <section
       className={cx(
-        "rounded-card border border-border bg-surface shadow-card",
+        "rounded-card border border-border bg-surface",
         cardPadding[padding],
-        interactive && "transition-colors hover:border-border-strong",
+        interactive && "transition-colors hover:border-border-strong hover:bg-surface-subtle",
         className,
       )}
       {...props}
@@ -263,12 +263,12 @@ export function CardHeader({
     <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
       <div className="flex min-w-0 items-start gap-3">
         {icon ? (
-          <span className="grid size-8 shrink-0 place-items-center rounded-control border border-border bg-surface-subtle text-muted">
+          <span className="grid size-8 shrink-0 place-items-center rounded-control bg-surface-subtle text-accent-text">
             {icon}
           </span>
         ) : null}
         <div className="min-w-0">
-          <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+          <h2 className="text-lg font-medium tracking-tight">{title}</h2>
           {description ? <p className="mt-1 text-sm text-muted">{description}</p> : null}
         </div>
       </div>
@@ -281,12 +281,12 @@ export function CardHeader({
 
 /** For <input>, <textarea> and <select>. Use `selectClass` for a select with the custom chevron. */
 export const inputClass = cx(
-  "block w-full min-w-0 rounded-control border border-border-strong bg-surface px-3 py-[7px] text-sm text-foreground shadow-xs",
+  "block w-full min-w-0 rounded-control border border-border-strong bg-surface-subtle px-3 py-[7px] text-sm text-foreground",
   "transition-[border-color,box-shadow] duration-150 placeholder:text-muted",
   "focus:border-accent focus:ring-3 focus:ring-accent/25 focus:outline-none focus-visible:outline-none",
   "disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:opacity-70",
   "aria-invalid:border-danger aria-invalid:ring-danger/20",
-  "file:mr-3 file:rounded-md file:border-0 file:bg-surface-subtle file:px-2.5 file:py-0.5 file:text-[13px] file:font-medium file:text-foreground",
+  "file:mr-3 file:rounded-control file:border-0 file:bg-surface-raised file:px-2.5 file:py-0.5 file:text-[13px] file:font-medium file:text-foreground",
 );
 
 export const selectClass = cx(inputClass, "select-chevron pr-9");
@@ -336,6 +336,16 @@ const toneSolid: Record<Tone, string> = {
   info: "bg-info",
 };
 
+/** Solid flat tile fills (white text, AA on every hue). */
+const toneTile: Record<Tone, string> = {
+  neutral: "bg-neutral text-on-solid",
+  accent: "bg-accent text-on-solid",
+  success: "bg-success text-on-solid",
+  warning: "bg-warning text-on-solid",
+  danger: "bg-danger text-on-solid",
+  info: "bg-info text-on-solid",
+};
+
 export function Badge({
   children,
   tone = "neutral",
@@ -354,7 +364,7 @@ export function Badge({
     <span
       title={title}
       className={cx(
-        "inline-flex items-center gap-1.5 rounded-md border px-1.5 py-px text-xs leading-5 font-medium whitespace-nowrap",
+        "inline-flex items-center gap-1.5 rounded-control border px-1.5 py-px text-xs leading-5 font-medium whitespace-nowrap",
         toneSoft[t],
         className,
       )}
@@ -418,13 +428,13 @@ export function EmptyState({
   icon?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-card border border-dashed border-border-strong bg-surface/50 px-6 py-14 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-card border border-dashed border-border-strong bg-surface/60 px-6 py-14 text-center">
       {icon ? (
-        <span className="mb-1 grid size-11 place-items-center rounded-full border border-border bg-surface text-muted shadow-xs [&_svg]:size-5">
+        <span className="mb-1 grid size-11 place-items-center rounded-control bg-accent text-accent-foreground [&_svg]:size-5">
           {icon}
         </span>
       ) : null}
-      <h3 className="text-base font-semibold tracking-tight">{title}</h3>
+      <h3 className="text-lg font-medium tracking-tight">{title}</h3>
       {children ? <div className="max-w-md text-sm text-muted">{children}</div> : null}
       {action ? <div className="mt-2">{action}</div> : null}
     </div>
@@ -445,8 +455,8 @@ export function PageHeader({
   return (
     <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
-        {eyebrow ? <p className="mb-1 text-xs font-medium tracking-wide text-muted uppercase">{eyebrow}</p> : null}
-        <h1 className="text-2xl font-semibold tracking-tight text-balance">{title}</h1>
+        {eyebrow ? <p className="mb-1 text-xs font-semibold tracking-widest text-accent-text uppercase">{eyebrow}</p> : null}
+        <h1 className="text-3xl font-light tracking-tight text-balance sm:text-4xl">{title}</h1>
         {description ? <p className="mt-1.5 max-w-2xl text-sm text-muted">{description}</p> : null}
       </div>
       {action ? <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div> : null}
@@ -467,31 +477,33 @@ export function Divider({ label, className }: { label?: ReactNode; className?: s
 
 /** Loading placeholder block; size it with className (e.g. "h-4 w-32"). */
 export function Skeleton({ className, ...props }: ComponentProps<"div">) {
-  return <div aria-hidden className={cx("animate-pulse rounded-md bg-surface-subtle", className)} {...props} />;
+  return <div aria-hidden className={cx("animate-pulse rounded-control bg-surface-subtle", className)} {...props} />;
 }
 
-/** A labelled number, for summary rows (e.g. "Applied this week: 4"). */
+/** A labelled number as a solid colour tile, for summary rows (e.g. "Applied this week: 4"). */
 export function Stat({
   label,
   value,
   hint,
   icon,
   className,
+  tone = "accent",
 }: {
   label: ReactNode;
   value: ReactNode;
   hint?: ReactNode;
   icon?: ReactNode;
   className?: string;
+  tone?: Tone | LegacyTone;
 }) {
   return (
-    <div className={cx("rounded-card border border-border bg-surface p-4 shadow-card", className)}>
-      <div className="flex items-center justify-between gap-2 text-[13px] font-medium text-muted">
+    <div className={cx("rounded-card p-4", toneTile[toTone(tone)], className)}>
+      <div className="flex items-center justify-between gap-2 text-[13px] font-medium opacity-90">
         {label}
         {icon}
       </div>
-      <div className="mt-1.5 text-2xl font-semibold tracking-tight tabular-nums">{value}</div>
-      {hint ? <div className="mt-1 text-xs text-muted">{hint}</div> : null}
+      <div className="mt-1.5 text-4xl font-light tracking-tight tabular-nums">{value}</div>
+      {hint ? <div className="mt-1 text-xs opacity-90">{hint}</div> : null}
     </div>
   );
 }
@@ -509,14 +521,14 @@ export function ScoreBadge({ score, label, title }: { score: number; label?: str
     <span
       title={title}
       className={cx(
-        "inline-flex size-11 shrink-0 flex-col items-center justify-center rounded-control border tabular-nums",
-        toneSoft[matchTone(score)],
+        "inline-flex size-12 shrink-0 flex-col items-center justify-center rounded-card tabular-nums",
+        toneTile[matchTone(score)],
       )}
     >
       <span className="sr-only">Match score </span>
-      <span className="text-base leading-none font-semibold">{Math.round(score)}</span>
+      <span className="text-xl leading-none font-medium">{Math.round(score)}</span>
       {label ? (
-        <span className="mt-0.5 text-[9px] leading-none font-medium tracking-wide uppercase opacity-75">{label}</span>
+        <span className="mt-0.5 text-[9px] leading-none font-medium tracking-wide uppercase opacity-90">{label}</span>
       ) : null}
     </span>
   );
@@ -544,14 +556,14 @@ export function ScoreMeter({ score, showValue = true, className }: { score: numb
 
 /* ------------------------------------------------------------------ Misc */
 
-/** The app's logo mark: an accent tile with a target. */
+/** The app's logo mark: a solid blue tile with a target. */
 export function BrandMark({ size = "md" }: { size?: "md" | "lg" }) {
   return (
     <span
       aria-hidden
       className={cx(
-        "grid shrink-0 place-items-center bg-linear-to-br from-accent to-accent-hover text-accent-foreground shadow-xs",
-        size === "lg" ? "size-11 rounded-card [&_svg]:size-6" : "size-7 rounded-control",
+        "grid shrink-0 place-items-center bg-accent text-accent-foreground",
+        size === "lg" ? "size-14 rounded-card [&_svg]:size-8" : "size-8 rounded-card",
       )}
     >
       <Icon name="target" />
@@ -573,7 +585,7 @@ export function Avatar({ name, className }: { name?: string | null; className?: 
     <span
       aria-hidden
       className={cx(
-        "grid size-7 shrink-0 place-items-center rounded-full bg-accent-subtle text-[11px] font-semibold text-accent-text",
+        "grid size-7 shrink-0 place-items-center rounded-card bg-neutral text-[11px] font-semibold text-on-solid",
         className,
       )}
     >

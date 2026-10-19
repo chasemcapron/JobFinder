@@ -42,23 +42,27 @@ export default async function Home({ searchParams }: PageProps<"/">) {
 
   return (
     <main className="relative isolate flex w-full flex-1 flex-col items-center justify-center px-4 py-12 sm:py-20">
-      <div
-        aria-hidden
-        className="absolute inset-x-0 top-0 -z-10 h-[28rem] bg-[radial-gradient(ellipse_60%_60%_at_50%_0%,color-mix(in_oklab,var(--accent)_16%,transparent),transparent)]"
-      />
 
       <div className="w-full max-w-md">
-        <div className="mb-8 flex flex-col items-center text-center">
-          <BrandMark size="lg" />
-          <h1 className="mt-5 text-3xl font-semibold tracking-tight">Job Finder</h1>
-          <p className="mt-2 text-balance text-muted">Find jobs that fit your resume, and keep track of where you applied.</p>
+        <div className="mb-8">
+          <div aria-hidden className="mb-6 grid grid-cols-4 gap-1.5">
+            <span className="aspect-square bg-hue-blue" />
+            <span className="aspect-square bg-hue-orange" />
+            <span className="aspect-square bg-hue-teal" />
+            <span className="aspect-square bg-hue-green" />
+          </div>
+          <div className="flex items-center gap-4">
+            <BrandMark size="lg" />
+            <h1 className="text-4xl font-light tracking-tight">Job Finder</h1>
+          </div>
+          <p className="mt-4 text-balance text-muted">Find jobs that fit your resume, and keep track of where you applied.</p>
         </div>
 
-        <div className="rounded-card border border-border bg-surface p-6 shadow-raised sm:p-8">
+        <div className="rounded-card bg-surface p-6 sm:p-8">
           <ul className="flex flex-col gap-4">
             {FEATURES.map((f) => (
               <li key={f.title} className="flex gap-3">
-                <span className="grid size-8 shrink-0 place-items-center rounded-control bg-accent-subtle text-accent-text">
+                <span className="grid size-8 shrink-0 place-items-center rounded-control bg-surface-subtle text-accent-text">
                   <Icon name={f.icon} />
                 </span>
                 <div className="min-w-0">

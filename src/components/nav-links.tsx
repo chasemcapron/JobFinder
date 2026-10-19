@@ -11,11 +11,11 @@ const LINKS: readonly { href: string; label: string; icon: IconName }[] = [
   { href: "/settings", label: "Settings", icon: "settings" },
 ];
 
-/** Tab-bar grid under the header on phones, inline pills from `sm` up. */
+/** Tab-bar grid under the header on phones, plain text links from `sm` up (active one in the accent hue). */
 export function NavLinks() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Main" className="grid grid-cols-4 gap-1 sm:flex sm:items-center">
+    <nav aria-label="Main" className="grid grid-cols-4 sm:flex sm:items-center sm:gap-6">
       {LINKS.map((link) => {
         const active = pathname === link.href || pathname.startsWith(`${link.href}/`);
         return (
@@ -24,14 +24,14 @@ export function NavLinks() {
             href={link.href}
             aria-current={active ? "page" : undefined}
             className={cx(
-              "flex flex-col items-center gap-1 rounded-control px-2 py-1.5 text-xs font-medium whitespace-nowrap transition-colors",
-              "sm:flex-row sm:gap-2 sm:px-3 sm:text-sm",
+              "flex flex-col items-center gap-1 border-b-2 px-2 py-2 text-xs font-medium whitespace-nowrap transition-colors",
+              "sm:flex-row sm:px-0 sm:text-[15px]",
               active
-                ? "bg-surface-subtle text-foreground shadow-[inset_0_0_0_1px_var(--border)]"
-                : "text-muted hover:bg-surface-subtle/70 hover:text-foreground",
+                ? "border-accent-text text-accent-text"
+                : "border-transparent text-muted hover:text-foreground",
             )}
           >
-            <Icon name={link.icon} className={active ? "text-accent-text" : undefined} />
+            <Icon name={link.icon} className="sm:hidden" />
             {link.label}
           </Link>
         );

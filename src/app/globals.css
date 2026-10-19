@@ -8,99 +8,103 @@
  *   foreground / muted on background, surface and surface-subtle
  *   <tone>-fg on <tone>-bg, accent-foreground on accent, accent-text on surface.
  */
+/*
+ * Theme B "Colour tiles": dark charcoal by default (regardless of OS setting),
+ * flat square surfaces, colour only in solid tiles (score badge, stats, primary
+ * button, brand mark). Light tokens live under :root[data-theme="light"].
+ * Solid hues carry white text at >= 4.5:1: blue 4.75, orange-red 5.18,
+ * green 5.13, pink 5.52, teal 5.04. Soft tone text (-fg) is checked on its -bg
+ * and on --surface in both themes.
+ */
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 
-  /* Neutrals */
-  --background: #f7f7f8; /* app canvas */
-  --surface: #ffffff; /* cards, header */
-  --surface-subtle: #f2f2f4; /* hover rows, insets, skeletons */
-  --surface-raised: #ffffff; /* popovers, menus (paired with shadow-raised) */
-  --foreground: #18181b;
-  --muted: #5f5f69; /* secondary text */
-  --border: #e4e4e7;
-  --border-strong: #d1d1d6; /* inputs, hovered borders */
+  /* Neutrals: charcoal page, slightly lighter cards */
+  --background: #202020;
+  --surface: #2a2a2a;
+  --surface-subtle: #333333;
+  --surface-raised: #383838;
+  --foreground: #f2f2f2;
+  --muted: #a8a8a8;
+  --border: #343434;
+  --border-strong: #4a4a4a;
 
-  /* Accent (brand) */
-  --accent: #4f46e5;
-  --accent-hover: #4338ca;
-  --accent-foreground: #ffffff; /* text on accent */
-  --accent-subtle: #eef0ff; /* tinted backgrounds, active nav */
-  --accent-text: #3f37c9; /* accent-colored text and links */
-  --ring: #4f46e5;
+  /* The four tile hues (flat, saturated, white text passes AA) */
+  --hue-blue: #2f6fdb;
+  --hue-orange: #c2410c;
+  --hue-green: #2e7d32;
+  --hue-pink: #c42b4e;
+  --hue-teal: #0f7b80;
+  --on-solid: #ffffff;
 
-  /* Semantic tones: solid (dots, meters), bg / fg / border (badges, alerts) */
-  --success: #12b76a;
-  --success-bg: #ecfdf3;
-  --success-fg: #05603a;
-  --success-border: #abefc6;
-  --warning: #f79009;
-  --warning-bg: #fffaeb;
-  --warning-fg: #93370d;
-  --warning-border: #fedf89;
-  --danger: #d92d20;
-  --danger-bg: #fef3f2;
-  --danger-fg: #b42318;
-  --danger-border: #fecdca;
-  --info: #2e90fa;
-  --info-bg: #eff6ff;
-  --info-fg: #1d4ed8;
-  --info-border: #bfdbfe;
-  --neutral-bg: #f2f2f4;
-  --neutral-fg: #3f3f46;
-  --neutral-border: #e4e4e7;
+  /* Accent (brand) = blue */
+  --accent: var(--hue-blue);
+  --accent-hover: #3b7ff0;
+  --accent-foreground: #ffffff;
+  --accent-subtle: #28364d;
+  --accent-text: #7db3ff;
+  --ring: #7db3ff;
 
-  /* Elevation */
-  --elev-xs: 0 1px 2px 0 rgb(16 24 40 / 0.05);
-  --elev-card: 0 1px 2px 0 rgb(16 24 40 / 0.04), 0 1px 3px 0 rgb(16 24 40 / 0.04);
-  --elev-raised: 0 4px 6px -2px rgb(16 24 40 / 0.05), 0 12px 16px -4px rgb(16 24 40 / 0.08);
+  /* Semantic tones: solid fill (tiles, dots, meters) + soft bg / fg / border */
+  --success: var(--hue-green);
+  --success-bg: #243324;
+  --success-fg: #86d98a;
+  --success-border: #35503a;
+  --warning: var(--hue-orange);
+  --warning-bg: #3a2b22;
+  --warning-fg: #ff9d70;
+  --warning-border: #5c3d2a;
+  --danger: var(--hue-pink);
+  --danger-bg: #3a2530;
+  --danger-fg: #ff8aa1;
+  --danger-border: #5e3342;
+  --info: var(--hue-blue);
+  --info-bg: #26334a;
+  --info-fg: #8dbbff;
+  --info-border: #36507a;
+  --neutral: #4a4a4a;
+  --neutral-bg: #363636;
+  --neutral-fg: #d6d6d6;
+  --neutral-border: #444444;
+
+  /* Flat: no shadows */
+  --elev-xs: 0 0 #0000;
+  --elev-card: 0 0 #0000;
+  --elev-raised: 0 0 #0000;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
+:root[data-theme="light"] {
+  color-scheme: light;
 
-    --background: #09090b;
-    --surface: #111114;
-    --surface-subtle: #18181c;
-    --surface-raised: #1a1a1f;
-    --foreground: #ededf0;
-    --muted: #a0a0ab;
-    --border: #26262c;
-    --border-strong: #3a3a42;
+  --background: #ededed;
+  --surface: #ffffff;
+  --surface-subtle: #f3f3f3;
+  --surface-raised: #ffffff;
+  --foreground: #1c1c1c;
+  --muted: #5c5c5c;
+  --border: #dedede;
+  --border-strong: #c4c4c4;
 
-    --accent: #5b5bf0;
-    --accent-hover: #6d6ff3;
-    --accent-foreground: #ffffff;
-    --accent-subtle: #1c1d3f;
-    --accent-text: #a5b4fc;
-    --ring: #818cf8;
+  --accent-hover: #2561c4;
+  --accent-subtle: #e6efff;
+  --accent-text: #1f5bc4;
+  --ring: #2f6fdb;
 
-    --success: #32d583;
-    --success-bg: #0b2a1c;
-    --success-fg: #6ce9a6;
-    --success-border: #11553a;
-    --warning: #fdb022;
-    --warning-bg: #2e1f08;
-    --warning-fg: #fdb022;
-    --warning-border: #5c3d0c;
-    --danger: #f04438;
-    --danger-bg: #331314;
-    --danger-fg: #fda29b;
-    --danger-border: #6b2422;
-    --info: #53b1fd;
-    --info-bg: #0f1f3d;
-    --info-fg: #93c5fd;
-    --info-border: #1e3a6e;
-    --neutral-bg: #1f1f24;
-    --neutral-fg: #d4d4d8;
-    --neutral-border: #2e2e35;
-
-    /* Shadows barely show on dark; a faint top highlight gives the depth instead. */
-    --elev-xs: 0 1px 2px 0 rgb(0 0 0 / 0.4);
-    --elev-card: inset 0 1px 0 0 rgb(255 255 255 / 0.03), 0 1px 2px 0 rgb(0 0 0 / 0.4);
-    --elev-raised: inset 0 1px 0 0 rgb(255 255 255 / 0.05), 0 12px 24px -6px rgb(0 0 0 / 0.6);
-  }
+  --success-bg: #e8f4e8;
+  --success-fg: #1e5c22;
+  --success-border: #bcdcbd;
+  --warning-bg: #fdeee6;
+  --warning-fg: #8f3008;
+  --warning-border: #f3c9b3;
+  --danger-bg: #fbe8ed;
+  --danger-fg: #9f1f3f;
+  --danger-border: #efbac7;
+  --info-bg: #e6efff;
+  --info-fg: #1a4fae;
+  --info-border: #b9d0f5;
+  --neutral-bg: #efefef;
+  --neutral-fg: #3a3a3a;
+  --neutral-border: #dcdcdc;
 }
 
 @theme inline {
@@ -136,6 +140,13 @@
   --color-info-bg: var(--info-bg);
   --color-info-fg: var(--info-fg);
   --color-info-border: var(--info-border);
+  --color-neutral: var(--neutral);
+  --color-on-solid: var(--on-solid);
+  --color-hue-blue: var(--hue-blue);
+  --color-hue-orange: var(--hue-orange);
+  --color-hue-green: var(--hue-green);
+  --color-hue-pink: var(--hue-pink);
+  --color-hue-teal: var(--hue-teal);
   --color-neutral-bg: var(--neutral-bg);
   --color-neutral-fg: var(--neutral-fg);
   --color-neutral-border: var(--neutral-border);
@@ -144,15 +155,15 @@
   --shadow-card: var(--elev-card);
   --shadow-raised: var(--elev-raised);
 
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-barlow), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
 @theme {
   /* rounded-control (buttons, inputs), rounded-card (cards, alerts), rounded-pill */
-  --radius-control: 0.5rem;
-  --radius-card: 0.75rem;
-  --radius-pill: 9999px;
+  --radius-control: 2px;
+  --radius-card: 2px;
+  --radius-pill: 0px;
 }
 
 /* Custom chevron for <select className={selectClass}>; the gray reads on both themes. */
@@ -169,12 +180,11 @@
     background: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
-    font-feature-settings: "cv11", "ss01";
     text-rendering: optimizeLegibility;
   }
 
   ::selection {
-    background: color-mix(in oklab, var(--accent) 25%, transparent);
+    background: color-mix(in oklab, var(--accent) 45%, transparent);
   }
 
   /* One visible keyboard focus style everywhere (inputs override with a ring). */
