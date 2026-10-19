@@ -166,11 +166,11 @@ export function Spinner({ className }: { className?: string }) {
 /* ---------------------------------------------------------------- Buttons */
 
 const buttonVariants = {
-  primary: "bg-accent text-accent-foreground shadow-xs hover:bg-accent-hover",
-  secondary: "border border-border-strong bg-surface text-foreground shadow-xs hover:bg-surface-subtle",
+  primary: "bg-accent text-accent-foreground hover:bg-accent-hover",
+  secondary: "border border-border-strong bg-transparent text-foreground hover:bg-surface-subtle",
   ghost: "text-foreground hover:bg-surface-subtle",
   subtle: "bg-accent-subtle text-accent-text hover:bg-accent-subtle/70",
-  danger: "border border-danger-border bg-surface text-danger-fg shadow-xs hover:bg-danger-bg",
+  danger: "border border-danger-border bg-transparent text-danger-fg hover:bg-danger-bg",
 } as const;
 
 const buttonSizes = {
@@ -263,13 +263,15 @@ export function CardHeader({
     <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
       <div className="flex min-w-0 items-start gap-3">
         {icon ? (
-          <span className="grid size-8 shrink-0 place-items-center rounded-control border border-border bg-surface-subtle text-muted">
+          <span className="grid size-8 shrink-0 place-items-center rounded-control bg-accent-subtle text-accent-text">
             {icon}
           </span>
         ) : null}
         <div className="min-w-0">
-          <h2 className="text-base font-semibold tracking-tight">{title}</h2>
-          {description ? <p className="mt-1 text-sm text-muted">{description}</p> : null}
+          <h2 className="border-l-4 border-section pl-2.5 font-display text-lg leading-6 font-medium tracking-wider uppercase">
+            {title}
+          </h2>
+          {description ? <p className="mt-1.5 text-sm text-muted">{description}</p> : null}
         </div>
       </div>
       {action}
@@ -281,7 +283,7 @@ export function CardHeader({
 
 /** For <input>, <textarea> and <select>. Use `selectClass` for a select with the custom chevron. */
 export const inputClass = cx(
-  "block w-full min-w-0 rounded-control border border-border-strong bg-surface px-3 py-[7px] text-sm text-foreground shadow-xs",
+  "block w-full min-w-0 rounded-control border border-border-strong bg-background px-3 py-[7px] text-sm text-foreground shadow-xs",
   "transition-[border-color,box-shadow] duration-150 placeholder:text-muted",
   "focus:border-accent focus:ring-3 focus:ring-accent/25 focus:outline-none focus-visible:outline-none",
   "disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:opacity-70",
@@ -293,7 +295,7 @@ export const selectClass = cx(inputClass, "select-chevron pr-9");
 
 export function Label({ children, htmlFor, hint }: { children: ReactNode; htmlFor?: string; hint?: ReactNode }) {
   return (
-    <label htmlFor={htmlFor} className="mb-1.5 block text-[13px] font-medium text-foreground">
+    <label htmlFor={htmlFor} className="mb-1.5 block text-xs font-semibold tracking-wider text-muted uppercase">
       {children}
       {hint ? <span className="ml-1 font-normal text-muted">{hint}</span> : null}
     </label>
@@ -354,7 +356,7 @@ export function Badge({
     <span
       title={title}
       className={cx(
-        "inline-flex items-center gap-1.5 rounded-md border px-1.5 py-px text-xs leading-5 font-medium whitespace-nowrap",
+        "inline-flex items-center gap-1.5 rounded-sm border px-1.5 py-px text-xs leading-5 font-medium whitespace-nowrap",
         toneSoft[t],
         className,
       )}
@@ -418,36 +420,49 @@ export function EmptyState({
   icon?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-card border border-dashed border-border-strong bg-surface/50 px-6 py-14 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-card border border-dashed border-border-strong px-6 py-14 text-center">
       {icon ? (
-        <span className="mb-1 grid size-11 place-items-center rounded-full border border-border bg-surface text-muted shadow-xs [&_svg]:size-5">
+        <span className="mb-1 grid size-11 place-items-center rounded-full border border-border bg-surface text-muted [&_svg]:size-5">
           {icon}
         </span>
       ) : null}
-      <h3 className="text-base font-semibold tracking-tight">{title}</h3>
+      <h3 className="font-display text-lg font-medium tracking-wider uppercase">{title}</h3>
       {children ? <div className="max-w-md text-sm text-muted">{children}</div> : null}
       {action ? <div className="mt-2">{action}</div> : null}
     </div>
   );
 }
 
+export type Section = "jobs" | "applications" | "resume" | "settings";
+
+/**
+ * Title sits on a solid label block in the section colour. The colour comes from the
+ * surrounding `data-section` (set by the app shell); pass `section` to force one.
+ */
 export function PageHeader({
   title,
   description,
   action,
   eyebrow,
+  section,
 }: {
   title: string;
   description?: ReactNode;
   action?: ReactNode;
   eyebrow?: ReactNode;
+  section?: Section;
 }) {
   return (
-    <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
+    <div
+      data-section={section}
+      className="mb-6 flex flex-col gap-4 border-b border-border pb-5 sm:mb-8 sm:flex-row sm:items-end sm:justify-between"
+    >
       <div className="min-w-0">
-        {eyebrow ? <p className="mb-1 text-xs font-medium tracking-wide text-muted uppercase">{eyebrow}</p> : null}
-        <h1 className="text-2xl font-semibold tracking-tight text-balance">{title}</h1>
-        {description ? <p className="mt-1.5 max-w-2xl text-sm text-muted">{description}</p> : null}
+        {eyebrow ? <p className="mb-2 text-xs font-medium tracking-widest text-muted uppercase">{eyebrow}</p> : null}
+        <h1 className="inline-block max-w-full rounded-control bg-section px-3.5 py-1 font-display text-3xl leading-tight font-semibold tracking-wider text-white uppercase sm:text-4xl">
+          {title}
+        </h1>
+        {description ? <p className="mt-3 max-w-2xl text-sm text-muted">{description}</p> : null}
       </div>
       {action ? <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div> : null}
     </div>
@@ -459,7 +474,7 @@ export function Divider({ label, className }: { label?: ReactNode; className?: s
   return (
     <div className={cx("flex items-center gap-3 text-xs text-muted", className)} role="separator">
       <span className="h-px flex-1 bg-border" />
-      {label}
+      <span className="font-display tracking-widest uppercase">{label}</span>
       <span className="h-px flex-1 bg-border" />
     </div>
   );
@@ -486,11 +501,11 @@ export function Stat({
 }) {
   return (
     <div className={cx("rounded-card border border-border bg-surface p-4 shadow-card", className)}>
-      <div className="flex items-center justify-between gap-2 text-[13px] font-medium text-muted">
+      <div className="flex items-center justify-between gap-2 text-xs font-medium tracking-widest text-muted uppercase">
         {label}
         {icon}
       </div>
-      <div className="mt-1.5 text-2xl font-semibold tracking-tight tabular-nums">{value}</div>
+      <div className="mt-1.5 font-display text-3xl font-medium tracking-wide tabular-nums">{value}</div>
       {hint ? <div className="mt-1 text-xs text-muted">{hint}</div> : null}
     </div>
   );
@@ -514,7 +529,7 @@ export function ScoreBadge({ score, label, title }: { score: number; label?: str
       )}
     >
       <span className="sr-only">Match score </span>
-      <span className="text-base leading-none font-semibold">{Math.round(score)}</span>
+      <span className="font-display text-lg leading-none font-medium">{Math.round(score)}</span>
       {label ? (
         <span className="mt-0.5 text-[9px] leading-none font-medium tracking-wide uppercase opacity-75">{label}</span>
       ) : null}
@@ -544,17 +559,17 @@ export function ScoreMeter({ score, showValue = true, className }: { score: numb
 
 /* ------------------------------------------------------------------ Misc */
 
-/** The app's logo mark: an accent tile with a target. */
+/** The app's logo mark: the four palette hues as a 2x2 block of flat tiles. */
 export function BrandMark({ size = "md" }: { size?: "md" | "lg" }) {
   return (
     <span
       aria-hidden
-      className={cx(
-        "grid shrink-0 place-items-center bg-linear-to-br from-accent to-accent-hover text-accent-foreground shadow-xs",
-        size === "lg" ? "size-11 rounded-card [&_svg]:size-6" : "size-7 rounded-control",
-      )}
+      className={cx("grid shrink-0 grid-cols-2 gap-px overflow-hidden rounded-control", size === "lg" ? "size-12" : "size-7")}
     >
-      <Icon name="target" />
+      <span className="bg-pink" />
+      <span className="bg-orange" />
+      <span className="bg-blue" />
+      <span className="bg-green" />
     </span>
   );
 }
@@ -573,7 +588,7 @@ export function Avatar({ name, className }: { name?: string | null; className?: 
     <span
       aria-hidden
       className={cx(
-        "grid size-7 shrink-0 place-items-center rounded-full bg-accent-subtle text-[11px] font-semibold text-accent-text",
+        "grid size-7 shrink-0 place-items-center rounded-full bg-surface-subtle text-[11px] font-semibold text-foreground ring-1 ring-border-strong",
         className,
       )}
     >

@@ -8,7 +8,87 @@
  *   foreground / muted on background, surface and surface-subtle
  *   <tone>-fg on <tone>-bg, accent-foreground on accent, accent-text on surface.
  */
+/* Theme A, "Editorial stripe": dark charcoal by default, four flat hues used on purpose. */
 :root {
+  color-scheme: dark;
+
+  /* Neutrals (neutral charcoal, no blue cast) */
+  --background: #222222;
+  --surface: #2b2b2b;
+  --surface-subtle: #343434;
+  --surface-raised: #363636;
+  --foreground: #f1f1f1;
+  --muted: #ababab; /* >= 5:1 on every surface */
+  --border: #3f3f3f;
+  --border-strong: #5a5a5a;
+
+  /* The four palette hues. Solid shades carry white text (>= 4.5:1); -text shades are
+     lighter, for coloured text on the charcoal surfaces. */
+  --blue: #2f6db5;
+  --blue-hover: #265c9c;
+  --blue-text: #7db4f5;
+  --blue-subtle: #263548;
+  --orange: #b84e0f;
+  --orange-hover: #9c410b;
+  --orange-text: #f5a46b;
+  --orange-subtle: #43301f;
+  --green: #2a7a4b;
+  --green-hover: #226640;
+  --green-text: #6fd29a;
+  --green-subtle: #213a2c;
+  --pink: #c2255c;
+  --pink-hover: #a61e4e;
+  --pink-text: #f585ab;
+  --pink-subtle: #44242f;
+
+  /* Current section (see [data-section] below); Jobs blue unless a page says otherwise */
+  --section: var(--blue);
+
+  --accent-foreground: #ffffff;
+
+  --success: #4cc783;
+  --success-bg: #213a2c;
+  --success-fg: #86dfae;
+  --success-border: #2f5a42;
+  --warning: #f29a4e;
+  --warning-bg: #43301f;
+  --warning-fg: #f6ae72;
+  --warning-border: #6e4a28;
+  --danger: #f0587f;
+  --danger-bg: #44242f;
+  --danger-fg: #ff9fb9;
+  --danger-border: #7c3a4f;
+  --info: #5a9fe8;
+  --info-bg: #263548;
+  --info-fg: #90bef3;
+  --info-border: #36527a;
+  --neutral-bg: #383838;
+  --neutral-fg: #d6d6d6;
+  --neutral-border: #4a4a4a;
+
+  --elev-xs: none;
+  --elev-card: none;
+  --elev-raised: 0 12px 28px -8px rgb(0 0 0 / 0.65);
+}
+
+/* Section colours: any element with data-section re-points --section (and the accent
+   tokens derived from it) for everything inside it. */
+[data-section="jobs"] { --section: var(--blue); }
+[data-section="applications"] { --section: var(--orange); }
+[data-section="resume"] { --section: var(--green); }
+[data-section="settings"] { --section: var(--pink); }
+
+:root,
+[data-section] {
+  --accent: var(--section);
+  --accent-hover: color-mix(in oklab, var(--section) 82%, black);
+  --accent-subtle: color-mix(in oklab, var(--section) 22%, var(--surface));
+  --accent-text: color-mix(in oklab, var(--section) 45%, white);
+  --ring: color-mix(in oklab, var(--section) 55%, white);
+  --section-text: color-mix(in oklab, var(--section) 45%, white);
+}
+
+:root[data-theme="light"] {
   color-scheme: light;
 
   /* Neutrals */
@@ -21,13 +101,7 @@
   --border: #e4e4e7;
   --border-strong: #d1d1d6; /* inputs, hovered borders */
 
-  /* Accent (brand) */
-  --accent: #4f46e5;
-  --accent-hover: #4338ca;
-  --accent-foreground: #ffffff; /* text on accent */
-  --accent-subtle: #eef0ff; /* tinted backgrounds, active nav */
-  --accent-text: #3f37c9; /* accent-colored text and links */
-  --ring: #4f46e5;
+  --accent-foreground: #ffffff;
 
   /* Semantic tones: solid (dots, meters), bg / fg / border (badges, alerts) */
   --success: #12b76a;
@@ -50,57 +124,23 @@
   --neutral-fg: #3f3f46;
   --neutral-border: #e4e4e7;
 
+  --blue: #2f6db5; --blue-hover: #265c9c; --blue-text: #1f559a; --blue-subtle: #e8f0fa;
+  --orange: #b84e0f; --orange-hover: #9c410b; --orange-text: #9a420a; --orange-subtle: #fbeee4;
+  --green: #2a7a4b; --green-hover: #226640; --green-text: #1d6b3f; --green-subtle: #e6f4ec;
+  --pink: #c2255c; --pink-hover: #a61e4e; --pink-text: #a81e51; --pink-subtle: #fbe8ef;
+  --section: var(--blue);
+
   /* Elevation */
   --elev-xs: 0 1px 2px 0 rgb(16 24 40 / 0.05);
   --elev-card: 0 1px 2px 0 rgb(16 24 40 / 0.04), 0 1px 3px 0 rgb(16 24 40 / 0.04);
   --elev-raised: 0 4px 6px -2px rgb(16 24 40 / 0.05), 0 12px 16px -4px rgb(16 24 40 / 0.08);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-
-    --background: #09090b;
-    --surface: #111114;
-    --surface-subtle: #18181c;
-    --surface-raised: #1a1a1f;
-    --foreground: #ededf0;
-    --muted: #a0a0ab;
-    --border: #26262c;
-    --border-strong: #3a3a42;
-
-    --accent: #5b5bf0;
-    --accent-hover: #6d6ff3;
-    --accent-foreground: #ffffff;
-    --accent-subtle: #1c1d3f;
-    --accent-text: #a5b4fc;
-    --ring: #818cf8;
-
-    --success: #32d583;
-    --success-bg: #0b2a1c;
-    --success-fg: #6ce9a6;
-    --success-border: #11553a;
-    --warning: #fdb022;
-    --warning-bg: #2e1f08;
-    --warning-fg: #fdb022;
-    --warning-border: #5c3d0c;
-    --danger: #f04438;
-    --danger-bg: #331314;
-    --danger-fg: #fda29b;
-    --danger-border: #6b2422;
-    --info: #53b1fd;
-    --info-bg: #0f1f3d;
-    --info-fg: #93c5fd;
-    --info-border: #1e3a6e;
-    --neutral-bg: #1f1f24;
-    --neutral-fg: #d4d4d8;
-    --neutral-border: #2e2e35;
-
-    /* Shadows barely show on dark; a faint top highlight gives the depth instead. */
-    --elev-xs: 0 1px 2px 0 rgb(0 0 0 / 0.4);
-    --elev-card: inset 0 1px 0 0 rgb(255 255 255 / 0.03), 0 1px 2px 0 rgb(0 0 0 / 0.4);
-    --elev-raised: inset 0 1px 0 0 rgb(255 255 255 / 0.05), 0 12px 24px -6px rgb(0 0 0 / 0.6);
-  }
+:root[data-theme="light"],
+:root[data-theme="light"] [data-section] {
+  --accent-subtle: color-mix(in oklab, var(--section) 12%, white);
+  --accent-text: color-mix(in oklab, var(--section) 85%, black);
+  --section-text: color-mix(in oklab, var(--section) 85%, black);
 }
 
 @theme inline {
@@ -144,14 +184,26 @@
   --shadow-card: var(--elev-card);
   --shadow-raised: var(--elev-raised);
 
+  --color-section: var(--section);
+  --color-section-text: var(--section-text);
+  --color-blue: var(--blue);
+  --color-orange: var(--orange);
+  --color-green: var(--green);
+  --color-pink: var(--pink);
+  --color-blue-text: var(--blue-text);
+  --color-orange-text: var(--orange-text);
+  --color-green-text: var(--green-text);
+  --color-pink-text: var(--pink-text);
+
+  --font-display: var(--font-display), "Arial Narrow", Impact, sans-serif;
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
 @theme {
   /* rounded-control (buttons, inputs), rounded-card (cards, alerts), rounded-pill */
-  --radius-control: 0.5rem;
-  --radius-card: 0.75rem;
+  --radius-control: 0.25rem;
+  --radius-card: 0.375rem;
   --radius-pill: 9999px;
 }
 
@@ -169,7 +221,6 @@
     background: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
-    font-feature-settings: "cv11", "ss01";
     text-rendering: optimizeLegibility;
   }
 

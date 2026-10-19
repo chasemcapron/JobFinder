@@ -2,14 +2,26 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { cx, Icon, type IconName } from "./ui";
+import type { ReactNode } from "react";
+import { cx, Icon, type IconName, type Section } from "./ui";
 
-const LINKS: readonly { href: string; label: string; icon: IconName }[] = [
-  { href: "/jobs", label: "Jobs", icon: "briefcase" },
-  { href: "/applications", label: "Applications", icon: "inbox" },
-  { href: "/resume", label: "Resume", icon: "file" },
-  { href: "/settings", label: "Settings", icon: "settings" },
+const LINKS: readonly { href: string; label: string; icon: IconName; section: Section }[] = [
+  { href: "/jobs", label: "Jobs", icon: "briefcase", section: "jobs" },
+  { href: "/applications", label: "Applications", icon: "inbox", section: "applications" },
+  { href: "/resume", label: "Resume", icon: "file", section: "resume" },
+  { href: "/settings", label: "Settings", icon: "settings", section: "settings" },
 ];
+
+/** Wraps the page content so everything inside picks up the current section's colour. */
+export function SectionScope({ children, className, id }: { children: ReactNode; className?: string; id?: string }) {
+  const pathname = usePathname();
+  const section = LINKS.find((l) => pathname === l.href || pathname.startsWith(`${l.href}/`))?.section;
+  return (
+    <main id={id} data-section={section} className={className}>
+      {children}
+    </main>
+  );
+}
 
 /** Tab-bar grid under the header on phones, inline pills from `sm` up. */
 export function NavLinks() {
@@ -23,15 +35,16 @@ export function NavLinks() {
             key={link.href}
             href={link.href}
             aria-current={active ? "page" : undefined}
+            data-section={link.section}
             className={cx(
-              "flex flex-col items-center gap-1 rounded-control px-2 py-1.5 text-xs font-medium whitespace-nowrap transition-colors",
-              "sm:flex-row sm:gap-2 sm:px-3 sm:text-sm",
+              "flex flex-col items-center gap-1 rounded-control px-2 py-1.5 font-display text-sm font-medium tracking-wider whitespace-nowrap uppercase transition-colors",
+              "sm:flex-row sm:gap-2 sm:px-3.5 sm:text-[15px]",
               active
-                ? "bg-surface-subtle text-foreground shadow-[inset_0_0_0_1px_var(--border)]"
-                : "text-muted hover:bg-surface-subtle/70 hover:text-foreground",
+                ? "bg-section text-white"
+                : "text-muted hover:bg-surface-subtle hover:text-foreground",
             )}
           >
-            <Icon name={link.icon} className={active ? "text-accent-text" : undefined} />
+            <Icon name={link.icon} />
             {link.label}
           </Link>
         );

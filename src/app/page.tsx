@@ -4,14 +4,25 @@ import { SubmitButton } from "@/components/action-form";
 import { Alert, BrandMark, Divider, Icon, type IconName } from "@/components/ui";
 import { env } from "@/lib/env";
 
-const FEATURES: { icon: IconName; title: string; body: string }[] = [
+const FEATURES: { icon: IconName; title: string; body: string; color: string }[] = [
   {
     icon: "target",
     title: "Matched to your resume",
     body: "Postings from Greenhouse, Lever, Ashby, Adzuna, and USAJobs, ranked by fit.",
+    color: "bg-blue",
   },
-  { icon: "sheet", title: "Tracked in your Google Sheet", body: "Mark a job applied and it's logged as a new row." },
-  { icon: "mail", title: "A morning digest", body: "The top new matches in your inbox every day." },
+  {
+    icon: "sheet",
+    title: "Tracked in your Google Sheet",
+    body: "Mark a job applied and it's logged as a new row.",
+    color: "bg-orange",
+  },
+  {
+    icon: "mail",
+    title: "A morning digest",
+    body: "The top new matches in your inbox every day.",
+    color: "bg-green",
+  },
 ];
 
 function GoogleLogo() {
@@ -42,34 +53,36 @@ export default async function Home({ searchParams }: PageProps<"/">) {
 
   return (
     <main className="relative isolate flex w-full flex-1 flex-col items-center justify-center px-4 py-12 sm:py-20">
-      <div
-        aria-hidden
-        className="absolute inset-x-0 top-0 -z-10 h-[28rem] bg-[radial-gradient(ellipse_60%_60%_at_50%_0%,color-mix(in_oklab,var(--accent)_16%,transparent),transparent)]"
-      />
+      <div aria-hidden className="absolute inset-x-0 top-0 grid h-1.5 grid-cols-4">
+        <span className="bg-pink" />
+        <span className="bg-orange" />
+        <span className="bg-blue" />
+        <span className="bg-green" />
+      </div>
 
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center text-center">
           <BrandMark size="lg" />
-          <h1 className="mt-5 text-3xl font-semibold tracking-tight">Job Finder</h1>
+          <h1 className="mt-5 font-display text-5xl leading-none font-semibold tracking-wider uppercase">Job Finder</h1>
           <p className="mt-2 text-balance text-muted">Find jobs that fit your resume, and keep track of where you applied.</p>
         </div>
 
-        <div className="rounded-card border border-border bg-surface p-6 shadow-raised sm:p-8">
-          <ul className="flex flex-col gap-4">
+        <div className="rounded-card border border-border bg-surface p-6 sm:p-8">
+          <ul className="flex flex-col">
             {FEATURES.map((f) => (
-              <li key={f.title} className="flex gap-3">
-                <span className="grid size-8 shrink-0 place-items-center rounded-control bg-accent-subtle text-accent-text">
+              <li key={f.title} className="flex gap-3 border-b border-border py-4 first:pt-0 last:border-b-0 last:pb-0">
+                <span className={`grid size-9 shrink-0 place-items-center rounded-control text-white ${f.color}`}>
                   <Icon name={f.icon} />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium">{f.title}</p>
+                  <p className="font-display text-base font-medium tracking-wider uppercase">{f.title}</p>
                   <p className="text-sm text-muted">{f.body}</p>
                 </div>
               </li>
             ))}
           </ul>
 
-          <Divider className="my-6" />
+          <Divider className="my-5" />
 
           <div className="flex flex-col gap-3">
             {error === "AccessDenied" ? (
