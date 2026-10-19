@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { signOut } from "@/auth";
-import { NavLinks } from "@/components/nav-links";
+import { NavLinks, SectionScope } from "@/components/nav-links";
 import { Avatar, BrandMark, Button, Icon } from "@/components/ui";
 import { requireUser } from "@/lib/session";
 
@@ -20,9 +20,15 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       >
         Skip to content
       </a>
-      <header className="sticky top-0 z-40 border-b border-border bg-surface/85 backdrop-blur-md">
+      <header className="sticky top-0 z-40 border-b border-border bg-surface/90 backdrop-blur-md">
+        <div aria-hidden className="stripe grid h-1 grid-cols-4">
+          <span className="bg-pink" />
+          <span className="bg-orange" />
+          <span className="bg-blue" />
+          <span className="bg-green" />
+        </div>
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5 sm:px-6">
-          <Link href="/jobs" className="flex items-center gap-2.5 rounded-control font-semibold tracking-tight">
+          <Link href="/jobs" className="flex items-center gap-2.5 rounded-control font-display text-lg font-bold tracking-tight">
             <BrandMark />
             Job Finder
           </Link>
@@ -43,9 +49,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           </div>
         </div>
       </header>
-      <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-10">
+      <SectionScope id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-10">
         {children}
-      </main>
+      </SectionScope>
     </>
   );
 }

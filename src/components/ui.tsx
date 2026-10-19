@@ -166,11 +166,11 @@ export function Spinner({ className }: { className?: string }) {
 /* ---------------------------------------------------------------- Buttons */
 
 const buttonVariants = {
-  primary: "bg-accent text-accent-foreground shadow-xs hover:bg-accent-hover",
-  secondary: "border border-border-strong bg-surface text-foreground shadow-xs hover:bg-surface-subtle",
+  primary: "bg-section text-section-on shadow-xs hover:brightness-90",
+  secondary: "border border-border-strong bg-surface-subtle text-foreground shadow-xs hover:bg-surface-raised",
   ghost: "text-foreground hover:bg-surface-subtle",
   subtle: "bg-accent-subtle text-accent-text hover:bg-accent-subtle/70",
-  danger: "border border-danger-border bg-surface text-danger-fg shadow-xs hover:bg-danger-bg",
+  danger: "border border-danger-border bg-transparent text-danger-fg shadow-xs hover:bg-danger-bg",
 } as const;
 
 const buttonSizes = {
@@ -188,7 +188,7 @@ export type ButtonSize = keyof typeof buttonSizes;
 export function buttonClass(variant: ButtonVariant = "primary", size: ButtonSize = "md") {
   return cx(
     "inline-flex shrink-0 items-center justify-center rounded-control font-medium whitespace-nowrap no-underline select-none",
-    "transition-[color,background-color,border-color,box-shadow,opacity] duration-150",
+    "transition-[color,background-color,border-color,box-shadow,opacity,transform,filter] duration-150 active:translate-y-px active:scale-[0.97]",
     "disabled:cursor-not-allowed disabled:opacity-50 aria-busy:cursor-wait",
     buttonSizes[size],
     buttonVariants[variant],
@@ -223,24 +223,36 @@ export function Button({
 
 /** Inline text link style (accent colored, AA on surface in both themes). */
 export const linkClass =
-  "font-medium text-accent-text underline-offset-2 hover:underline focus-visible:rounded-sm";
+  "font-medium text-section-fg underline-offset-2 hover:underline focus-visible:rounded-sm";
 
 /* ------------------------------------------------------------------ Cards */
 
 const cardPadding = { none: "", sm: "p-3 sm:p-4", md: "p-4 sm:p-6" } as const;
 
+const cardEdge: Record<Tone, string> = {
+  neutral: "border-l-4 border-l-border-strong",
+  accent: "border-l-4 border-l-accent",
+  success: "border-l-4 border-l-success",
+  warning: "border-l-4 border-l-warning",
+  danger: "border-l-4 border-l-danger",
+  info: "border-l-4 border-l-info",
+};
+
+/** `edge` adds a 4px coloured left edge in a tone (e.g. `matchTone(score)` on job cards). */
 export function Card({
   className,
   padding = "md",
   interactive = false,
+  edge,
   ...props
-}: ComponentProps<"section"> & { padding?: keyof typeof cardPadding; interactive?: boolean }) {
+}: ComponentProps<"section"> & { padding?: keyof typeof cardPadding; interactive?: boolean; edge?: Tone }) {
   return (
     <section
       className={cx(
         "rounded-card border border-border bg-surface shadow-card",
         cardPadding[padding],
-        interactive && "transition-colors hover:border-border-strong",
+        edge && cardEdge[edge],
+        interactive && "transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-raised",
         className,
       )}
       {...props}
@@ -263,7 +275,7 @@ export function CardHeader({
     <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
       <div className="flex min-w-0 items-start gap-3">
         {icon ? (
-          <span className="grid size-8 shrink-0 place-items-center rounded-control border border-border bg-surface-subtle text-muted">
+          <span className="grid size-8 shrink-0 place-items-center rounded-control bg-section text-section-on [&_svg]:size-4">
             {icon}
           </span>
         ) : null}
@@ -281,9 +293,9 @@ export function CardHeader({
 
 /** For <input>, <textarea> and <select>. Use `selectClass` for a select with the custom chevron. */
 export const inputClass = cx(
-  "block w-full min-w-0 rounded-control border border-border-strong bg-surface px-3 py-[7px] text-sm text-foreground shadow-xs",
+  "block w-full min-w-0 rounded-control border border-border-strong bg-background px-3 py-[7px] text-sm text-foreground shadow-xs",
   "transition-[border-color,box-shadow] duration-150 placeholder:text-muted",
-  "focus:border-accent focus:ring-3 focus:ring-accent/25 focus:outline-none focus-visible:outline-none",
+  "focus:border-section focus:ring-3 focus:ring-section/25 focus:outline-none focus-visible:outline-none",
   "disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:opacity-70",
   "aria-invalid:border-danger aria-invalid:ring-danger/20",
   "file:mr-3 file:rounded-md file:border-0 file:bg-surface-subtle file:px-2.5 file:py-0.5 file:text-[13px] file:font-medium file:text-foreground",
@@ -365,6 +377,28 @@ export function Badge({
   );
 }
 
+const sourceHue: Record<string, string> = {
+  greenhouse: "border-green/30 bg-green/15 text-success-fg",
+  lever: "border-pink/30 bg-pink/15 text-danger-fg",
+  ashby: "border-blue/40 bg-blue/15 text-info-fg",
+  adzuna: "border-orange/30 bg-orange/15 text-warning-fg",
+  usajobs: "border-blue/40 bg-blue/15 text-info-fg",
+};
+
+/** "via Greenhouse" chip, each job board in its own hue. */
+export function SourceBadge({ source, children }: { source: string; children: ReactNode }) {
+  return (
+    <span
+      className={cx(
+        "inline-flex items-center rounded-pill border px-2 py-px text-xs leading-5 font-medium whitespace-nowrap",
+        sourceHue[source] ?? "border-neutral-border bg-neutral-bg text-neutral-fg",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
 const alertIcon: Record<"info" | "success" | "error" | "warning", IconName> = {
   info: "info",
   success: "check-circle",
@@ -420,14 +454,49 @@ export function EmptyState({
   return (
     <div className="flex flex-col items-center gap-3 rounded-card border border-dashed border-border-strong bg-surface/50 px-6 py-14 text-center">
       {icon ? (
-        <span className="mb-1 grid size-11 place-items-center rounded-full border border-border bg-surface text-muted shadow-xs [&_svg]:size-5">
+        <span className="relative mb-2 grid size-12 -rotate-3 place-items-center rounded-card bg-section text-section-on shadow-xs [&_svg]:size-6">
           {icon}
+          <span aria-hidden className="absolute -top-1.5 -right-2.5 size-2.5 rotate-12 rounded-[3px] bg-pink" />
+          <span aria-hidden className="absolute -bottom-1.5 -left-2.5 size-2.5 -rotate-12 rounded-[3px] bg-blue" />
+          <span aria-hidden className="absolute -right-1.5 -bottom-2 size-2 rounded-[2px] bg-orange" />
         </span>
       ) : null}
       <h3 className="text-base font-semibold tracking-tight">{title}</h3>
       {children ? <div className="max-w-md text-sm text-muted">{children}</div> : null}
       {action ? <div className="mt-2">{action}</div> : null}
     </div>
+  );
+}
+
+const SECTION_ICONS: { section: string; icon: IconName }[] = [
+  { section: "jobs", icon: "briefcase" },
+  { section: "applications", icon: "inbox" },
+  { section: "resume", icon: "file" },
+  { section: "settings", icon: "settings" },
+];
+
+/** Coloured icon tile for the current section; the icon shows via the [data-section] ancestor (see SectionScope). */
+function SectionTile() {
+  return (
+    <span
+      aria-hidden
+      className="hidden size-11 shrink-0 place-items-center -rotate-3 rounded-card bg-section text-section-on shadow-xs [[data-section]_&]:grid [&_svg]:size-5"
+    >
+      {SECTION_ICONS.map(({ section, icon }) => (
+        <span
+          key={section}
+          className={cx(
+            "hidden",
+            section === "jobs" && "[[data-section=jobs]_&]:block",
+            section === "applications" && "[[data-section=applications]_&]:block",
+            section === "resume" && "[[data-section=resume]_&]:block",
+            section === "settings" && "[[data-section=settings]_&]:block",
+          )}
+        >
+          <Icon name={icon} />
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -444,10 +513,14 @@ export function PageHeader({
 }) {
   return (
     <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
-      <div className="min-w-0">
-        {eyebrow ? <p className="mb-1 text-xs font-medium tracking-wide text-muted uppercase">{eyebrow}</p> : null}
-        <h1 className="text-2xl font-semibold tracking-tight text-balance">{title}</h1>
-        {description ? <p className="mt-1.5 max-w-2xl text-sm text-muted">{description}</p> : null}
+      <div className="flex min-w-0 items-start gap-3.5">
+        <SectionTile />
+        <div className="min-w-0">
+          {eyebrow ? <p className="mb-1 text-xs font-medium tracking-wide text-section-fg uppercase">{eyebrow}</p> : null}
+          <h1 className="font-display text-[1.75rem] leading-9 font-bold tracking-tight text-balance">{title}</h1>
+          <span aria-hidden className="mt-1 block h-1 w-10 rounded-pill bg-section" />
+          {description ? <p className="mt-2 max-w-2xl text-sm text-muted">{description}</p> : null}
+        </div>
       </div>
       {action ? <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div> : null}
     </div>
@@ -503,20 +576,30 @@ export function matchTone(score: number): Tone {
   return score >= 75 ? "success" : score >= 55 ? "info" : score >= 35 ? "warning" : "neutral";
 }
 
+/** Solid tier tiles: green 75+, blue 55+, orange 35+, grey below. Text pairs are AA. */
+const scoreSolid: Record<Tone, string> = {
+  success: "bg-success text-ink",
+  info: "bg-blue text-white",
+  warning: "bg-warning text-ink",
+  neutral: "bg-surface-raised text-foreground",
+  accent: "bg-accent text-accent-foreground",
+  danger: "bg-danger text-ink",
+};
+
 /** Square match-score tile, e.g. `<ScoreBadge score={82} label="KW" />`. */
 export function ScoreBadge({ score, label, title }: { score: number; label?: string; title?: string }) {
   return (
     <span
       title={title}
       className={cx(
-        "inline-flex size-11 shrink-0 flex-col items-center justify-center rounded-control border tabular-nums",
-        toneSoft[matchTone(score)],
+        "inline-flex size-11 shrink-0 flex-col items-center justify-center rounded-control tabular-nums shadow-xs",
+        scoreSolid[matchTone(score)],
       )}
     >
       <span className="sr-only">Match score </span>
       <span className="text-base leading-none font-semibold">{Math.round(score)}</span>
       {label ? (
-        <span className="mt-0.5 text-[9px] leading-none font-medium tracking-wide uppercase opacity-75">{label}</span>
+        <span className="mt-0.5 text-[9px] leading-none font-semibold tracking-wide uppercase opacity-80">{label}</span>
       ) : null}
     </span>
   );
@@ -544,17 +627,20 @@ export function ScoreMeter({ score, showValue = true, className }: { score: numb
 
 /* ------------------------------------------------------------------ Misc */
 
-/** The app's logo mark: an accent tile with a target. */
+/** The app's logo mark: a charcoal tile holding four flat colour squares. */
 export function BrandMark({ size = "md" }: { size?: "md" | "lg" }) {
   return (
     <span
       aria-hidden
       className={cx(
-        "grid shrink-0 place-items-center bg-linear-to-br from-accent to-accent-hover text-accent-foreground shadow-xs",
-        size === "lg" ? "size-11 rounded-card [&_svg]:size-6" : "size-7 rounded-control",
+        "grid shrink-0 grid-cols-2 gap-[3px] border border-border-strong bg-surface-subtle shadow-xs",
+        size === "lg" ? "size-12 rounded-card p-[7px]" : "size-7 rounded-control p-[4px]",
       )}
     >
-      <Icon name="target" />
+      <span className="rounded-[3px] bg-pink" />
+      <span className="rounded-[3px] bg-orange" />
+      <span className="rounded-[3px] bg-blue" />
+      <span className="rounded-[3px] bg-green" />
     </span>
   );
 }
