@@ -1,8 +1,8 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { SubmitButton } from "@/components/action-form";
-import { Alert, Badge, Card, CardHeader, inputClass, Label } from "@/components/ui";
+import { ActionForm, SubmitButton } from "@/components/action-form";
+import { Alert, Badge, Card, CardHeader, cx, EmptyState, FieldHint, Icon, inputClass, Label, selectClass } from "@/components/ui";
 import { EXPERIENCE_LEVELS, type ExperienceLevel } from "@/db/schema";
 import { EXPERIENCE_LABELS } from "@/lib/jobs/experience";
 import { analyzeResumeAction, saveResumeProfile, type AnalyzeState } from "./actions";
@@ -18,7 +18,6 @@ type Draft = {
 
 export function ResumeEditor({ saved, aiEnabled }: { saved: Draft & { updatedAt: string | null }; aiEnabled: boolean }) {
   const [analyzeState, analyzeAction] = useActionState<AnalyzeState, FormData>(analyzeResumeAction, null);
-  const [saveState, saveAction] = useActionState(saveResumeProfile, null);
   const [mode, setMode] = useState<"file" | "text">("file");
 
   // A fresh analysis replaces the editor's defaults; otherwise show what's saved.
@@ -33,14 +32,15 @@ export function ResumeEditor({ saved, aiEnabled }: { saved: Draft & { updatedAt:
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader
+          icon={<Icon name="upload" />}
           title="1. Upload"
           description={
             aiEnabled
               ? "Your resume is sent to Claude to extract structured data."
-              : "ANTHROPIC_API_KEY isn't set, so a built-in keyword extractor is used instead of Claude."
+              : "No AI key is set, so a built-in keyword extractor reads your resume instead of Claude."
           }
         />
-        <div role="tablist" className="mb-4 inline-flex rounded-md border border-border p-0.5 text-sm">
+        <div role="tablist" aria-label="Resume input" className="mb-4 inline-flex rounded-control border border-border bg-surface-subtle p-0.5 text-sm">
           {(["file", "text"] as const).map((m) => (
             <button
               key={m}
@@ -48,7 +48,10 @@ export function ResumeEditor({ saved, aiEnabled }: { saved: Draft & { updatedAt:
               role="tab"
               aria-selected={mode === m}
               onClick={() => setMode(m)}
-              className={`rounded px-3 py-1 ${mode === m ? "bg-accent text-accent-foreground" : "text-muted"}`}
+              className={cx(
+                "rounded-md px-3 py-1 font-medium transition-colors",
+                mode === m ? "bg-surface text-foreground shadow-xs" : "text-muted hover:text-foreground",
+              )}
             >
               {m === "file" ? "Upload file" : "Paste text"}
             </button>
@@ -57,16 +60,15 @@ export function ResumeEditor({ saved, aiEnabled }: { saved: Draft & { updatedAt:
         <form action={analyzeAction} className="flex flex-col gap-4">
           {mode === "file" ? (
             <div>
-              <Label htmlFor="file" hint="(PDF or .docx, up to 4 MB)">
-                Resume file
-              </Label>
+              <Label htmlFor="file">Resume file</Label>
               <input
                 id="file"
                 name="file"
                 type="file"
                 accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                className="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-accent file:px-3 file:py-2 file:text-accent-foreground"
+                className={cx(inputClass, "cursor-pointer")}
               />
+              <FieldHint>PDF or .docx, up to 4 MB.</FieldHint>
             </div>
           ) : (
             <div>
@@ -75,10 +77,10 @@ export function ResumeEditor({ saved, aiEnabled }: { saved: Draft & { updatedAt:
             </div>
           )}
           <div className="flex flex-wrap items-center gap-3">
-            <SubmitButton label="Extract" pendingLabel={aiEnabled ? "Analyzing with Claude…" : "Extracting…"} />
+            <SubmitButton label="Extract" icon={<Icon name="search" />} pendingLabel={aiEnabled ? "Analyzing with Claude…" : "Extracting…"} />
             {analyzeState?.ok === false ? <Alert tone="error">{analyzeState.message}</Alert> : null}
             {analyzeState?.ok === true ? (
-              <Alert tone="info">
+              <Alert tone="success">
                 Extracted{analyzeState.fileName ? ` from ${analyzeState.fileName}` : ""}. Review below, then save.
               </Alert>
             ) : null}
@@ -89,19 +91,20 @@ export function ResumeEditor({ saved, aiEnabled }: { saved: Draft & { updatedAt:
       {hasDraft ? (
         <Card>
           <CardHeader
+            icon={<Icon name="file" />}
             title="2. Review and save"
             description="Edit anything that's off. These drive job search queries and match scoring."
             action={
               analyzeState?.ok === true ? (
-                <Badge tone={analyzeState.analysis.source === "claude" ? "blue" : "amber"}>
+                <Badge tone={analyzeState.analysis.source === "claude" ? "accent" : "neutral"} dot>
                   {analyzeState.analysis.source === "claude" ? "Extracted by Claude" : "Keyword extractor"}
                 </Badge>
               ) : saved.updatedAt ? (
-                <Badge>Saved</Badge>
+                <Badge tone="success" dot>Saved</Badge>
               ) : null
             }
           />
-          <form key={draftKey} action={saveAction} className="flex flex-col gap-4" onReset={(e) => e.preventDefault()}>
+          <ActionForm key={draftKey} action={saveResumeProfile} submitLabel="Save profile">
             <input type="hidden" name="fileName" value={draft.fileName ?? ""} />
             <div className="grid gap-4 md:grid-cols-2">
               <div>
@@ -112,7 +115,7 @@ export function ResumeEditor({ saved, aiEnabled }: { saved: Draft & { updatedAt:
               </div>
               <div>
                 <Label htmlFor="seniority">Seniority</Label>
-                <select id="seniority" name="seniority" defaultValue={draft.seniority ?? ""} className={inputClass}>
+                <select id="seniority" name="seniority" defaultValue={draft.seniority ?? ""} className={selectClass}>
                   <option value="">Not sure</option>
                   {EXPERIENCE_LEVELS.map((l) => (
                     <option key={l} value={l}>
@@ -134,8 +137,8 @@ export function ResumeEditor({ saved, aiEnabled }: { saved: Draft & { updatedAt:
               </Label>
               <textarea id="keywords" name="keywords" rows={2} className={inputClass} defaultValue={draft.keywords.join(", ")} />
             </div>
-            <details>
-              <summary className="cursor-pointer text-sm font-medium">Resume text ({draft.resumeText.length.toLocaleString()} characters)</summary>
+            <details className="group">
+              <summary className="cursor-pointer rounded-control text-sm font-medium text-accent-text">Resume text ({draft.resumeText.length.toLocaleString()} characters)</summary>
               <textarea
                 name="resumeText"
                 rows={14}
@@ -143,13 +146,13 @@ export function ResumeEditor({ saved, aiEnabled }: { saved: Draft & { updatedAt:
                 defaultValue={draft.resumeText}
               />
             </details>
-            <div className="flex flex-wrap items-center gap-3">
-              <SubmitButton label="Save profile" />
-              {saveState ? <Alert tone={saveState.ok ? "success" : "error"}>{saveState.message}</Alert> : null}
-            </div>
-          </form>
+          </ActionForm>
         </Card>
-      ) : null}
+      ) : (
+        <EmptyState icon={<Icon name="file" />} title="No profile yet">
+          Upload a resume or paste its text above. You can review and edit the extracted skills and titles before anything is saved.
+        </EmptyState>
+      )}
     </div>
   );
 }
