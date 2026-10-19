@@ -15,6 +15,13 @@
       "when": 1792452147546,
       "tag": "0001_resume_files",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792453008464,
+      "tag": "0002_rescale_keyword_scores",
+      "breakpoints": true
     }
   ]
 }

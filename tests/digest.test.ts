@@ -61,7 +61,7 @@ beforeEach(async () => {
   const [u] = await db.insert(schema.users).values({ email: "me@example.com" }).returning();
   userId = u.id;
   await ensureProfile(userId, db);
-  for (let i = 1; i <= 14; i++) await addJob(i, 100 - i * 4); // scores 96..44
+  for (let i = 1; i <= 14; i++) await addJob(i, 98 - i * 2); // scores 96..70, all above the digest threshold
   await addJob(99, 20); // below the digest threshold
 });
 
