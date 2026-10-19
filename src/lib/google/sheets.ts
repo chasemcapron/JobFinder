@@ -103,7 +103,21 @@ async function call<T>(fetchImpl: typeof fetch, token: string, url: string, init
 }
 
 /**
- * Writes one row below the last used row of the mapped columns.
+ * Fields that only have a value on a real application row. Trackers often pre-fill other
+ * columns (a Status dropdown default, a date or score formula) far below the last entry,
+ * so those columns can't tell where the entries end.
+ */
+const ROW_IDENTITY_FIELDS: SheetField[] = ["company", "title", "link"];
+
+/** Columns used to find the last entry: the mapped identity columns, or every mapped column if none are. */
+export function anchorColumns(map: SheetColumnMap): string[] {
+  const pick = (fields: SheetField[]) => [...new Set(fields.map((f) => map[f]).filter(Boolean) as string[])];
+  const identity = pick(ROW_IDENTITY_FIELDS);
+  return identity.length > 0 ? identity : pick(Object.keys(map) as SheetField[]);
+}
+
+/**
+ * Writes one row below the last entry (see anchorColumns).
  * Uses batchGet + values.update instead of values.append: append writes starting at the
  * detected table's first column, which misplaces values when the table doesn't start at A.
  */
@@ -118,10 +132,8 @@ export async function appendMappedRow(opts: {
   const f = opts.fetchImpl ?? fetch;
   const prefix = tabPrefix(opts.tab);
   const { startColumn, cells } = buildRow(opts.map, opts.values);
-  const mappedColumns = [...new Set(Object.values(opts.map).filter(Boolean) as string[])];
-
   const params = new URLSearchParams({ majorDimension: "COLUMNS" });
-  for (const col of mappedColumns) params.append("ranges", `${prefix}${col}:${col}`);
+  for (const col of anchorColumns(opts.map)) params.append("ranges", `${prefix}${col}:${col}`);
   const existing = await call<{ valueRanges?: { values?: unknown[][] }[] }>(
     f,
     opts.token,

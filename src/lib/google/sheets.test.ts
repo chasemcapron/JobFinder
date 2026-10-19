@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { appendMappedRow, asText, buildRow, columnIndex, columnLetter, inspectSheet, tabPrefix } from "./sheets";
+import { anchorColumns, appendMappedRow, asText, buildRow, columnIndex, columnLetter, inspectSheet, tabPrefix } from "./sheets";
 
 describe("column letters", () => {
   it("converts both ways", () => {
@@ -88,6 +88,29 @@ describe("appendMappedRow", () => {
       majorDimension: "ROWS",
       values: [["Acme", "Engineer", "https://x"]],
     });
+  });
+
+  it("ignores pre-filled status/date/score columns when finding the last entry", async () => {
+    const { impl, calls } = fakeFetch([
+      // Company and title end at row 99; Status (C) has a dropdown default down to row 966.
+      { body: { valueRanges: [{ values: [Array(99).fill("x")] }, { values: [Array(99).fill("x")] }, { values: [Array(80).fill("x")] }] } },
+      { body: {} },
+    ]);
+    const result = await appendMappedRow({
+      token: "t",
+      sheetId: "s",
+      tab: "Tracker",
+      map: { company: "A", title: "B", status: "C", link: "D", dateApplied: "F", score: "M" },
+      values: { company: "Acme", title: "Engineer", status: "Applied", link: "https://x", dateApplied: "2026-10-19", score: 80 },
+      fetchImpl: impl,
+    });
+    expect(new URL(calls[0].url).searchParams.getAll("ranges")).toEqual(["'Tracker'!A:A", "'Tracker'!B:B", "'Tracker'!D:D"]);
+    expect(result.row).toBe(100);
+  });
+
+  it("falls back to every mapped column when no identity column is mapped", () => {
+    expect(anchorColumns({ status: "C", dateApplied: "F" })).toEqual(["C", "F"]);
+    expect(anchorColumns({ company: "A", title: "A", status: "C" })).toEqual(["A"]);
   });
 
   it("writes to row 1 of an empty sheet", async () => {
