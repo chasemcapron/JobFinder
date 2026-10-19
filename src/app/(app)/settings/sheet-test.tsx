@@ -14,7 +14,8 @@ export function SheetTest({ disabled }: { disabled: boolean }) {
           type="button"
           variant="secondary"
           size="sm"
-          disabled={disabled || pending}
+          disabled={disabled}
+          loading={pending}
           onClick={() => startTransition(async () => setResult(await testSheetAction()))}
         >
           {pending ? "Checking…" : "Test connection"}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
-import { Badge, Button } from "@/components/ui";
+import { Badge, Button, Icon, linkClass } from "@/components/ui";
 import { removeTargetCompany, setTargetCompanyEnabled } from "./actions";
 
 const BOARD_URLS: Record<string, (slug: string) => string> = {
@@ -28,15 +28,16 @@ export function TargetCompanyRow({
   return (
     <li className="flex flex-wrap items-center justify-between gap-2 px-3 py-2" aria-busy={pending}>
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <Badge tone="blue">{ats}</Badge>
-        <a href={BOARD_URLS[ats]?.(slug)} target="_blank" rel="noreferrer" className={enabled ? "hover:underline" : "text-muted line-through"}>
+        <Badge tone="info">{ats}</Badge>
+        <a href={BOARD_URLS[ats]?.(slug)} target="_blank" rel="noreferrer" className={enabled ? `${linkClass} inline-flex items-center gap-1` : "text-muted line-through"}>
           {slug}
+          {enabled ? <Icon name="external-link" className="size-3" /> : null}
         </a>
         {enabled && lastResult ? (
           lastResult.ok ? (
             <span className="text-xs text-muted">{lastResult.count.toLocaleString()} postings last search</span>
           ) : (
-            <Badge tone="red">{lastResult.error ?? "Failed"}</Badge>
+            <Badge tone="danger" dot>{lastResult.error ?? "Failed"}</Badge>
           )
         ) : null}
       </div>

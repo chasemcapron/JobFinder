@@ -1,7 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
-import { Button, inputClass } from "@/components/ui";
+import { Button, Icon, selectClass } from "@/components/ui";
 import { APPLICATION_STATUSES, type ApplicationStatus } from "@/db/schema";
 import { removeApplicationAction, updateStatusAction } from "./actions";
 
@@ -16,7 +16,7 @@ const LABELS: Record<ApplicationStatus, string> = {
 export function ApplicationRowActions({ applicationId, status }: { applicationId: string; status: ApplicationStatus }) {
   const [pending, startTransition] = useTransition();
   return (
-    <div className="flex shrink-0 items-center gap-2" aria-busy={pending}>
+    <div className="flex shrink-0 flex-wrap items-center gap-2" aria-busy={pending}>
       <label className="sr-only" htmlFor={`status-${applicationId}`}>
         Status
       </label>
@@ -28,7 +28,7 @@ export function ApplicationRowActions({ applicationId, status }: { applicationId
           const value = e.target.value;
           startTransition(() => updateStatusAction(applicationId, value));
         }}
-        className={`${inputClass} w-auto py-1`}
+        className={`${selectClass} w-auto py-1`}
       >
         {APPLICATION_STATUSES.map((s) => (
           <option key={s} value={s}>
@@ -39,13 +39,15 @@ export function ApplicationRowActions({ applicationId, status }: { applicationId
       <Button
         variant="ghost"
         size="sm"
-        disabled={pending}
+        loading={pending}
+        className="text-muted hover:text-danger-fg"
         onClick={() => {
           if (confirm("Remove this application? This doesn't change your Google Sheet.")) {
             startTransition(() => removeApplicationAction(applicationId));
           }
         }}
       >
+        <Icon name="trash" />
         Remove
       </Button>
     </div>
