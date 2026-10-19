@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Alert, buttonClass, EmptyState, PageHeader } from "@/components/ui";
+import { Alert, buttonClass, EmptyState, Icon, linkClass, PageHeader } from "@/components/ui";
 import { formatDateTime } from "@/lib/format";
 import { activeFilterCount, filterMatches, filtersToSearchParams, locationFacets, paginate, parseFilters } from "@/lib/jobs/filters";
 import { lastSearchRun, listMatches } from "@/lib/jobs/results";
@@ -47,7 +47,7 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
       {!hasProfile && all.length > 0 ? (
         <div className="mb-4">
           <Alert tone="warning">
-            Jobs aren&apos;t ranked yet. <Link href="/resume" className="font-medium underline">Add your resume</Link> so they can be
+            Jobs aren&apos;t ranked yet. <Link href="/resume" className={linkClass}>Add your resume</Link> so they can be
             scored against your skills.
           </Alert>
         </div>
@@ -60,13 +60,14 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
               .slice(0, 3)
               .map((s) => s.source)
               .join(", ")}
-            {failedSources.length > 3 ? ", …" : ""}). Check <Link href="/settings" className="underline">target companies</Link>.
+            {failedSources.length > 3 ? ", …" : ""}). Check <Link href="/settings" className={linkClass}>target companies</Link>.
           </Alert>
         </div>
       ) : null}
 
       {all.length === 0 ? (
         <EmptyState
+          icon={<Icon name="briefcase" />}
           title={lastRun ? "No matches yet" : "Run your first search"}
           action={
             hasProfile ? null : (
@@ -92,13 +93,13 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
 
           <section className="min-w-0 flex-1" aria-label="Results">
             <p className="mb-3 text-sm text-muted" aria-live="polite">
-              {total === all.length
-                ? `${total.toLocaleString()} jobs`
-                : `${total.toLocaleString()} of ${all.length.toLocaleString()} jobs match these filters`}
+              <span className="font-semibold text-foreground">{total.toLocaleString()}</span>
+              {total === all.length ? " jobs" : ` of ${all.length.toLocaleString()} jobs match these filters`}
               {pages > 1 ? ` · page ${page} of ${pages}` : ""}
             </p>
             {items.length === 0 ? (
               <EmptyState
+                icon={<Icon name="search" />}
                 title="No jobs match these filters"
                 action={
                   <Link href="/jobs" className={buttonClass("secondary")}>
@@ -118,8 +119,9 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
             {pages > 1 ? (
               <nav className="mt-6 flex items-center justify-between gap-2" aria-label="Pagination">
                 {page > 1 ? (
-                  <Link href={pageHref(page - 1)} className={buttonClass("secondary", "sm")}>
-                    ← Previous
+                  <Link href={pageHref(page - 1)} className={buttonClass("secondary", "sm")} rel="prev">
+                    <Icon name="chevron-down" className="size-4 rotate-90" />
+                    Previous
                   </Link>
                 ) : (
                   <span />
@@ -128,8 +130,9 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
                   Page {page} of {pages}
                 </span>
                 {page < pages ? (
-                  <Link href={pageHref(page + 1)} className={buttonClass("secondary", "sm")}>
-                    Next →
+                  <Link href={pageHref(page + 1)} className={buttonClass("secondary", "sm")} rel="next">
+                    Next
+                    <Icon name="chevron-right" className="size-4" />
                   </Link>
                 ) : (
                   <span />
