@@ -28,7 +28,11 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         </p>
       </div>
 
-      {error ? <Alert tone="error">Sign-in failed ({String(error)}). Please try again.</Alert> : null}
+      {error === "AccessDenied" ? (
+        <Alert tone="error">This Google account isn&apos;t allowed to use this app.</Alert>
+      ) : error ? (
+        <Alert tone="error">Sign-in failed ({String(error)}). Please try again.</Alert>
+      ) : null}
 
       <div className="flex flex-col gap-3 sm:flex-row">
         {env.googleConfigured ? (

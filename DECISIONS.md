@@ -61,3 +61,5 @@ One line each: decision — why.
 - `outputFileTracingIncludes` adds pdf.js's worker to the /resume function: pdf.js loads it with a computed import that file tracing can't follow. Verified by uploading a PDF to a standalone build, which (like Vercel) ships only traced files.
 - Settings shows each target company's result from the last search (posting count, or the error), so broken slugs are easy to spot.
 - README documents that Google OAuth apps in Testing mode get refresh tokens that expire after 7 days — the brief asks for Testing mode, so Sheets sync needs a re-login about weekly; the app says so when it happens.
+- `ALLOWED_EMAILS` allowlist checked in the Auth.js `signIn` callback (before the adapter creates a user): the app is single-user and public on Vercel, and Google's Testing-mode test-user list shouldn't be the only gate.
+- Accepted `npm audit` moderate (sprintf-js via mammoth → argparse): no patched sprintf-js exists, and argparse is only used by mammoth's CLI, never by the library calls the app makes.

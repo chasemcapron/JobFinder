@@ -71,10 +71,24 @@ export const env = {
     if (read("ENABLE_DEMO_LOGIN") === "false") return false;
     return !this.googleConfigured && !this.isProduction;
   },
+  /** Lowercased emails allowed to sign in with Google (ALLOWED_EMAILS, comma-separated). Empty = anyone. */
+  get allowedEmails(): string[] {
+    return (read("ALLOWED_EMAILS") ?? "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+  },
   get googleConfigured() {
     return Boolean(this.googleClientId && this.googleClientSecret);
   },
 };
+
+/** With ALLOWED_EMAILS set, only those addresses may sign in; without it, anyone Google lets through can. */
+export function isEmailAllowed(email: string | null | undefined): boolean {
+  const allowed = env.allowedEmails;
+  if (allowed.length === 0) return true;
+  return Boolean(email) && allowed.includes(email!.trim().toLowerCase());
+}
 
 export type FeatureStatus = { key: string; label: string; configured: boolean; note: string };
 
@@ -92,6 +106,15 @@ export function featureStatus(): FeatureStatus[] {
       label: "Google sign-in + Sheets",
       configured: env.googleConfigured,
       note: env.googleConfigured ? "Google OAuth configured" : "Demo sign-in only; Sheets sync disabled",
+    },
+    {
+      key: "allowlist",
+      label: "Sign-in allowlist",
+      configured: env.allowedEmails.length > 0,
+      note:
+        env.allowedEmails.length > 0
+          ? `Only ${env.allowedEmails.length} allowed email(s) can sign in`
+          : "Not set: any Google account your OAuth consent screen allows can sign in",
     },
     {
       key: "anthropic",

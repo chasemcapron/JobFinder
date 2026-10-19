@@ -50,6 +50,7 @@ Copy `.env.example` to `.env.local` and fill in what you have. Nothing is requir
 | `AUTH_SECRET` | Production (required) | Run `npx auth secret` or `openssl rand -base64 32` |
 | `AUTH_GOOGLE_ID` | Google sign-in + Sheets | Google Cloud OAuth client ID, see [Google OAuth](#google-oauth-and-sheets) |
 | `AUTH_GOOGLE_SECRET` | Google sign-in + Sheets | Same OAuth client |
+| `ALLOWED_EMAILS` | Production (strongly recommended) | Your Google email (comma-separate several). Only these accounts can sign in |
 | `ANTHROPIC_API_KEY` | Claude resume parsing and scoring | https://console.anthropic.com → API Keys |
 | `ANTHROPIC_MODEL` | Optional | Defaults to `claude-opus-5-5` |
 | `MAX_AI_SCORES_PER_RUN` | Optional cost cap | Jobs Claude scores per search (default 20) |

@@ -5,7 +5,7 @@ import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import { getDb } from "@/db";
 import { accounts, sessions, users, verificationTokens } from "@/db/schema";
-import { env } from "@/lib/env";
+import { env, isEmailAllowed } from "@/lib/env";
 
 export const GOOGLE_SCOPES = [
   "openid",
@@ -75,6 +75,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth(async () => {
     providers,
     pages: { signIn: "/" },
     callbacks: {
+      // Runs before the adapter creates or links the user, so a refused account leaves no rows.
+      signIn({ user, account, profile }) {
+        if (account?.provider !== "google") return true;
+        if (profile?.email_verified === false) return false;
+        return isEmailAllowed(user.email);
+      },
       jwt({ token, user }) {
         if (user?.id) token.sub = user.id;
         return token;

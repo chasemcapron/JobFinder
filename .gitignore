@@ -43,3 +43,9 @@ next-env.d.ts
 
 # local embedded database (PGlite)
 /.data/
+
+# local-only files: personal setup checklist and agent skills installed by `npx neon skills`
+/TODO.md
+/skills-lock.json
+/.claude/skills/
+/.claude/settings.local.json
