@@ -7,6 +7,7 @@ import { fetchGreenhouse } from "./greenhouse";
 import { fetchLever } from "./lever";
 import { mockJobs } from "./mock";
 import { fetchUsajobs, usajobsConfigured } from "./usajobs";
+import { TARGET_COUNTRY } from "../location";
 
 export const SOURCE_TIMEOUT_MS = 12_000;
 const MAX_CONCURRENCY = 8;
@@ -32,7 +33,8 @@ export function buildSourceTasks(profile: Profile, targets: Pick<TargetCompanyRo
       tasks.push({
         label: `adzuna: ${q.what}${q.where ? ` in ${q.where}` : ""}`,
         source: "adzuna",
-        run: ({ signal, profile: p }) => fetchAdzuna(q, p.adzunaCountry, signal),
+        // US only (see TARGET_COUNTRY); the old per-profile Adzuna country is ignored.
+        run: ({ signal }) => fetchAdzuna(q, TARGET_COUNTRY.toLowerCase(), signal),
       });
     }
   }

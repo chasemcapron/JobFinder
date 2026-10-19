@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatLocation, normalizeCountry, parseLocation } from "./location";
+import { formatLocation, isInTargetCountry, normalizeCountry, parseLocation } from "./location";
 
 // Every input below was seen in a real Greenhouse/Lever/Ashby response on 2026-10-15.
 describe("parseLocation", () => {
@@ -74,5 +74,14 @@ describe("formatLocation", () => {
     expect(formatLocation({ city: "Berlin", state: null, country: "DE", remote: false })).toBe("Berlin, Germany");
     expect(formatLocation({ city: null, state: null, country: "US", remote: true })).toBe("Remote · United States");
     expect(formatLocation({ city: null, state: null, country: null, remote: false }, "Somewhere")).toBe("Somewhere");
+  });
+});
+
+describe("isInTargetCountry", () => {
+  it("keeps US and unparsed locations, drops other countries", () => {
+    expect(isInTargetCountry({ country: "US" })).toBe(true);
+    expect(isInTargetCountry({ country: null })).toBe(true);
+    expect(isInTargetCountry({ country: "GB" })).toBe(false);
+    expect(isInTargetCountry({ country: "CA" })).toBe(false);
   });
 });

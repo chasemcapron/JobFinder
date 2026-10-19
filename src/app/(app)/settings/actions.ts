@@ -15,7 +15,6 @@ import {
   type SheetColumnMap,
   type SheetField,
 } from "@/db/schema";
-import { ADZUNA_COUNTRIES } from "@/lib/jobs/sources/adzuna-countries";
 import { inspectSheet, SHEET_FIELD_LABELS } from "@/lib/google/sheets";
 import { getGoogleAccessToken } from "@/lib/google/tokens";
 import { parseColumnLetter, parseList, parseSheetId, parseTargetCompany } from "@/lib/parse-input";
@@ -39,7 +38,6 @@ export async function savePreferences(_prev: ActionState, formData: FormData): P
       .map(String)
       .filter((l): l is ExperienceLevel => (EXPERIENCE_LEVELS as readonly string[]).includes(l));
     const remote = String(formData.get("remotePreference") ?? "any");
-    const country = String(formData.get("adzunaCountry") ?? "us");
     const db = await getDb();
     await db
       .update(profiles)
@@ -48,7 +46,7 @@ export async function savePreferences(_prev: ActionState, formData: FormData): P
         preferredLocations: parseList(String(formData.get("preferredLocations") ?? "")),
         experienceLevels: levels,
         remotePreference: (REMOTE_PREFERENCES as readonly string[]).includes(remote) ? (remote as RemotePreference) : "any",
-        adzunaCountry: ADZUNA_COUNTRIES.some((c) => c.code === country) ? country : "us",
+        adzunaCountry: "us",
         emailEnabled: formData.get("emailEnabled") === "on",
         matchingUpdatedAt: new Date(),
         updatedAt: new Date(),

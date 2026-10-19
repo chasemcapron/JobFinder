@@ -5,7 +5,6 @@ import { EXPERIENCE_LEVELS, SHEET_FIELDS } from "@/db/schema";
 import { env, featureStatus } from "@/lib/env";
 import { DEFAULT_COLUMN_MAP, SHEET_FIELD_LABELS } from "@/lib/google/sheets";
 import { EXPERIENCE_LABELS } from "@/lib/jobs/experience";
-import { ADZUNA_COUNTRIES } from "@/lib/jobs/sources/adzuna-countries";
 import { lastSearchRun } from "@/lib/jobs/results";
 import { listTargetCompanies } from "@/lib/profile";
 import { requireUser } from "@/lib/session";
@@ -89,16 +88,6 @@ export default async function SettingsPage() {
                 <option value="any">Remote or on-site</option>
                 <option value="remote_only">Remote only</option>
                 <option value="onsite_only">On-site / hybrid only</option>
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="adzunaCountry">Adzuna search country</Label>
-              <select id="adzunaCountry" name="adzunaCountry" defaultValue={profile.adzunaCountry} className={selectClass}>
-                {ADZUNA_COUNTRIES.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.name}
-                  </option>
-                ))}
               </select>
             </div>
           </div>

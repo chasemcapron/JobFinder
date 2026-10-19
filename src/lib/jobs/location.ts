@@ -170,3 +170,15 @@ export function formatLocation(loc: { city: string | null; state: string | null;
   if (loc.remote) return place ? `Remote · ${place}` : "Remote";
   return place || raw || "Location not listed";
 }
+
+/** The app only looks for jobs in the United States. */
+export const TARGET_COUNTRY = "US";
+
+/**
+ * True for US jobs and for jobs whose country couldn't be parsed. Unparsed ones are kept on
+ * purpose: in practice they are US postings the parser misses ("Remote in the US", "NYC-HQ",
+ * "US-Remote, Chicago", or "N/A"), and dropping them would lose real matches.
+ */
+export function isInTargetCountry(job: { country: string | null }): boolean {
+  return job.country === null || job.country === TARGET_COUNTRY;
+}

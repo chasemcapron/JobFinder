@@ -1,6 +1,7 @@
-import { and, desc, eq, gt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
 import { applications, jobMatches, jobs, searchRuns, type ApplicationStatus, type JobRow, type SheetSyncStatus } from "@/db/schema";
+import { TARGET_COUNTRY } from "./location";
 
 /** Postings not seen by any search in this long are treated as closed and hidden. */
 export const STALE_AFTER_DAYS = 21;
@@ -43,6 +44,9 @@ export type MatchResult = {
   } | null;
 };
 
+/** SQL twin of `isInTargetCountry`: US jobs plus jobs with no parsed country. Hides older non-US rows too. */
+export const inTargetCountry = or(isNull(jobs.country), eq(jobs.country, TARGET_COUNTRY));
+
 export async function listMatches(userId: string, db?: Db): Promise<MatchResult[]> {
   db ??= await getDb();
   const staleBefore = new Date(Date.now() - STALE_AFTER_DAYS * 86_400_000);
@@ -81,7 +85,7 @@ export async function listMatches(userId: string, db?: Db): Promise<MatchResult[
     .from(jobMatches)
     .innerJoin(jobs, eq(jobs.id, jobMatches.jobId))
     .leftJoin(applications, and(eq(applications.jobId, jobs.id), eq(applications.userId, userId)))
-    .where(and(eq(jobMatches.userId, userId), gt(jobs.lastSeenAt, staleBefore)))
+    .where(and(eq(jobMatches.userId, userId), gt(jobs.lastSeenAt, staleBefore), inTargetCountry))
     .orderBy(desc(jobMatches.score), desc(jobs.postedAt))
     .limit(MAX_RESULTS);
 
