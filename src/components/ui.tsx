@@ -571,10 +571,10 @@ export function Stat({
 
 /* ------------------------------------------------------------ Match score */
 
-/** Match strength: green = strong (60+), yellow = medium (40-59), red = weak (under 40). */
+/** Match strength on the 0-100 scale: green = strong (75+), yellow = medium (50-74), red = weak (under 50). */
 export type ScoreTier = "high" | "mid" | "low";
 
-export const SCORE_THRESHOLDS = { high: 60, mid: 40 } as const;
+export const SCORE_THRESHOLDS = { high: 75, mid: 50 } as const;
 
 export function scoreTier(score: number): ScoreTier {
   return score >= SCORE_THRESHOLDS.high ? "high" : score >= SCORE_THRESHOLDS.mid ? "mid" : "low";

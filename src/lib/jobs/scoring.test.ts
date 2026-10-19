@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildSearchQueries } from "./queries";
-import { keywordScore, matchesPreferredLocation, titleSimilarity, type MatchProfile, type ScoredJob } from "./scoring";
+import { calibrateKeywordScore, keywordScore, matchesPreferredLocation, titleSimilarity, type MatchProfile, type ScoredJob } from "./scoring";
 
 const profile: MatchProfile = {
   titles: ["Senior Backend Engineer", "Platform Engineer"],
@@ -104,5 +104,21 @@ describe("buildSearchQueries", () => {
     expect(buildSearchQueries({ ...profile, titles: [], remotePreference: "remote_only" }, 2)).toEqual([
       { what: "TypeScript Node.js PostgreSQL", where: null, remoteOnly: true },
     ]);
+  });
+});
+
+describe("calibrateKeywordScore", () => {
+  it("stretches raw points so strong fits land in the 75+ band", () => {
+    expect(calibrateKeywordScore(0)).toBe(0);
+    expect(calibrateKeywordScore(40)).toBe(51);
+    expect(calibrateKeywordScore(60)).toBe(76);
+    expect(calibrateKeywordScore(75)).toBe(95);
+  });
+
+  it("keeps ordering above 75 instead of capping, and never exceeds 100", () => {
+    expect(calibrateKeywordScore(90)).toBeGreaterThan(calibrateKeywordScore(80));
+    expect(calibrateKeywordScore(110)).toBe(100);
+    expect(calibrateKeywordScore(500)).toBe(100);
+    expect(calibrateKeywordScore(-20)).toBe(0);
   });
 });

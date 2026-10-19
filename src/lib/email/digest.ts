@@ -14,7 +14,7 @@ import { sendEmail, type SendResult } from "./send";
 export const DIGEST_HOUR = 7;
 export const DIGEST_MAX_JOBS = 10;
 /** Matches below this aren't worth an email. */
-export const DIGEST_MIN_SCORE = 40;
+export const DIGEST_MIN_SCORE = 50;
 
 export type DigestOutcome =
   | { userId: string; status: "sent"; jobs: number; channel: SendResult["channel"]; search: RunSummary["status"] | "skipped" }

@@ -62,6 +62,18 @@ export function profileHasTerms(p: MatchProfile): boolean {
 }
 
 /**
+ * Raw points run to about 110, but titles are rarely word-for-word and nobody matches every
+ * skill and keyword, so excellent fits earn around 70-75. Calibrate so the 0-100 scale reads
+ * naturally (75+ strong, 50-74 medium, under 50 weak): raw 0-75 maps linearly to 0-95, and
+ * anything above eases from 95 toward 100, so top matches still rank against each other.
+ * Mirrored once for stored rows in drizzle/0002_rescale_keyword_scores.sql.
+ */
+export function calibrateKeywordScore(raw: number): number {
+  const scaled = raw <= 75 ? (raw * 95) / 75 : 95 + ((raw - 75) * 5) / 35;
+  return Math.max(0, Math.min(100, Math.round(scaled)));
+}
+
+/**
  * Cheap, deterministic 0-100 relevance score used to prefilter before (optional) AI scoring:
  * title similarity (40) + skills (35) + keywords (15) + preferences (10), with penalties
  * for remote/level/location mismatches.
@@ -126,7 +138,7 @@ export function keywordScore(job: ScoredJob, profile: MatchProfile): KeywordResu
     score -= 10;
   }
 
-  const final = Math.max(0, Math.min(100, Math.round(score)));
+  const final = calibrateKeywordScore(score);
   return {
     score: final,
     matched: uniqueCaseInsensitive([...matchedSkills, ...matchedKeywords]),
