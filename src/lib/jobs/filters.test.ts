@@ -4,6 +4,7 @@ import {
   DEFAULT_FILTERS,
   filterMatches,
   filtersToSearchParams,
+  groupByRole,
   locationFacets,
   paginate,
   parseFilters,
@@ -30,6 +31,8 @@ function row(job: Partial<MatchResult["job"]> = {}, extra: Partial<MatchResult> 
       country: "US",
       remote: false,
       experienceLevel: "senior",
+      minYears: null,
+      clearance: null,
       applyUrl: "https://example.com",
       postedAt: daysAgo(2),
       salaryMin: null,
@@ -165,5 +168,18 @@ describe("helpers", () => {
   it("counts active filters", () => {
     expect(activeFilterCount(DEFAULT_FILTERS)).toBe(0);
     expect(activeFilterCount(f({ q: "x", levels: ["mid"], applied: "hide" }))).toBe(3);
+  });
+});
+
+describe("groupByRole", () => {
+  it("collapses the same company and title across places into the first, keeping order", () => {
+    const austin = row({ title: "SOC Analyst", company: "Leidos", city: "Austin", state: "TX" }, { score: 80 });
+    const other = row({ title: "Security Engineer", company: "Leidos" }, { score: 75 });
+    const denver = row({ title: "SOC Analyst ", company: "LEIDOS", city: "Denver", state: "CO" }, { score: 60 });
+    const groups = groupByRole([austin, other, denver]);
+    expect(groups.map((g) => [g.job.id, g.others.map((o) => o.job.id)])).toEqual([
+      [austin.job.id, [denver.job.id]],
+      [other.job.id, []],
+    ]);
   });
 });

@@ -115,3 +115,35 @@ export async function listApplications(userId: string, db?: Db) {
     .where(eq(applications.userId, userId))
     .orderBy(desc(applications.appliedAt));
 }
+
+export type ApplicationStats = {
+  total: number;
+  thisWeek: number;
+  interviewing: number;
+  offers: number;
+  /** Share of applications that got an answer (interview, offer or rejection), 0-1; null before any. */
+  responseRate: number | null;
+};
+
+/** Counts for the summary tiles. Withdrawn applications don't count toward the response rate. */
+export function summarizeApplications(rows: { status: ApplicationStatus; appliedAt: Date }[], now = new Date()): ApplicationStats {
+  const weekAgo = now.getTime() - 7 * 86_400_000;
+  const considered = rows.filter((r) => r.status !== "withdrawn");
+  const answered = considered.filter((r) => r.status !== "applied").length;
+  return {
+    total: rows.length,
+    thisWeek: rows.filter((r) => r.appliedAt.getTime() >= weekAgo).length,
+    interviewing: rows.filter((r) => r.status === "interviewing").length,
+    offers: rows.filter((r) => r.status === "offer").length,
+    responseRate: considered.length ? answered / considered.length : null,
+  };
+}
+
+export async function applicationStats(userId: string, db?: Db, now = new Date()): Promise<ApplicationStats> {
+  db ??= await getDb();
+  const rows = await db
+    .select({ status: applications.status, appliedAt: applications.appliedAt })
+    .from(applications)
+    .where(eq(applications.userId, userId));
+  return summarizeApplications(rows, now);
+}

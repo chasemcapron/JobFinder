@@ -1,5 +1,6 @@
 import { HIDE_BELOW_SCORE } from "@/components/ui";
 import { EXPERIENCE_LEVELS, JOB_SOURCES, type ExperienceLevel, type JobSource } from "@/db/schema";
+import { normalizeForKey } from "@/lib/text";
 import { countryName } from "./location";
 import type { MatchResult } from "./results";
 
@@ -141,6 +142,26 @@ export function filterMatches(rows: MatchResult[], f: JobFilters, now = new Date
   if (f.sort === "date") out.sort((a, b) => postedDate(b).getTime() - postedDate(a).getTime() || b.score - a.score);
   // "score" order comes from the query (score desc, then posted desc)
   return out;
+}
+
+export type RoleMatch = MatchResult & {
+  /** The same company and title elsewhere, in ranked order. */
+  others: MatchResult[];
+};
+
+/**
+ * One card per role: postings with the same company and title (Workday and USAJobs often list a
+ * role once per city) collapse into the first one, which is the best ranked. Order is kept.
+ */
+export function groupByRole(rows: MatchResult[]): RoleMatch[] {
+  const groups = new Map<string, RoleMatch>();
+  for (const m of rows) {
+    const key = `${normalizeForKey(m.job.company)}|${normalizeForKey(m.job.title)}`;
+    const group = groups.get(key);
+    if (group) group.others.push(m);
+    else groups.set(key, { ...m, others: [] });
+  }
+  return [...groups.values()];
 }
 
 export function paginate<T>(rows: T[], page: number, size = PAGE_SIZE) {

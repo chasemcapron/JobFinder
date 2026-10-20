@@ -23,6 +23,8 @@ export type MatchResult = {
     | "country"
     | "remote"
     | "experienceLevel"
+    | "minYears"
+    | "clearance"
     | "applyUrl"
     | "postedAt"
     | "salaryMin"
@@ -63,6 +65,8 @@ export async function listMatches(userId: string, db?: Db): Promise<MatchResult[
         country: jobs.country,
         remote: jobs.remote,
         experienceLevel: jobs.experienceLevel,
+        minYears: jobs.minYears,
+        clearance: jobs.clearance,
         applyUrl: jobs.applyUrl,
         postedAt: jobs.postedAt,
         salaryMin: jobs.salaryMin,
