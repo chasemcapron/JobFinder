@@ -3,6 +3,7 @@ import { auth, signIn } from "@/auth";
 import { SubmitButton } from "@/components/action-form";
 import { Alert, Divider, Icon, type IconName } from "@/components/ui";
 import { env } from "@/lib/env";
+import { getUser } from "@/lib/profile";
 
 const FEATURES: { icon: IconName; title: string; body: string; tile: string }[] = [
   {
@@ -35,7 +36,8 @@ function GoogleLogo() {
 
 export default async function Home({ searchParams }: PageProps<"/">) {
   const session = await auth();
-  if (session?.user?.id) redirect("/jobs");
+  // A session whose user is gone (database reset, account removed) shows sign-in: /jobs would send it back here, in a loop.
+  if (session?.user?.id && (await getUser(session.user.id))) redirect("/jobs");
   const { error } = await searchParams;
 
   async function signInWithGoogle() {
