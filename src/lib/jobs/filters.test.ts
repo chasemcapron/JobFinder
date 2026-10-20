@@ -7,6 +7,7 @@ import {
   groupByRole,
   summarizeMatches,
   locationFacets,
+  sourceFacets,
   paginate,
   parseFilters,
   searchTerms,
@@ -164,6 +165,14 @@ describe("helpers", () => {
     const us = locationFacets(rows, { country: "US", state: "IL" });
     expect(us.states.map((s) => s.value)).toEqual(["IL", "TX"]);
     expect(us.cities).toEqual([{ value: "Chicago", label: "Chicago", count: 2 }]);
+  });
+
+  it("lists only the sources that have postings", () => {
+    const rows = [row({ source: "workday" }), row({ source: "greenhouse" }), row({ source: "workday" })];
+    expect(sourceFacets(rows)).toEqual([
+      { value: "workday", label: "workday", count: 2 },
+      { value: "greenhouse", label: "greenhouse", count: 1 },
+    ]);
   });
 
   it("counts active filters", () => {

@@ -216,6 +216,11 @@ export function locationFacets(rows: MatchResult[], f: Pick<JobFilters, "country
   };
 }
 
+/** Sources that have postings, so the Source filter only offers boards that were actually searched. */
+export function sourceFacets(rows: MatchResult[]): FacetOption[] {
+  return countBy(rows, (m) => m.job.source);
+}
+
 export function activeFilterCount(f: JobFilters): number {
   return (
     (f.q ? 1 : 0) +
