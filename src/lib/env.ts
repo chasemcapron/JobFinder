@@ -130,7 +130,7 @@ export function featureStatus(): FeatureStatus[] {
       label: "AI (resume reading, scoring, fit checks)",
       configured: Boolean(env.geminiApiKey || env.anthropicApiKey),
       note: env.geminiApiKey
-        ? `Gemini ${env.geminiModel}, falling back to gemini-3.5-flash-lite (free tier)`
+        ? `Gemini ${env.geminiModel}, falling back to gemini-3.5-flash-lite and gemini-3.1-flash-lite (free tier)`
         : env.anthropicApiKey
           ? `Claude ${env.anthropicModel}`
           : "Off: keyword extraction and scoring only. Set GEMINI_API_KEY (free) to turn it on.",

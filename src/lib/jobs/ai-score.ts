@@ -59,7 +59,9 @@ async function scoreBatch(
     prompt: `<candidate>\n${describeProfile(profile)}\n</candidate>\n\n${batch.map(([id, j]) => describeJob(id, j)).join("\n\n")}\n\nScore every job above.`,
     tier: "fast",
     maxTokens: 4_000,
-    timeoutMs: 20_000,
+    // No second request for a slow batch: two workers could put six requests in flight and hit the
+    // free tier's per-minute limit. A batch that runs out of time keeps its keyword scores.
+    hedgeAfterMs: null,
     deadline,
   });
   const out = new Map<string, AiScore>();

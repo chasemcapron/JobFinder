@@ -66,7 +66,7 @@ export async function analyzeResume(resumeText: string, opts: { names?: (string 
       prompt: `Today is ${todayLabel()}.\n<resume>\n${resumeForAi(resumeText, opts.names)}\n</resume>`,
       tier: "quality",
       maxTokens: 4_000,
-      timeoutMs: 12_000, // a busy 3.8 Flash can take minutes; Flash-Lite takes over after this
+      hedgeAfterMs: 12_000, // a busy 3.8 Flash can take minutes; Flash-Lite is asked too after this
       deadline: Date.now() + 45_000,
     });
     const titles = uniqueCaseInsensitive(data.titles.map((s) => s.trim()).filter(Boolean)).slice(0, 8);

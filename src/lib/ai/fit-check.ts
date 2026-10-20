@@ -67,8 +67,8 @@ ${posting}
     tier: "quality",
     maxTokens: 4_000,
     // 3.8 Flash answers in ~5-9 s when healthy but can take minutes on a busy free tier;
-    // past 10 s, Flash-Lite (~1-3 s) takes over.
-    timeoutMs: 10_000,
+    // past 10 s, Flash-Lite (~1-3 s) is asked too and the first answer wins.
+    hedgeAfterMs: 10_000,
     deadline: Date.now() + 48_000,
   });
   const fitScore = Math.max(0, Math.min(100, Math.round(data.fitScore)));

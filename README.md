@@ -52,7 +52,7 @@ Copy `.env.example` to `.env.local` and fill in what you have. Nothing is requir
 | `AUTH_GOOGLE_SECRET` | Google sign-in + Sheets | Same OAuth client |
 | `ALLOWED_EMAILS` | Production (strongly recommended) | Your Google email (comma-separate several). Only these accounts can sign in |
 | `GEMINI_API_KEY` | AI resume reading, match scoring and "Check my fit" (**free tier**) | https://aistudio.google.com/apikey (no billing). Free-tier inputs may be used by Google to improve its products; the app strips your name and contact details first |
-| `GEMINI_MODEL` | Optional | Model tried first for resume reading and fit checks (default `gemini-3.8-flash`; bulk scoring starts on `gemini-3.5-flash-lite`, and each falls back to the other when busy) |
+| `GEMINI_MODEL` | Optional | Model tried first for resume reading and fit checks (default `gemini-3.8-flash`; bulk scoring starts on `gemini-3.5-flash-lite`; when a model is busy or slow, the others are tried, ending with `gemini-3.1-flash-lite`) |
 | `ANTHROPIC_API_KEY` | Optional, **paid** alternative to Gemini | https://console.anthropic.com → API Keys. Ignored when `GEMINI_API_KEY` is set |
 | `ANTHROPIC_MODEL` | Optional | Claude model override |
 | `MAX_AI_SCORES_PER_RUN` | Optional cap | Jobs the AI scores per search (default 40 with Gemini, 20 with Claude) |

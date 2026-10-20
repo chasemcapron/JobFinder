@@ -73,7 +73,7 @@ Already tracking (don't repeat): ${input.existing.map((t) => t.slug).join(", ") 
 Suggest 25 employers.`,
     tier: "quality",
     maxTokens: 4_000,
-    timeoutMs: 12_000, // a busy 3.8 Flash can take minutes; Flash-Lite takes over after this
+    hedgeAfterMs: 12_000, // a busy 3.8 Flash can take minutes; Flash-Lite is asked too after this
     deadline: input.deadline - 15_000,
   });
 
