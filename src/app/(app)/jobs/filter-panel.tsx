@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useTransition, type FormEvent } from "react";
-import { Button, inputClass, Label, selectClass } from "@/components/ui";
+import { Button, HIDE_BELOW_SCORE, inputClass, Label, selectClass } from "@/components/ui";
 import { EXPERIENCE_LEVELS } from "@/db/schema";
 import { EXPERIENCE_LABELS } from "@/lib/jobs/experience";
 import type { FacetOption, JobFilters } from "@/lib/jobs/filters";
@@ -30,7 +30,7 @@ function toQuery(form: HTMLFormElement): string {
   for (const [k, v] of new FormData(form)) {
     const value = String(v).trim();
     // Drop empty values and defaults so URLs stay readable.
-    if (!value || (k === "remote" && value === "any") || (k === "posted" && value === "any") || (k === "applied" && value === "dim") || (k === "sort" && value === "score") || (k === "minScore" && value === "0")) continue;
+    if (!value || (k === "remote" && value === "any") || (k === "posted" && value === "any") || (k === "applied" && value === "dim") || (k === "sort" && value === "score") || (k === "minScore" && value === String(HIDE_BELOW_SCORE))) continue;
     params.append(k, value);
   }
   return params.toString();
@@ -141,9 +141,17 @@ export function FilterPanel({
         <div>
           <Label htmlFor="minScore">Minimum score</Label>
           <select id="minScore" name="minScore" defaultValue={String(filters.minScore)} key={`m-${filters.minScore}`} className={selectClass}>
-            {[0, 50, 60, 75, 90].map((n) => (
+            {[0, HIDE_BELOW_SCORE, 50, 75, 90].map((n) => (
               <option key={n} value={n}>
-                {n === 0 ? "Any" : n === 50 ? "50+ (medium)" : n === 75 ? "75+ (strong)" : `${n}+`}
+                {n === 0
+                  ? "Any (include weak)"
+                  : n === HIDE_BELOW_SCORE
+                    ? `${n}+ (hide weak)`
+                    : n === 50
+                      ? "50+ (medium)"
+                      : n === 75
+                        ? "75+ (strong)"
+                        : `${n}+`}
               </option>
             ))}
           </select>

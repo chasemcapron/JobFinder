@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ActionForm } from "@/components/action-form";
 import { Alert, Badge, Card, CardHeader, FieldHint, Icon, inputClass, Label, linkClass, PageHeader, selectClass } from "@/components/ui";
 import { EXPERIENCE_LEVELS, SHEET_FIELDS } from "@/db/schema";
+import { aiLabel } from "@/lib/ai/provider";
 import { env, featureStatus } from "@/lib/env";
 import { DEFAULT_COLUMN_MAP, SHEET_FIELD_LABELS } from "@/lib/google/sheets";
 import { EXPERIENCE_LABELS } from "@/lib/jobs/experience";
@@ -9,12 +10,13 @@ import { lastSearchRun } from "@/lib/jobs/results";
 import { listTargetCompanies } from "@/lib/profile";
 import { requireUser } from "@/lib/session";
 import { addTargetCompany, savePreferences, saveSheetSettings } from "./actions";
+import { CompanySuggestions } from "./company-suggestions";
 import { SheetTest } from "./sheet-test";
 import { TargetCompanyRow } from "./target-company-row";
 
 export const metadata: Metadata = { title: "Settings · Job Finder" };
-// "Test connection" calls the Google Sheets API.
-export const maxDuration = 30;
+// "Test connection" calls the Google Sheets API; "Suggest companies" calls the AI and checks job boards.
+export const maxDuration = 60;
 
 export default async function SettingsPage() {
   const { profile } = await requireUser();
@@ -23,6 +25,7 @@ export default async function SettingsPage() {
   const features = featureStatus();
   const columnMap = profile.sheetColumnMap ?? DEFAULT_COLUMN_MAP;
   const googleConfigured = env.googleConfigured;
+  const ai = aiLabel();
 
   return (
     <>
@@ -116,6 +119,7 @@ export default async function SettingsPage() {
             </>
           }
         />
+        {ai ? <CompanySuggestions aiLabel={ai} /> : null}
         {companies.length === 0 ? (
           <p className="mb-4 rounded-control border border-dashed border-border-strong px-3 py-4 text-center text-sm text-muted">
             No target companies yet.

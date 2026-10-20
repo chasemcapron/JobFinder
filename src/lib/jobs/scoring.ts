@@ -16,28 +16,58 @@ export type ScoredJob = Pick<
 
 export type KeywordResult = { score: number; matched: string[]; reason: string };
 
-/** Below this, a job isn't saved as a match at all (only applies once the profile has terms). */
-export const MIN_KEYWORD_SCORE = 10;
-
 // Words that say nothing about the kind of work, ignored when comparing titles.
 const TITLE_NOISE = new Set([
   "senior", "sr", "junior", "jr", "staff", "principal", "lead", "i", "ii", "iii", "iv", "the", "of", "and", "a",
   "an", "for", "to", "in", "at", "new", "grad", "level", "entry", "mid", "remote", "hybrid", "us", "f", "m", "x",
 ]);
 
+// Role words shared by every field: "Credit Analyst" and "Security Analyst" have nothing in common.
+const GENERIC_ROLE = new Set([
+  "analyst", "engineer", "manager", "specialist", "associate", "administrator", "admin", "consultant", "coordinator",
+  "technician", "officer", "director", "representative", "assistant", "intern", "internship", "architect", "lead",
+  "advisor", "partner", "operations", "program", "project", "head", "member", "professional", "scientist",
+]);
+
+// Compounds split so "Cybersecurity Analyst" and "Cyber Security Analyst" compare equal.
+const TITLE_SYNONYMS: Record<string, string[]> = {
+  cybersecurity: ["cyber", "security"],
+  infosec: ["information", "security"],
+  appsec: ["application", "security"],
+  netsec: ["network", "security"],
+  secops: ["security", "operations"],
+  developer: ["engineer"],
+  dev: ["engineer"],
+};
+
 function titleTokens(title: string): string[] {
   return normalizeForKey(title)
     .split(" ")
     .filter((t) => t && !TITLE_NOISE.has(t))
-    .map((t) => (t === "developer" ? "engineer" : t === "dev" ? "engineer" : t)); // developer ~ engineer
+    .flatMap((t) => TITLE_SYNONYMS[t] ?? [t]);
 }
 
-/** Fraction of the profile title's meaningful words that appear in the job title. */
+/**
+ * How much of the profile title's meaningful words appear in the job title (0-1). Generic role
+ * words count half, and when the profile title has field words but none of them match, the
+ * result is capped at 0.15, so "Credit Analyst" barely registers for "Security Analyst".
+ */
 export function titleSimilarity(profileTitle: string, jobTitle: string): number {
-  const want = titleTokens(profileTitle);
+  const want = [...new Set(titleTokens(profileTitle))];
   if (want.length === 0) return 0;
   const have = new Set(titleTokens(jobTitle));
-  return want.filter((t) => have.has(t)).length / want.length;
+  const weight = (t: string) => (GENERIC_ROLE.has(t) ? 0.5 : 1);
+  const total = want.reduce((sum, t) => sum + weight(t), 0);
+  const matched = want.filter((t) => have.has(t));
+  const sim = matched.reduce((sum, t) => sum + weight(t), 0) / total;
+  const wantsField = want.some((t) => !GENERIC_ROLE.has(t));
+  const fieldMatched = matched.some((t) => !GENERIC_ROLE.has(t));
+  return wantsField && !fieldMatched ? Math.min(sim, 0.15) : sim;
+}
+
+/** True when the job title contains one of the user's excluded words (e.g. "credit"). */
+export function isExcludedTitle(title: string, excludeKeywords: string[]): boolean {
+  return excludeKeywords.some((k) => containsTerm(title, k));
 }
 
 function levelDistance(a: ExperienceLevel, b: ExperienceLevel): number {

@@ -1,29 +1,41 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Alert, buttonClass, EmptyState, Icon, linkClass, PageHeader } from "@/components/ui";
+import { Alert, buttonClass, EmptyState, HIDE_BELOW_SCORE, Icon, linkClass, PageHeader } from "@/components/ui";
+import { aiProvider } from "@/lib/ai/provider";
 import { formatDateTime } from "@/lib/format";
 import { activeFilterCount, filterMatches, filtersToSearchParams, locationFacets, paginate, parseFilters } from "@/lib/jobs/filters";
+import { listFitChecks } from "@/lib/jobs/fit-checks";
 import { lastSearchRun, listMatches } from "@/lib/jobs/results";
 import { requireUser } from "@/lib/session";
 import { ApplyActions } from "./apply-actions";
 import { FilterPanel } from "./filter-panel";
 import { FiltersToggle } from "./filters-toggle";
+import { FitCheck } from "./fit-check";
 import { JobCard } from "./job-card";
 import { RefreshButton } from "./refresh-button";
 
 export const metadata: Metadata = { title: "Jobs · Job Finder" };
-// Server Actions on this page (mark applied) may call the Sheets API.
-export const maxDuration = 30;
+// Server Actions on this page call the Sheets API (mark applied) and the AI (fit checks).
+export const maxDuration = 60;
 
 export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
   const { profile } = await requireUser();
   const filters = parseFilters(await searchParams);
   const [all, lastRun] = await Promise.all([listMatches(profile.userId), lastSearchRun(profile.userId)]);
-  const filtered = filterMatches(all, filters);
+  const hasProfile = profile.skills.length + profile.titles.length + profile.searchKeywords.length > 0;
+  // Before a resume exists every score is 0, so the "hide weak matches" default would hide everything.
+  const filtered = filterMatches(all, hasProfile ? filters : { ...filters, minScore: 0 });
   const { items, page, pages, total } = paginate(filtered, filters.page);
   const facets = locationFacets(all, filters);
   const activeCount = activeFilterCount(filters);
-  const hasProfile = profile.skills.length + profile.titles.length + profile.searchKeywords.length > 0;
+  const weakHidden =
+    hasProfile && filters.minScore === HIDE_BELOW_SCORE ? filterMatches(all, { ...filters, minScore: 0 }).length - filtered.length : 0;
+  const showWeakHref = `/jobs?${filtersToSearchParams({ ...filters, minScore: 0, page: 1 }).toString()}`;
+  // "Check my fit" needs the AI and a saved resume; earlier checks for this page's jobs load with it.
+  const canCheckFit = Boolean(aiProvider() && profile.resumeText?.trim());
+  const fitChecks = canCheckFit
+    ? await listFitChecks(profile.userId, items.map((m) => m.job.id), profile.matchingUpdatedAt)
+    : new Map();
   const failedSources = lastRun?.sourceResults.filter((s) => !s.ok) ?? [];
   const pageHref = (p: number) => {
     const qs = filtersToSearchParams({ ...filters, page: p }).toString();
@@ -94,25 +106,54 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
           <section className="min-w-0 flex-1" aria-label="Results">
             <p className="mb-3 text-sm text-muted" aria-live="polite">
               <span className="font-semibold text-foreground">{total.toLocaleString()}</span>
-              {total === all.length ? " jobs" : ` of ${all.length.toLocaleString()} jobs match these filters`}
+              {total === all.length
+                ? " jobs"
+                : activeCount === 0
+                  ? ` job${total === 1 ? "" : "s"} worth a look`
+                  : ` of ${all.length.toLocaleString()} jobs match these filters`}
               {pages > 1 ? ` · page ${page} of ${pages}` : ""}
+              {weakHidden > 0 ? (
+                <>
+                  {" · "}
+                  {weakHidden.toLocaleString()} weak match{weakHidden === 1 ? "" : "es"} (under {HIDE_BELOW_SCORE}) hidden.{" "}
+                  <Link href={showWeakHref} className={linkClass}>
+                    Show
+                  </Link>
+                </>
+              ) : null}
             </p>
             {items.length === 0 ? (
               <EmptyState
                 icon={<Icon name="search" />}
-                title="No jobs match these filters"
+                title={weakHidden > 0 && activeCount === 0 ? "No good matches yet" : "No jobs match these filters"}
                 action={
-                  <Link href="/jobs" className={buttonClass("secondary")}>
-                    Clear filters
-                  </Link>
+                  weakHidden > 0 && activeCount === 0 ? (
+                    <Link href={showWeakHref} className={buttonClass("secondary")}>
+                      Show {weakHidden.toLocaleString()} weak match{weakHidden === 1 ? "" : "es"}
+                    </Link>
+                  ) : (
+                    <Link href="/jobs" className={buttonClass("secondary")}>
+                      Clear filters
+                    </Link>
+                  )
                 }
               >
-                Try removing a filter or broadening your search.
+                {weakHidden > 0 && activeCount === 0
+                  ? "Everything found so far scores under " +
+                    HIDE_BELOW_SCORE +
+                    ". Add target companies that hire for your role in Settings, then refresh."
+                  : "Try removing a filter or broadening your search."}
               </EmptyState>
             ) : (
               <ul className="flex flex-col gap-3">
                 {items.map((m) => (
-                  <JobCard key={m.job.id} match={m} ranked={hasProfile} actions={<ApplyActions jobId={m.job.id} application={m.application} />} />
+                  <JobCard
+                    key={m.job.id}
+                    match={m}
+                    ranked={hasProfile}
+                    actions={<ApplyActions jobId={m.job.id} application={m.application} />}
+                    fit={canCheckFit ? <FitCheck jobId={m.job.id} initial={fitChecks.get(m.job.id) ?? null} /> : null}
+                  />
                 ))}
               </ul>
             )}

@@ -5,8 +5,12 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/db";
 import { profiles } from "@/db/schema";
 import { ClaudeRefusalError } from "@/lib/ai/claude";
+import { AiRequestError } from "@/lib/ai/gemini";
+import { aiProvider } from "@/lib/ai/provider";
 import { coerceExperienceLevel } from "@/lib/jobs/experience";
+import { rescoreStoredMatches } from "@/lib/jobs/search";
 import { parseList } from "@/lib/parse-input";
+import { getUser } from "@/lib/profile";
 import { analyzeResume, type ResumeAnalysis } from "@/lib/resume/analyze";
 import { detectResumeKind, extractResumeText, MAX_RESUME_BYTES, cleanExtractedText } from "@/lib/resume/extract-text";
 import { commitResumeFile, storePendingResume } from "@/lib/resume/file-store";
@@ -43,11 +47,13 @@ export async function analyzeResumeAction(_prev: AnalyzeState, formData: FormDat
       return { ok: false, message: "Choose a file or paste your resume text." };
     }
 
-    const analysis = await analyzeResume(text);
+    // The account name is stripped from the text before it goes to the AI (see redactPersonalInfo).
+    const user = await getUser(userId);
+    const analysis = await analyzeResume(text, { names: [user?.name] });
     return { ok: true, text, fileName, analysis };
   } catch (err) {
     console.error("Resume analysis failed", err);
-    if (err instanceof ClaudeRefusalError) return { ok: false, message: err.message };
+    if (err instanceof ClaudeRefusalError || err instanceof AiRequestError) return { ok: false, message: err.message };
     return { ok: false, message: err instanceof Error ? err.message : "Couldn't read that resume." };
   }
 }
@@ -71,14 +77,19 @@ export async function saveResumeProfile(_prev: SaveState, formData: FormData): P
         skills: parseList(String(formData.get("skills") ?? ""), 60),
         titles: parseList(String(formData.get("titles") ?? ""), 12),
         keywords: parseList(String(formData.get("keywords") ?? ""), 30),
+        excludeKeywords: parseList(String(formData.get("excludeKeywords") ?? ""), 30),
         seniority: coerceExperienceLevel(String(formData.get("seniority") ?? "")),
         matchingUpdatedAt: new Date(),
         updatedAt: new Date(),
       })
       .where(eq(profiles.userId, userId));
     await commitResumeFile(userId, { resumeTextChanged, fileName });
+    // Re-rank stored matches now so the Jobs page reflects the new profile right away.
+    const { saved, removed } = await rescoreStoredMatches(userId, db);
     revalidatePath("/resume");
-    return { ok: true, message: "Profile saved. Refresh jobs to re-rank matches." };
+    revalidatePath("/jobs");
+    const ranked = saved || removed ? ` Re-ranked ${saved.toLocaleString()} saved job${saved === 1 ? "" : "s"}${removed ? ` and hid ${removed.toLocaleString()} that no longer fit` : ""}.` : "";
+    return { ok: true, message: `Profile saved.${ranked} Click Refresh jobs to search again${aiProvider() ? " and get AI scores" : ""}.` };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : "Couldn't save." };
   }

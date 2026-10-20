@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildSearchQueries } from "./queries";
-import { calibrateKeywordScore, keywordScore, matchesPreferredLocation, titleSimilarity, type MatchProfile, type ScoredJob } from "./scoring";
+import { calibrateKeywordScore, isExcludedTitle, keywordScore, matchesPreferredLocation, titleSimilarity, type MatchProfile, type ScoredJob } from "./scoring";
 
 const profile: MatchProfile = {
   titles: ["Senior Backend Engineer", "Platform Engineer"],
@@ -32,6 +32,31 @@ describe("titleSimilarity", () => {
     expect(titleSimilarity("Senior Backend Engineer", "Backend Engineer II")).toBe(1);
     expect(titleSimilarity("Backend Engineer", "Backend Developer")).toBe(1);
     expect(titleSimilarity("Backend Engineer", "Account Executive")).toBe(0);
+  });
+
+  it("doesn't let a shared generic word like 'analyst' make a different field look like a match", () => {
+    expect(titleSimilarity("Cybersecurity Analyst", "Credit Risk Analyst")).toBeLessThanOrEqual(0.15);
+    expect(titleSimilarity("Security Engineer", "Software Engineer, Credit")).toBeLessThanOrEqual(0.15);
+    expect(titleSimilarity("Security Analyst", "Securities Analyst")).toBeLessThanOrEqual(0.15);
+  });
+
+  it("treats cybersecurity and cyber security alike, and still matches the field word", () => {
+    expect(titleSimilarity("Cybersecurity Analyst", "Cyber Security Analyst")).toBe(1);
+    expect(titleSimilarity("Cybersecurity Analyst", "Security Analyst")).toBeGreaterThanOrEqual(0.5);
+    expect(titleSimilarity("Security Analyst", "SOC Analyst")).toBeLessThan(0.5);
+  });
+
+  it("still scores a generic-only profile title by its words", () => {
+    expect(titleSimilarity("Engineer", "Software Engineer")).toBe(1);
+  });
+});
+
+describe("isExcludedTitle", () => {
+  it("matches whole words, case-insensitively", () => {
+    expect(isExcludedTitle("Credit Risk Analyst", ["credit"])).toBe(true);
+    expect(isExcludedTitle("Physical Security Lead", ["physical security"])).toBe(true);
+    expect(isExcludedTitle("Accreditation Specialist", ["credit"])).toBe(false);
+    expect(isExcludedTitle("Security Analyst", [])).toBe(false);
   });
 });
 

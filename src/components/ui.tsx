@@ -49,6 +49,13 @@ const ICONS = {
   ),
   "external-link": <path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />,
   check: <path d="M20 6 9 17l-5-5" />,
+  sparkles: (
+    <>
+      <path d="M12 3l1.8 4.9L18.7 9.7l-4.9 1.8L12 16.4l-1.8-4.9-4.9-1.8 4.9-1.8z" />
+      <path d="M19 15l.7 1.8 1.8.7-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7z" />
+      <path d="M5 16l.5 1.2 1.2.5-1.2.5L5 19.4l-.5-1.2-1.2-.5 1.2-.5z" />
+    </>
+  ),
   "check-circle": (
     <>
       <circle cx="12" cy="12" r="10" />
@@ -575,6 +582,9 @@ export function Stat({
 export type ScoreTier = "high" | "mid" | "low";
 
 export const SCORE_THRESHOLDS = { high: 75, mid: 50 } as const;
+
+/** The jobs list hides matches under this score by default (they're noise); "Any" shows them. */
+export const HIDE_BELOW_SCORE = 25;
 
 export function scoreTier(score: number): ScoreTier {
   return score >= SCORE_THRESHOLDS.high ? "high" : score >= SCORE_THRESHOLDS.mid ? "mid" : "low";

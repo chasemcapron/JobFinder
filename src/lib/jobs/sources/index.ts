@@ -48,8 +48,11 @@ export function buildSourceTasks(profile: Profile, targets: Pick<TargetCompanyRo
     }
   }
 
-  // Nothing real to query: fall back to sample data so the app still does something.
-  if (tasks.length === 0) tasks.push({ label: "sample data", source: "mock", run: async () => mockJobs() });
+  // Nothing real to query: locally, fall back to sample data so the app still does something.
+  // Never in production, where made-up jobs would mix into the real user's matches.
+  if (tasks.length === 0 && process.env.NODE_ENV !== "production") {
+    tasks.push({ label: "sample data", source: "mock", run: async () => mockJobs() });
+  }
   return tasks;
 }
 

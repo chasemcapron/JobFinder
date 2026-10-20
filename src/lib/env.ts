@@ -22,6 +22,14 @@ export const env = {
   get googleClientSecret() {
     return read("AUTH_GOOGLE_SECRET");
   },
+  /** Google Gemini (free tier via AI Studio). Preferred over Claude when both are set. */
+  get geminiApiKey() {
+    return read("GEMINI_API_KEY");
+  },
+  /** The stronger model, used first for resume reading and fit checks; bulk scoring starts on Flash-Lite. */
+  get geminiModel() {
+    return read("GEMINI_MODEL") ?? "gemini-3.8-flash";
+  },
   get anthropicApiKey() {
     return read("ANTHROPIC_API_KEY");
   },
@@ -57,10 +65,11 @@ export const env = {
         : "http://localhost:3000")
     );
   },
-  /** Max jobs per run that get a Claude score (cost control). */
+  /** Max jobs per run that get an AI score (rate-limit / cost control). Gemini's free tier allows more. */
   get maxAiScoresPerRun() {
-    const n = Number(read("MAX_AI_SCORES_PER_RUN") ?? "20");
-    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 20;
+    const fallback = read("GEMINI_API_KEY") ? 40 : 20;
+    const n = Number(read("MAX_AI_SCORES_PER_RUN") ?? String(fallback));
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
   },
   get isProduction() {
     return process.env.NODE_ENV === "production";
@@ -117,10 +126,14 @@ export function featureStatus(): FeatureStatus[] {
           : "Not set: any Google account your OAuth consent screen allows can sign in",
     },
     {
-      key: "anthropic",
-      label: "Claude (resume parsing + scoring)",
-      configured: Boolean(env.anthropicApiKey),
-      note: env.anthropicApiKey ? `Model ${env.anthropicModel}` : "Heuristic keyword extraction and scoring",
+      key: "ai",
+      label: "AI (resume reading, scoring, fit checks)",
+      configured: Boolean(env.geminiApiKey || env.anthropicApiKey),
+      note: env.geminiApiKey
+        ? `Gemini ${env.geminiModel}, falling back to gemini-3.5-flash-lite (free tier)`
+        : env.anthropicApiKey
+          ? `Claude ${env.anthropicModel}`
+          : "Off: keyword extraction and scoring only. Set GEMINI_API_KEY (free) to turn it on.",
     },
     {
       key: "adzuna",

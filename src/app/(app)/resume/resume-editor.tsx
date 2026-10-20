@@ -13,17 +13,29 @@ type Draft = {
   skills: string[];
   titles: string[];
   keywords: string[];
+  excludeKeywords: string[];
   seniority: ExperienceLevel | null;
 };
 
-export function ResumeEditor({ saved, aiEnabled }: { saved: Draft & { updatedAt: string | null }; aiEnabled: boolean }) {
+/** `aiLabel` names the AI that reads the resume ("Gemini"), or null when only the built-in extractor is available. */
+export function ResumeEditor({ saved, aiLabel }: { saved: Draft & { updatedAt: string | null }; aiLabel: string | null }) {
   const [analyzeState, analyzeAction] = useActionState<AnalyzeState, FormData>(analyzeResumeAction, null);
   const [mode, setMode] = useState<"file" | "text">("file");
 
   // A fresh analysis replaces the editor's defaults; otherwise show what's saved.
   const draft: Draft =
     analyzeState?.ok === true
-      ? { resumeText: analyzeState.text, fileName: analyzeState.fileName, ...analyzeState.analysis }
+      ? {
+          resumeText: analyzeState.text,
+          fileName: analyzeState.fileName,
+          ...analyzeState.analysis,
+          // Keep exclusions the user added earlier; the AI's suggestions are added to them.
+          excludeKeywords: [
+            ...new Map(
+              [...saved.excludeKeywords, ...analyzeState.analysis.excludeKeywords].map((k) => [k.toLowerCase(), k] as const),
+            ).values(),
+          ],
+        }
       : saved;
   const draftKey = analyzeState?.ok === true ? `a-${analyzeState.text.length}-${analyzeState.analysis.skills.join()}` : "saved";
   const hasDraft = analyzeState?.ok === true || Boolean(saved.resumeText) || saved.skills.length > 0;
@@ -35,9 +47,9 @@ export function ResumeEditor({ saved, aiEnabled }: { saved: Draft & { updatedAt:
           icon={<Icon name="upload" />}
           title="1. Upload"
           description={
-            aiEnabled
-              ? "Your resume is sent to Claude to extract structured data."
-              : "No AI key is set, so a built-in keyword extractor reads your resume instead of Claude."
+            aiLabel
+              ? `${aiLabel} reads your resume and suggests job titles, skills, and titles to skip. Your name, email, phone, street address and links are removed before it's sent.`
+              : "No AI key is set, so a built-in keyword extractor reads your resume."
           }
         />
         <div role="tablist" aria-label="Resume input" className="mb-4 inline-flex rounded-control border border-border bg-surface-subtle p-0.5 text-sm">
@@ -77,13 +89,14 @@ export function ResumeEditor({ saved, aiEnabled }: { saved: Draft & { updatedAt:
             </div>
           )}
           <div className="flex flex-wrap items-center gap-3">
-            <SubmitButton label="Extract" icon={<Icon name="search" />} pendingLabel={aiEnabled ? "Analyzing with Claude…" : "Extracting…"} />
+            <SubmitButton label="Extract" icon={<Icon name="search" />} pendingLabel={aiLabel ? `Reading with ${aiLabel}…` : "Extracting…"} />
             {analyzeState?.ok === false ? <Alert tone="error">{analyzeState.message}</Alert> : null}
             {analyzeState?.ok === true ? (
               <Alert tone="success">
                 Extracted{analyzeState.fileName ? ` from ${analyzeState.fileName}` : ""}. Review below, then save.
               </Alert>
             ) : null}
+            {analyzeState?.ok === true && analyzeState.analysis.notice ? <Alert tone="warning">{analyzeState.analysis.notice}</Alert> : null}
           </div>
         </form>
       </Card>
@@ -96,8 +109,10 @@ export function ResumeEditor({ saved, aiEnabled }: { saved: Draft & { updatedAt:
             description="Edit anything that's off. These drive job search queries and match scoring."
             action={
               analyzeState?.ok === true ? (
-                <Badge tone={analyzeState.analysis.source === "claude" ? "accent" : "neutral"} dot>
-                  {analyzeState.analysis.source === "claude" ? "Extracted by Claude" : "Keyword extractor"}
+                <Badge tone={analyzeState.analysis.source === "heuristic" ? "neutral" : "accent"} dot>
+                  {analyzeState.analysis.source === "heuristic"
+                    ? "Keyword extractor"
+                    : `Extracted by ${analyzeState.analysis.source === "gemini" ? "Gemini" : "Claude"}`}
                 </Badge>
               ) : saved.updatedAt ? (
                 <Badge tone="success" dot>Saved</Badge>
@@ -136,6 +151,20 @@ export function ResumeEditor({ saved, aiEnabled }: { saved: Draft & { updatedAt:
                 Keywords
               </Label>
               <textarea id="keywords" name="keywords" rows={2} className={inputClass} defaultValue={draft.keywords.join(", ")} />
+            </div>
+            <div>
+              <Label htmlFor="excludeKeywords" hint="(comma separated)">
+                Skip job titles containing
+              </Label>
+              <textarea
+                id="excludeKeywords"
+                name="excludeKeywords"
+                rows={2}
+                className={inputClass}
+                defaultValue={draft.excludeKeywords.join(", ")}
+                placeholder="e.g. credit, securities, sales"
+              />
+              <FieldHint>Jobs with any of these words in the title are hidden, even when they share tools with your field.</FieldHint>
             </div>
             <details className="group">
               <summary className="cursor-pointer rounded-control text-sm font-medium text-accent-text">Resume text ({draft.resumeText.length.toLocaleString()} characters)</summary>

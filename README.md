@@ -51,9 +51,11 @@ Copy `.env.example` to `.env.local` and fill in what you have. Nothing is requir
 | `AUTH_GOOGLE_ID` | Google sign-in + Sheets | Google Cloud OAuth client ID, see [Google OAuth](#google-oauth-and-sheets) |
 | `AUTH_GOOGLE_SECRET` | Google sign-in + Sheets | Same OAuth client |
 | `ALLOWED_EMAILS` | Production (strongly recommended) | Your Google email (comma-separate several). Only these accounts can sign in |
-| `ANTHROPIC_API_KEY` | Claude resume parsing and scoring | https://console.anthropic.com → API Keys |
-| `ANTHROPIC_MODEL` | Optional | Defaults to `claude-opus-5-5` |
-| `MAX_AI_SCORES_PER_RUN` | Optional cost cap | Jobs Claude scores per search (default 20) |
+| `GEMINI_API_KEY` | AI resume reading, match scoring and "Check my fit" (**free tier**) | https://aistudio.google.com/apikey (no billing). Free-tier inputs may be used by Google to improve its products; the app strips your name and contact details first |
+| `GEMINI_MODEL` | Optional | Model tried first for resume reading and fit checks (default `gemini-3.8-flash`; bulk scoring starts on `gemini-3.5-flash-lite`, and each falls back to the other when busy) |
+| `ANTHROPIC_API_KEY` | Optional, **paid** alternative to Gemini | https://console.anthropic.com → API Keys. Ignored when `GEMINI_API_KEY` is set |
+| `ANTHROPIC_MODEL` | Optional | Claude model override |
+| `MAX_AI_SCORES_PER_RUN` | Optional cap | Jobs the AI scores per search (default 40 with Gemini, 20 with Claude) |
 | `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` | Adzuna source (**paid**: leave unset to keep the app free) | https://developer.adzuna.com → Register → your app's ID and key |
 | `USAJOBS_API_KEY` | USAJobs source | https://developer.usajobs.gov/apirequest/ (key arrives by email) |
 | `USAJOBS_USER_AGENT` | USAJobs source | The email address you registered with |
@@ -127,7 +129,7 @@ To find a company's slug, open its careers page and follow an "Apply" link; the 
 
 1. Push this repo to GitHub.
 2. At https://vercel.com/new, import the repo. The framework preset is detected as Next.js; keep the defaults.
-3. Add the environment variables (Project → Settings → Environment Variables) for **Production**: at least `DATABASE_URL`, `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `CRON_SECRET`, plus any of `ANTHROPIC_API_KEY`, `ADZUNA_*`, `USAJOBS_*`, `RESEND_API_KEY`, `EMAIL_FROM`.
+3. Add the environment variables (Project → Settings → Environment Variables) for **Production**: at least `DATABASE_URL`, `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `CRON_SECRET`, plus any of `GEMINI_API_KEY`, `USAJOBS_*`, `RESEND_API_KEY`, `EMAIL_FROM`.
 4. Run `npm run db:migrate` locally against the production `DATABASE_URL` (once, before or right after the first deploy).
 5. Deploy. Add `https://<your-domain>/api/auth/callback/google` to the Google OAuth client's redirect URIs.
 6. Visit the site, sign in with Google, upload your resume, connect your sheet, and click **Refresh jobs**.
@@ -152,7 +154,7 @@ To preview the email without sending: Settings → **Preview the email** (or `/a
 
 ## How it works
 
-- `runJobSearch(userId)` in `src/lib/jobs/search.ts` is the single pipeline used by both the **Refresh jobs** button (`POST /api/jobs/refresh`) and the cron: fetch every source in parallel (12 s timeout each, a failing source never fails the run) → normalize to one `Job` shape → dedupe across sources (same company + title + location; direct ATS postings win over aggregator copies) → store → keyword prefilter → Claude scores the top `MAX_AI_SCORES_PER_RUN` that don't already have a fresh AI score → save matches with a reason.
+- `runJobSearch(userId)` in `src/lib/jobs/search.ts` is the single pipeline used by both the **Refresh jobs** button (`POST /api/jobs/refresh`) and the cron: fetch every source in parallel (12 s timeout each, a failing source never fails the run) → normalize to one `Job` shape → dedupe across sources (same company + title + location; direct ATS postings win over aggregator copies) → store → keyword prefilter (also re-ranks matches already stored, so a profile change applies everywhere) → the AI (Gemini, free) scores the top `MAX_AI_SCORES_PER_RUN` that don't already have a fresh AI score → save matches with a reason.
 - Source adapters live in `src/lib/jobs/sources/`. The Greenhouse, Lever, and Ashby adapters were written against live responses; the trimmed real responses are the test fixtures in `tests/fixtures/`.
 - Every search is recorded in `search_runs` with per-source counts and errors.
 - Design decisions and their reasons are listed in [DECISIONS.md](DECISIONS.md).

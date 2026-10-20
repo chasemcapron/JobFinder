@@ -31,7 +31,7 @@ export function isExperienceLevel(value: unknown): value is ExperienceLevel {
   return typeof value === "string" && (EXPERIENCE_LEVELS as readonly string[]).includes(value);
 }
 
-/** Maps free-form seniority words (e.g. from Claude or a source API) to our levels. */
+/** Maps free-form seniority words (e.g. from the AI or a source API) to our levels. */
 export function coerceExperienceLevel(value: string | null | undefined): ExperienceLevel | null {
   if (!value) return null;
   const v = value.toLowerCase().trim();
