@@ -29,7 +29,7 @@ export async function aiJson<S extends z.ZodType>(opts: {
   prompt: string;
   tier?: GeminiTier;
   maxTokens?: number;
-  timeoutMs?: number;
+  hedgeAfterMs?: number;
   deadline?: number;
 }): Promise<{ data: z.infer<S>; provider: AiProvider; model: string }> {
   const provider = aiProvider();
@@ -39,7 +39,7 @@ export async function aiJson<S extends z.ZodType>(opts: {
       system: opts.system,
       prompt: opts.prompt,
       tier: opts.tier,
-      timeoutMs: opts.timeoutMs,
+      hedgeAfterMs: opts.hedgeAfterMs,
       deadline: opts.deadline,
       maxOutputTokens: opts.maxTokens,
     });

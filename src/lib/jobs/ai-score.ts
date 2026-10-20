@@ -59,7 +59,7 @@ async function scoreBatch(
     prompt: `<candidate>\n${describeProfile(profile)}\n</candidate>\n\n${batch.map(([id, j]) => describeJob(id, j)).join("\n\n")}\n\nScore every job above.`,
     tier: "fast",
     maxTokens: 4_000,
-    timeoutMs: 20_000,
+    hedgeAfterMs: 20_000,
     deadline,
   });
   const out = new Map<string, AiScore>();

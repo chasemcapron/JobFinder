@@ -6,8 +6,16 @@ const API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 /** Fast, cheap and usually available; bulk scoring starts here. */
 export const GEMINI_LITE_MODEL = "gemini-3.5-flash-lite";
 
+/** An older Flash-Lite with its own capacity: often still quick when the newer models are overloaded. */
+export const GEMINI_BACKUP_MODEL = "gemini-3.1-flash-lite";
+
 /** "quality" tries GEMINI_MODEL first (resume reading, fit checks); "fast" tries Flash-Lite first (bulk scoring). */
 export type GeminiTier = "quality" | "fast";
+
+/** Used when a caller passes no deadline. */
+const DEFAULT_BUDGET_MS = 45_000;
+/** No new attempt starts with less time than this left before the deadline. */
+const MIN_ATTEMPT_MS = 2_000;
 
 export function geminiConfigured(): boolean {
   return Boolean(env.geminiApiKey);
@@ -15,10 +23,13 @@ export function geminiConfigured(): boolean {
 
 /**
  * Models to try, in order. Free-tier models regularly answer 503 "high demand" or 429 for a
- * while, so every call falls back to the other model instead of failing outright.
+ * while, and each model has its own capacity, so every call can fall back to the others.
  */
 export function geminiModels(tier: GeminiTier): string[] {
-  const chain = tier === "fast" ? [GEMINI_LITE_MODEL, env.geminiModel] : [env.geminiModel, GEMINI_LITE_MODEL];
+  const chain =
+    tier === "fast"
+      ? [GEMINI_LITE_MODEL, GEMINI_BACKUP_MODEL, env.geminiModel]
+      : [env.geminiModel, GEMINI_LITE_MODEL, GEMINI_BACKUP_MODEL];
   return [...new Set(chain)];
 }
 
@@ -62,69 +73,55 @@ function describeAttempts(attempts: GeminiAttempt[]): string {
   return `Gemini failed: ${attempts.map((a) => `${a.model}: ${a.message}`).join("; ")}`.slice(0, 400);
 }
 
-/**
- * One structured-output call. The response is parsed and validated against `schema`.
- * Tries each model in the tier's chain with a per-attempt timeout, and never runs past `deadline`.
- */
-export async function geminiJson<S extends z.ZodType>(opts: {
-  schema: S;
-  system: string;
-  prompt: string;
-  tier?: GeminiTier;
-  /** Per-attempt timeout. */
-  timeoutMs?: number;
-  /** Epoch ms after which no new attempt starts (keeps callers inside Vercel's 60 s limit). */
-  deadline?: number;
-  maxOutputTokens?: number;
-}): Promise<{ data: z.infer<S>; model: string }> {
-  const key = env.geminiApiKey;
-  if (!key) throw new AiRequestError("GEMINI_API_KEY is not configured");
-  const responseJsonSchema = toGeminiSchema(opts.schema);
-  const attempts: GeminiAttempt[] = [];
+type AttemptOutcome<T> =
+  | { kind: "ok"; data: T; model: string }
+  | { kind: "failed"; attempt: GeminiAttempt }
+  | { kind: "fatal"; error: AiRequestError };
 
-  for (const model of geminiModels(opts.tier ?? "quality")) {
-    const remaining = (opts.deadline ?? Infinity) - Date.now();
-    if (remaining < 2_000) break;
-    const timeoutMs = Math.min(opts.timeoutMs ?? 25_000, remaining);
-    const generationConfig: Record<string, unknown> = {
-      responseMimeType: "application/json",
-      responseJsonSchema,
-      temperature: 0.2,
-      maxOutputTokens: opts.maxOutputTokens ?? 8_192,
-    };
-    // Flash models think by default; "low" is their cheapest level and plenty for scoring and extraction.
-    if (!model.includes("lite")) generationConfig.thinkingConfig = { thinkingLevel: "low" };
+/** One request to one model. Never rejects: aborts and bad output come back as a failed attempt. */
+async function attemptModel<S extends z.ZodType>(
+  model: string,
+  key: string,
+  responseJsonSchema: Record<string, unknown>,
+  opts: { schema: S; system: string; prompt: string; maxOutputTokens?: number },
+  signal: AbortSignal,
+  started: number,
+): Promise<AttemptOutcome<z.infer<S>>> {
+  const generationConfig: Record<string, unknown> = {
+    responseMimeType: "application/json",
+    responseJsonSchema,
+    temperature: 0.2,
+    maxOutputTokens: opts.maxOutputTokens ?? 8_192,
+  };
+  // Flash models think by default; "low" is their cheapest level and plenty for scoring and extraction.
+  if (!model.includes("lite")) generationConfig.thinkingConfig = { thinkingLevel: "low" };
 
-    let res: Response;
-    try {
-      res = await fetch(`${API_BASE}/models/${model}:generateContent`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: opts.system }] },
-          contents: [{ role: "user", parts: [{ text: opts.prompt }] }],
-          generationConfig,
-        }),
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-    } catch (err) {
-      const timedOut = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
-      attempts.push({ model, status: null, message: timedOut ? `timed out after ${Math.round(timeoutMs / 1000)}s` : String(err) });
-      continue;
-    }
-
+  const failed = (status: number | null, message: string): AttemptOutcome<never> => ({
+    kind: "failed",
+    attempt: { model, status, message },
+  });
+  try {
+    const res = await fetch(`${API_BASE}/models/${model}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: opts.system }] },
+        contents: [{ role: "user", parts: [{ text: opts.prompt }] }],
+        generationConfig,
+      }),
+      signal,
+    });
     const body = (await res.json().catch(() => ({}))) as GeminiResponse;
     if (!res.ok) {
       const message = body.error?.message ?? `HTTP ${res.status}`;
       // A bad or restricted key fails the same way on every model.
       if (res.status === 401 || /API key not valid|API_KEY_INVALID/i.test(message)) {
-        throw new AiRequestError("The Gemini API key was rejected. Check GEMINI_API_KEY.");
+        return { kind: "fatal", error: new AiRequestError("The Gemini API key was rejected. Check GEMINI_API_KEY.") };
       }
-      attempts.push({ model, status: res.status, message: message.slice(0, 200) });
-      continue;
+      return failed(res.status, message.slice(0, 200));
     }
     if (body.promptFeedback?.blockReason) {
-      throw new AiRequestError(`Gemini declined this request (${body.promptFeedback.blockReason}).`);
+      return { kind: "fatal", error: new AiRequestError(`Gemini declined this request (${body.promptFeedback.blockReason}).`) };
     }
     const candidate = body.candidates?.[0];
     const text = (candidate?.content?.parts ?? [])
@@ -132,22 +129,94 @@ export async function geminiJson<S extends z.ZodType>(opts: {
       .map((p) => p.text ?? "")
       .join("");
     if (candidate?.finishReason && candidate.finishReason !== "STOP") {
-      attempts.push({ model, status: res.status, message: `stopped early (${candidate.finishReason})` });
-      continue;
+      return failed(res.status, `stopped early (${candidate.finishReason})`);
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch {
-      attempts.push({ model, status: res.status, message: "returned text that isn't JSON" });
-      continue;
+      return failed(res.status, "returned text that isn't JSON");
     }
     const result = opts.schema.safeParse(parsed);
-    if (!result.success) {
-      attempts.push({ model, status: res.status, message: "returned JSON that didn't match the expected shape" });
-      continue;
+    if (!result.success) return failed(res.status, "returned JSON that didn't match the expected shape");
+    return { kind: "ok", data: result.data as z.infer<S>, model };
+  } catch (err) {
+    if (signal.aborted) return failed(null, `no answer after ${Math.round((Date.now() - started) / 1000)}s`);
+    return failed(null, err instanceof Error ? err.message : String(err));
+  }
+}
+
+/**
+ * One structured-output call. The response is parsed and validated against `schema`.
+ *
+ * Starts with the tier's first model. A model that fails (busy, rate limited, bad output) is
+ * replaced by the next one right away. A model that is merely slow keeps running: after
+ * `hedgeAfterMs` the next model is asked as well, and the first valid answer wins. Nothing
+ * runs past `deadline`.
+ */
+export async function geminiJson<S extends z.ZodType>(opts: {
+  schema: S;
+  system: string;
+  prompt: string;
+  tier?: GeminiTier;
+  /** How long to wait for one model before also asking the next. */
+  hedgeAfterMs?: number;
+  /** Epoch ms when every attempt is abandoned (keeps callers inside Vercel's 60 s limit). */
+  deadline?: number;
+  maxOutputTokens?: number;
+}): Promise<{ data: z.infer<S>; model: string }> {
+  const key = env.geminiApiKey;
+  if (!key) throw new AiRequestError("GEMINI_API_KEY is not configured");
+  const responseJsonSchema = toGeminiSchema(opts.schema);
+  const models = geminiModels(opts.tier ?? "quality");
+  const deadline = opts.deadline ?? Date.now() + DEFAULT_BUDGET_MS;
+  const hedgeAfterMs = opts.hedgeAfterMs ?? 20_000;
+  const attempts: GeminiAttempt[] = [];
+
+  const stop = new AbortController();
+  const deadlineTimer = setTimeout(() => stop.abort(), Math.max(0, deadline - Date.now()));
+  type Settled = { index: number; outcome: AttemptOutcome<z.infer<S>> };
+  const running = new Map<number, Promise<Settled>>();
+  let next = 0;
+  let lastStart = 0;
+
+  const canStart = () => next < models.length && deadline - Date.now() >= MIN_ATTEMPT_MS;
+  const start = () => {
+    const index = next++;
+    lastStart = Date.now();
+    const outcome = attemptModel(models[index], key, responseJsonSchema, opts, stop.signal, lastStart);
+    running.set(index, outcome.then((o) => ({ index, outcome: o })));
+  };
+
+  try {
+    if (canStart()) start();
+    while (running.size > 0) {
+      let hedgeTimer: ReturnType<typeof setTimeout> | undefined;
+      const contenders: Promise<Settled | "hedge">[] = [...running.values()];
+      if (canStart()) {
+        contenders.push(
+          new Promise((resolve) => {
+            hedgeTimer = setTimeout(() => resolve("hedge"), Math.max(0, lastStart + hedgeAfterMs - Date.now()));
+          }),
+        );
+      }
+      const settled = await Promise.race(contenders);
+      clearTimeout(hedgeTimer);
+
+      if (settled === "hedge") {
+        if (canStart()) start();
+        continue;
+      }
+      running.delete(settled.index);
+      const { outcome } = settled;
+      if (outcome.kind === "ok") return { data: outcome.data, model: outcome.model };
+      if (outcome.kind === "fatal") throw outcome.error;
+      attempts.push(outcome.attempt);
+      if (canStart()) start();
     }
-    return { data: result.data as z.infer<S>, model };
+  } finally {
+    clearTimeout(deadlineTimer);
+    stop.abort(); // drop any attempt still running
   }
 
   throw new AiUnavailableError(describeAttempts(attempts), attempts);
