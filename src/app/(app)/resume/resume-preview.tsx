@@ -29,10 +29,10 @@ export async function ResumePreview({
     .join(" · ");
 
   return (
-    <Card>
+    <Card id="saved-resume" className="scroll-mt-24">
       <CardHeader
         icon={<Icon name="file" />}
-        title="Your resume"
+        title="Your saved resume"
         description={subtitle}
         action={
           file ? (

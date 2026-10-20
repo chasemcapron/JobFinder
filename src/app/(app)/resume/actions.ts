@@ -15,6 +15,7 @@ import { analyzeResume, type ResumeAnalysis } from "@/lib/resume/analyze";
 import { detectResumeKind, extractResumeText, MAX_RESUME_BYTES, cleanExtractedText } from "@/lib/resume/extract-text";
 import { commitResumeFile, storePendingResume } from "@/lib/resume/file-store";
 import { currentUserId } from "@/lib/session";
+import { LIST_LIMITS } from "./limits";
 
 export type AnalyzeState =
   | { ok: true; text: string; fileName: string | null; analysis: ResumeAnalysis }
@@ -74,10 +75,10 @@ export async function saveResumeProfile(_prev: SaveState, formData: FormData): P
       .update(profiles)
       .set({
         ...(resumeText ? { resumeText, resumeFileName: fileName } : {}),
-        skills: parseList(String(formData.get("skills") ?? ""), 60),
-        titles: parseList(String(formData.get("titles") ?? ""), 12),
-        keywords: parseList(String(formData.get("keywords") ?? ""), 30),
-        excludeKeywords: parseList(String(formData.get("excludeKeywords") ?? ""), 30),
+        skills: parseList(String(formData.get("skills") ?? ""), LIST_LIMITS.skills),
+        titles: parseList(String(formData.get("titles") ?? ""), LIST_LIMITS.titles),
+        keywords: parseList(String(formData.get("keywords") ?? ""), LIST_LIMITS.keywords),
+        excludeKeywords: parseList(String(formData.get("excludeKeywords") ?? ""), LIST_LIMITS.excludeKeywords),
         seniority: coerceExperienceLevel(String(formData.get("seniority") ?? "")),
         matchingUpdatedAt: new Date(),
         updatedAt: new Date(),
