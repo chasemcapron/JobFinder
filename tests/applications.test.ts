@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPglite, schema, type Db } from "@/db";
-import { markApplied, summarizeApplications, syncApplicationToSheet, updateApplicationStatus } from "@/lib/applications";
+import { daysWithoutReply, markApplied, summarizeApplications, syncApplicationToSheet, updateApplicationStatus } from "@/lib/applications";
 import { getGoogleAccessToken, GoogleNotConnectedError } from "@/lib/google/tokens";
 import { ensureProfile } from "@/lib/profile";
 import { localDate, localHour } from "@/lib/time";
@@ -190,5 +190,15 @@ describe("summarizeApplications", () => {
     );
     expect(stats).toEqual({ total: 6, thisWeek: 3, interviewing: 1, offers: 1, answered: 3, considered: 5, responseRate: 3 / 5 });
     expect(summarizeApplications([], now).responseRate).toBeNull();
+  });
+});
+
+describe("daysWithoutReply", () => {
+  it("nudges only applications still marked Applied a week or more on", () => {
+    const now = new Date("2026-10-20T12:00:00Z");
+    const ago = (d: number) => new Date(now.getTime() - d * 86_400_000);
+    expect(daysWithoutReply({ status: "applied", appliedAt: ago(6) }, now)).toBeNull();
+    expect(daysWithoutReply({ status: "applied", appliedAt: ago(9) }, now)).toBe(9);
+    expect(daysWithoutReply({ status: "interviewing", appliedAt: ago(20) }, now)).toBeNull();
   });
 });
