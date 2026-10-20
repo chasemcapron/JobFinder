@@ -130,7 +130,7 @@ export function ChipField({
   );
 
   return (
-    <div id={id} role="group" aria-label={label} className="flex min-w-0 scroll-mt-24 flex-col">
+    <div id={id} role="group" aria-label={label} className="flex min-w-0 scroll-mt-32 flex-col sm:scroll-mt-20">
       <BarHeading hue={hue} as="h3" count={values.length}>
         {label}
       </BarHeading>

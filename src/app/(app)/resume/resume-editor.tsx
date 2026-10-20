@@ -209,7 +209,7 @@ export function ResumeEditor({ saved, aiLabel }: { saved: Draft & { savedAt: str
     <div className="flex flex-col gap-6">
       <Steps steps={steps} />
 
-      <Card id="upload" className="scroll-mt-24">
+      <Card id="upload" className="scroll-mt-32 sm:scroll-mt-20">
         <CardHeader
           icon={<StepNumber n={1} />}
           title={saved.resumeText ? "Upload a new version" : "Upload"}
@@ -263,7 +263,7 @@ export function ResumeEditor({ saved, aiLabel }: { saved: Draft & { savedAt: str
       </Card>
 
       {hasDraft ? (
-        <Card id="review" className="scroll-mt-24">
+        <Card id="review" className="scroll-mt-32 sm:scroll-mt-20">
           <CardHeader
             icon={<StepNumber n={2} />}
             title="Review and edit"
@@ -298,7 +298,7 @@ export function ResumeEditor({ saved, aiLabel }: { saved: Draft & { savedAt: str
                   emptyText="No titles yet. Add the roles you want, best fit first."
                   hint="Best fit first. Employer career sites are searched for the top three; every title counts in ranking."
                 />
-                <div id="level" className="scroll-mt-24">
+                <div id="level" className="scroll-mt-32 sm:scroll-mt-20">
                   <label htmlFor="seniority" className="mb-1.5 block text-muted">
                     <Kicker>Level you&apos;re aiming for</Kicker>
                   </label>
