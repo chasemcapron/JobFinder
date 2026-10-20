@@ -116,12 +116,25 @@ export async function listApplications(userId: string, db?: Db) {
     .orderBy(desc(applications.appliedAt));
 }
 
+/** An application still marked "applied" this many days later is due a follow-up (one email reminder, a nudge on the board). */
+export const FOLLOW_UP_AFTER_DAYS = 7;
+
+/** Days since applying, once an application has waited FOLLOW_UP_AFTER_DAYS with no answer; null otherwise. */
+export function daysWithoutReply(app: { status: ApplicationStatus; appliedAt: Date }, now = new Date()): number | null {
+  if (app.status !== "applied") return null;
+  const days = Math.floor((now.getTime() - app.appliedAt.getTime()) / 86_400_000);
+  return days >= FOLLOW_UP_AFTER_DAYS ? days : null;
+}
+
 export type ApplicationStats = {
   total: number;
   thisWeek: number;
   interviewing: number;
   offers: number;
-  /** Share of applications that got an answer (interview, offer or rejection), 0-1; null before any. */
+  /** Applications that got an answer (interview, offer or rejection), out of those not withdrawn. */
+  answered: number;
+  considered: number;
+  /** answered / considered, 0-1; null before any. */
   responseRate: number | null;
 };
 
@@ -135,6 +148,8 @@ export function summarizeApplications(rows: { status: ApplicationStatus; applied
     thisWeek: rows.filter((r) => r.appliedAt.getTime() >= weekAgo).length,
     interviewing: rows.filter((r) => r.status === "interviewing").length,
     offers: rows.filter((r) => r.status === "offer").length,
+    answered,
+    considered: considered.length,
     responseRate: considered.length ? answered / considered.length : null,
   };
 }
