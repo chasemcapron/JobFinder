@@ -7,12 +7,14 @@ import type { NormalizedJob } from "./types";
 export type MatchProfile = Pick<
   Profile,
   "skills" | "titles" | "keywords" | "searchKeywords" | "preferredLocations" | "experienceLevels" | "remotePreference" | "seniority"
->;
+> &
+  Partial<Pick<Profile, "hasClearance">>;
 
 export type ScoredJob = Pick<
   NormalizedJob,
   "title" | "description" | "city" | "state" | "country" | "remote" | "locationRaw" | "experienceLevel"
->;
+> &
+  Partial<Pick<NormalizedJob, "minYears" | "clearance">>;
 
 export type KeywordResult = { score: number; matched: string[]; reason: string };
 
@@ -29,16 +31,35 @@ const GENERIC_ROLE = new Set([
   "advisor", "partner", "operations", "program", "project", "head", "member", "professional", "scientist",
 ]);
 
-// Compounds split so "Cybersecurity Analyst" and "Cyber Security Analyst" compare equal.
+// Compounds and acronyms expanded so "Cybersecurity Analyst" and "Cyber Security Analyst" compare
+// equal, and "SOC Analyst" shares words with "Security Operations Center Analyst".
 const TITLE_SYNONYMS: Record<string, string[]> = {
   cybersecurity: ["cyber", "security"],
   infosec: ["information", "security"],
   appsec: ["application", "security"],
   netsec: ["network", "security"],
   secops: ["security", "operations"],
+  soc: ["security", "operations"],
+  grc: ["governance", "risk", "compliance"],
+  iam: ["identity", "access"],
+  vuln: ["vulnerability"],
+  pentest: ["penetration", "tester"],
+  pentester: ["penetration", "tester"],
+  devsecops: ["devops", "security"],
+  csirt: ["incident", "response"],
+  dfir: ["forensics", "incident", "response"],
+  cti: ["threat", "intelligence"],
+  isso: ["information", "security", "officer"],
   developer: ["engineer"],
   dev: ["engineer"],
 };
+
+/**
+ * Words that all mean security work. One of them in the job title stands in, at RELATED_CREDIT,
+ * for a different one in the profile title: "SOC Analyst" is close to "Cyber Defense Analyst".
+ */
+const SECURITY_WORDS = new Set(["security", "cyber", "threat", "incident", "vulnerability", "penetration", "forensics", "malware", "detection", "siem"]);
+const RELATED_CREDIT = 0.6;
 
 function titleTokens(title: string): string[] {
   return normalizeForKey(title)
@@ -58,11 +79,52 @@ export function titleSimilarity(profileTitle: string, jobTitle: string): number 
   const have = new Set(titleTokens(jobTitle));
   const weight = (t: string) => (GENERIC_ROLE.has(t) ? 0.5 : 1);
   const total = want.reduce((sum, t) => sum + weight(t), 0);
-  const matched = want.filter((t) => have.has(t));
-  const sim = matched.reduce((sum, t) => sum + weight(t), 0) / total;
+  const jobHasSecurityWord = [...have].some((t) => SECURITY_WORDS.has(t));
+  let points = 0;
+  let fieldMatched = false;
+  for (const t of want) {
+    if (have.has(t)) {
+      points += weight(t);
+      if (!GENERIC_ROLE.has(t)) fieldMatched = true;
+    } else if (SECURITY_WORDS.has(t) && jobHasSecurityWord) {
+      points += weight(t) * RELATED_CREDIT;
+      fieldMatched = true;
+    }
+  }
+  const sim = points / total;
   const wantsField = want.some((t) => !GENERIC_ROLE.has(t));
-  const fieldMatched = matched.some((t) => !GENERIC_ROLE.has(t));
   return wantsField && !fieldMatched ? Math.min(sim, 0.15) : sim;
+}
+
+/** Other ways postings write a skill, so "CompTIA Security+" on a resume matches "Sec+" in a posting. */
+const SKILL_ALIASES: Record<string, string[]> = {
+  "security+": ["sec+"],
+  "cysa+": ["cybersecurity analyst+"],
+  "network+": ["net+"],
+  siem: ["security information and event management"],
+  soar: ["security orchestration"],
+  edr: ["endpoint detection and response", "endpoint detection & response"],
+  iam: ["identity and access management", "identity & access management"],
+  "microsoft sentinel": ["azure sentinel"],
+  "entra id": ["azure ad", "azure active directory"],
+  "azure ad": ["entra id", "azure active directory"],
+  "mitre att&ck": ["att&ck", "mitre attack"],
+  "nist csf": ["nist cybersecurity framework"],
+  "incident response": ["incident handling"],
+  "vulnerability management": ["vulnerability scanning", "vulnerability assessment"],
+  "penetration testing": ["pen testing", "pentesting", "penetration tests"],
+  "threat intelligence": ["threat intel", "cti"],
+  "digital forensics": ["forensics", "dfir"],
+};
+/** Certification vendors resumes put in front of the name and postings often leave out. */
+const CERT_VENDOR = /^(comptia|\(isc\)²?|isc2|ec-council|giac|cisco|microsoft)\s+/i;
+
+/** True when the text mentions the skill under its own name, an alias, or without its cert vendor. */
+export function mentionsSkill(text: string, skill: string): boolean {
+  if (containsTerm(text, skill)) return true;
+  const bare = skill.replace(CERT_VENDOR, "");
+  if (bare !== skill && containsTerm(text, bare)) return true;
+  return (SKILL_ALIASES[bare.toLowerCase()] ?? []).some((alias) => containsTerm(text, alias));
 }
 
 /** True when the job title contains one of the user's excluded words (e.g. "credit"). */
@@ -70,8 +132,9 @@ export function isExcludedTitle(title: string, excludeKeywords: string[]): boole
   return excludeKeywords.some((k) => containsTerm(title, k));
 }
 
-function levelDistance(a: ExperienceLevel, b: ExperienceLevel): number {
-  return Math.abs(EXPERIENCE_LEVELS.indexOf(a) - EXPERIENCE_LEVELS.indexOf(b));
+/** Steps from the candidate's level to the job's: positive when the job is more senior. */
+function levelGap(job: ExperienceLevel, candidate: ExperienceLevel): number {
+  return EXPERIENCE_LEVELS.indexOf(job) - EXPERIENCE_LEVELS.indexOf(candidate);
 }
 
 /** True when the job is in one of the preferred locations (city, state, or country match). */
@@ -128,7 +191,7 @@ export function keywordScore(job: ScoredJob, profile: MatchProfile): KeywordResu
   if (keywordInTitle) score += 10;
 
   // Skills (35). Matching ~8 skills counts as full marks; nobody's resume matches every skill.
-  const matchedSkills = profile.skills.filter((s) => containsTerm(text, s));
+  const matchedSkills = profile.skills.filter((s) => mentionsSkill(text, s));
   if (profile.skills.length) {
     score += Math.min(1, matchedSkills.length / Math.min(8, profile.skills.length)) * 35;
   }
@@ -136,21 +199,42 @@ export function keywordScore(job: ScoredJob, profile: MatchProfile): KeywordResu
 
   // Keywords (15)
   const allKeywords = uniqueCaseInsensitive([...profile.searchKeywords, ...profile.keywords]);
-  const matchedKeywords = allKeywords.filter((k) => containsTerm(text, k));
+  const matchedKeywords = allKeywords.filter((k) => mentionsSkill(text, k));
   if (allKeywords.length) score += Math.min(1, matchedKeywords.length / Math.min(4, allKeywords.length)) * 15;
   if (matchedKeywords.length && !matchedSkills.length) reasons.push(`Keywords: ${matchedKeywords.slice(0, 4).join(", ")}`);
 
-  // Experience level (+5 / penalties)
+  // Experience level (+5 / penalties). Problems go first in the reasons, so the card leads with them.
+  const problems: string[] = [];
   if (job.experienceLevel) {
+    const asksFor = job.minYears ? `Asks for ${job.minYears}+ years` : `${EXPERIENCE_LABELS[job.experienceLevel]} role`;
     if (profile.experienceLevels.length) {
       if (profile.experienceLevels.includes(job.experienceLevel)) {
         score += 5;
         reasons.push(EXPERIENCE_LABELS[job.experienceLevel]);
-      } else score -= 20;
+      } else {
+        score -= 20;
+        problems.push(asksFor);
+      }
     } else if (profile.seniority) {
-      const d = levelDistance(job.experienceLevel, profile.seniority);
-      if (d === 0) score += 5;
-      else if (d >= 2) score -= 10 * (d - 1);
+      // Above your level costs far more than below it: a Senior role is out of reach for an entry-level candidate.
+      const gap = levelGap(job.experienceLevel, profile.seniority);
+      if (gap === 0) score += 5;
+      else if (gap === 1) score -= 5;
+      else if (gap >= 2) {
+        score -= 12 * gap;
+        problems.push(asksFor);
+      } else if (gap <= -2) score -= 10 * (-gap - 1);
+    }
+  }
+
+  // Security clearance: a role that needs one you don't hold is out of reach, however good the fit.
+  if (job.clearance === "active") {
+    if (profile.hasClearance) {
+      score += 5;
+      reasons.push("Uses your clearance");
+    } else {
+      score -= 40;
+      problems.push("Needs an active clearance");
     }
   }
 
@@ -169,9 +253,10 @@ export function keywordScore(job: ScoredJob, profile: MatchProfile): KeywordResu
   }
 
   const final = calibrateKeywordScore(score);
+  const all = [...problems, ...reasons];
   return {
     score: final,
     matched: uniqueCaseInsensitive([...matchedSkills, ...matchedKeywords]),
-    reason: reasons.length ? reasons.join(" · ") : "Weak keyword overlap with your profile",
+    reason: all.length ? all.join(" · ") : "Weak keyword overlap with your profile",
   };
 }

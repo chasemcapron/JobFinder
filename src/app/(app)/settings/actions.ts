@@ -54,13 +54,14 @@ export async function savePreferences(_prev: ActionState, formData: FormData): P
         preferredLocations: parseList(String(formData.get("preferredLocations") ?? "")),
         experienceLevels: levels,
         remotePreference: (REMOTE_PREFERENCES as readonly string[]).includes(remote) ? (remote as RemotePreference) : "any",
+        hasClearance: formData.get("hasClearance") === "on",
         adzunaCountry: "us",
         emailEnabled: formData.get("emailEnabled") === "on",
         matchingUpdatedAt: new Date(),
         updatedAt: new Date(),
       })
       .where(eq(profiles.userId, userId));
-    // Preferences change scores (levels, remote, locations), so re-rank saved jobs right away.
+    // Preferences change scores (levels, remote, locations, clearance), so re-rank saved jobs right away.
     await rescoreStoredMatches(userId, db);
     revalidatePath("/settings");
     revalidatePath("/jobs");

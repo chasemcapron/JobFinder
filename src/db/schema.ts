@@ -76,6 +76,9 @@ export type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number];
 export const REMOTE_PREFERENCES = ["any", "remote_only", "onsite_only"] as const;
 export type RemotePreference = (typeof REMOTE_PREFERENCES)[number];
 
+export const CLEARANCE_REQUIREMENTS = ["active", "obtain"] as const;
+export type ClearanceRequirement = (typeof CLEARANCE_REQUIREMENTS)[number];
+
 /** Maps a sheet field to a column letter, e.g. { company: "A", title: "B" }. */
 export type SheetColumnMap = Partial<Record<SheetField, string>>;
 export const SHEET_FIELDS = ["company", "title", "dateApplied", "link", "location", "status", "source", "score"] as const;
@@ -99,6 +102,8 @@ export const profiles = pgTable("profiles", {
   preferredLocations: jsonb("preferred_locations").$type<string[]>().notNull().default([]),
   experienceLevels: jsonb("experience_levels").$type<ExperienceLevel[]>().notNull().default([]),
   remotePreference: text("remote_preference").$type<RemotePreference>().notNull().default("any"),
+  /** Holds an active security clearance, so jobs that need one aren't marked down. */
+  hasClearance: boolean("has_clearance").notNull().default(false),
   adzunaCountry: text("adzuna_country").notNull().default("us"),
   // Google Sheets
   sheetId: text("sheet_id"),
@@ -136,6 +141,10 @@ export const jobs = pgTable(
     country: text("country"),
     remote: boolean("remote").notNull().default(false),
     experienceLevel: text("experience_level").$type<ExperienceLevel | null>(),
+    /** Smallest "N+ years of experience" in the description; derived, refreshed on every fetch. */
+    minYears: integer("min_years"),
+    /** "active" = must already hold a security clearance, "obtain" = sponsored after hire; derived. */
+    clearance: text("clearance").$type<ClearanceRequirement | null>(),
     description: text("description").notNull().default(""),
     applyUrl: text("apply_url").notNull(),
     postedAt: timestamp("posted_at", { mode: "date" }),

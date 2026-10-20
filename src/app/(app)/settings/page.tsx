@@ -111,6 +111,15 @@ export default async function SettingsPage() {
           </div>
 
           <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="hasClearance" defaultChecked={profile.hasClearance} className="size-4 accent-accent" />
+            I hold an active security clearance
+          </label>
+          <p className="-mt-2 text-xs text-muted">
+            Most defense-contractor security roles need one you already hold. Without it, those jobs rank low and say why;
+            federal (USAJobs) roles sponsor the clearance, so they&apos;re never marked down.
+          </p>
+
+          <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" name="emailEnabled" defaultChecked={profile.emailEnabled} className="size-4 accent-accent" />
             Email me the top new matches every morning (7:00 AM Central)
           </label>

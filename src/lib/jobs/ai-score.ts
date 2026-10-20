@@ -27,6 +27,7 @@ const SYSTEM = `You score how well US job postings fit one candidate. For each j
 Scoring guide: 90+ near-perfect (role, level, core skills and location all line up); 75-89 strong with a minor gap; 50-74 plausible with real gaps; 25-49 weak; under 25 wrong field or wrong level.
 Judge the kind of work first. A posting in a different profession scores under 15 even when it shares tools or words with the candidate's field: for a security analyst, a "Credit Risk Analyst" or "Securities Analyst" is a different profession; Python and SQL appearing in a finance role do not make it a fit.
 Then seniority: an entry-level candidate should not get above 40 for roles asking for 5+ years, "Senior", "Staff", "Lead" or "Principal" titles. Then skills, then location/remote preference.
+A job marked "needs an active security clearance" scores under 35 when the candidate holds none, however good the fit otherwise: they can't be hired without it. A clearance sponsored after hire is no obstacle.
 Reasons must be specific (name the matching skills or the gap), under 120 characters, and never mention the score.`;
 
 function describeProfile(p: MatchProfile): string {
@@ -37,15 +38,24 @@ function describeProfile(p: MatchProfile): string {
     p.skills.length ? `Skills: ${p.skills.join(", ")}` : null,
     p.keywords.length || p.searchKeywords.length ? `Interests: ${[...p.searchKeywords, ...p.keywords].join(", ")}` : null,
     p.preferredLocations.length ? `Preferred locations: ${p.preferredLocations.join("; ")}` : null,
+    p.hasClearance === undefined ? null : `Security clearance: ${p.hasClearance ? "holds an active clearance" : "none"}`,
     `Remote preference: ${{ any: "remote or on-site", remote_only: "remote only", onsite_only: "on-site/hybrid only" }[p.remotePreference]}`,
   ];
   return lines.filter(Boolean).join("\n");
 }
 
+// Requirements often sit below the description cut-off, so the parsed ones are stated up front.
+const CLEARANCE_NOTE = { active: "needs an active security clearance", obtain: "clearance sponsored after hire" } as const;
+
 function describeJob(id: string, job: ScoredJob & { company: string }): string {
-  const level = job.experienceLevel ? ` | level: ${EXPERIENCE_LABELS[job.experienceLevel]}` : "";
+  const facts = [
+    job.experienceLevel ? `level: ${EXPERIENCE_LABELS[job.experienceLevel]}` : null,
+    job.minYears ? `asks for ${job.minYears}+ years` : null,
+    job.clearance ? CLEARANCE_NOTE[job.clearance] : null,
+  ].filter(Boolean);
+  const header = [`${job.title} at ${job.company}`, formatLocation(job, job.locationRaw), ...facts].join(" | ");
   const desc = job.description.length > DESCRIPTION_CHARS ? `${job.description.slice(0, DESCRIPTION_CHARS)}…` : job.description;
-  return `<job id="${id}">\n${job.title} at ${job.company} | ${formatLocation(job, job.locationRaw)}${level}\n${desc}\n</job>`;
+  return `<job id="${id}">\n${header}\n${desc}\n</job>`;
 }
 
 async function scoreBatch(

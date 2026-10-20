@@ -43,7 +43,18 @@ describe("titleSimilarity", () => {
   it("treats cybersecurity and cyber security alike, and still matches the field word", () => {
     expect(titleSimilarity("Cybersecurity Analyst", "Cyber Security Analyst")).toBe(1);
     expect(titleSimilarity("Cybersecurity Analyst", "Security Analyst")).toBeGreaterThanOrEqual(0.5);
-    expect(titleSimilarity("Security Analyst", "SOC Analyst")).toBeLessThan(0.5);
+  });
+
+  it("reads security acronyms and gives related security words partial credit", () => {
+    expect(titleSimilarity("SOC Analyst", "Security Operations Center Analyst")).toBe(1);
+    expect(titleSimilarity("Security Analyst", "SOC Analyst")).toBe(1);
+    expect(titleSimilarity("GRC Analyst", "Governance, Risk & Compliance Analyst")).toBe(1);
+    expect(titleSimilarity("IAM Engineer", "Identity and Access Management Engineer")).toBe(1);
+    const related = titleSimilarity("SOC Analyst", "Cyber Defense Analyst");
+    expect(related).toBeGreaterThan(0.4);
+    expect(related).toBeLessThan(0.6);
+    // Related credit is only for security words: other fields still get the 0.15 cap.
+    expect(titleSimilarity("SOC Analyst", "Credit Analyst")).toBeLessThanOrEqual(0.15);
   });
 
   it("still scores a generic-only profile title by its words", () => {
@@ -92,6 +103,51 @@ describe("keywordScore", () => {
 
   it("penalizes levels far from the profile's seniority", () => {
     expect(keywordScore(job({ experienceLevel: "internship" }), profile).score).toBeLessThan(keywordScore(job(), profile).score);
+  });
+
+  describe("for an entry-level security candidate", () => {
+    const entry: MatchProfile = {
+      titles: ["SOC Analyst"],
+      skills: ["Splunk", "CompTIA Security+", "Wireshark", "Incident Response"],
+      keywords: [],
+      searchKeywords: [],
+      preferredLocations: [],
+      experienceLevels: [],
+      remotePreference: "any",
+      seniority: "entry",
+      hasClearance: false,
+    };
+    const soc = (overrides: Partial<ScoredJob> = {}) =>
+      job({
+        title: "SOC Analyst",
+        description: "Triage alerts in Splunk, follow incident handling runbooks. Sec+ required.",
+        experienceLevel: "entry",
+        ...overrides,
+      });
+
+    it("matches certifications and skills written differently", () => {
+      expect(keywordScore(soc(), entry).matched).toEqual(expect.arrayContaining(["Splunk", "CompTIA Security+", "Incident Response"]));
+    });
+
+    it("marks down roles two or more levels up, and says why first", () => {
+      const fit = keywordScore(soc(), entry).score;
+      const mid = keywordScore(soc({ experienceLevel: "mid", minYears: 3 }), entry).score;
+      const senior = keywordScore(soc({ experienceLevel: "senior", minYears: 5 }), entry);
+      expect(mid).toBeLessThan(fit);
+      expect(fit - mid).toBeLessThan(15); // one step up is a stretch, not a wall
+      expect(fit - senior.score).toBeGreaterThan(25);
+      expect(senior.reason).toMatch(/^Asks for 5\+ years/);
+    });
+
+    it("drops roles needing an active clearance into the red, unless you hold one", () => {
+      const needs = keywordScore(soc({ clearance: "active" }), entry);
+      expect(needs.score).toBeLessThan(50);
+      expect(needs.reason).toMatch(/^Needs an active clearance/);
+      expect(keywordScore(soc({ clearance: "obtain" }), entry).score).toBe(keywordScore(soc(), entry).score);
+      const held = keywordScore(soc({ clearance: "active" }), { ...entry, hasClearance: true });
+      expect(held.score).toBeGreaterThan(keywordScore(soc(), entry).score);
+      expect(held.reason).toContain("Uses your clearance");
+    });
   });
 
   it("returns 0 with guidance when the profile is empty", () => {

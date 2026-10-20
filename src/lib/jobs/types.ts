@@ -1,4 +1,4 @@
-import type { ExperienceLevel, JobSource, Profile } from "@/db/schema";
+import type { ClearanceRequirement, ExperienceLevel, JobSource, Profile } from "@/db/schema";
 
 /** The one normalized shape every source adapter returns. */
 export type NormalizedJob = {
@@ -13,6 +13,10 @@ export type NormalizedJob = {
   country: string | null;
   remote: boolean;
   experienceLevel: ExperienceLevel | null;
+  /** Smallest "N+ years of experience" the description asks for. */
+  minYears: number | null;
+  /** Whether the posting needs a security clearance held already ("active") or sponsored ("obtain"). */
+  clearance: ClearanceRequirement | null;
   /** Plain text */
   description: string;
   applyUrl: string;

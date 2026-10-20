@@ -95,7 +95,16 @@ export async function runJobSearch(userId: string, opts: Options): Promise<RunSu
       const rows = await db
         .insert(jobs)
         .values(batch.map((j) => ({ ...j, firstSeenAt: now, lastSeenAt: now })))
-        .onConflictDoUpdate({ target: jobs.dedupeKey, set: { lastSeenAt: now } })
+        // Derived fields are refreshed too, so better parsing reaches postings already stored.
+        .onConflictDoUpdate({
+          target: jobs.dedupeKey,
+          set: {
+            lastSeenAt: now,
+            experienceLevel: sqlExcluded("experience_level"),
+            minYears: sqlExcluded("min_years"),
+            clearance: sqlExcluded("clearance"),
+          },
+        })
         .returning({ id: jobs.id, dedupeKey: jobs.dedupeKey });
       for (const r of rows) idByKey.set(r.dedupeKey, r.id);
     }
@@ -197,6 +206,8 @@ async function scoreAndSaveMatches(
       remote: jobs.remote,
       locationRaw: jobs.locationRaw,
       experienceLevel: jobs.experienceLevel,
+      minYears: jobs.minYears,
+      clearance: jobs.clearance,
       aiScored: jobMatches.aiScored,
       scoredAt: jobMatches.scoredAt,
     })
