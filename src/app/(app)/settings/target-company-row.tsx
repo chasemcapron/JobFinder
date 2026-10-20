@@ -15,12 +15,15 @@ export function TargetCompanyRow({
   id,
   ats,
   slug,
+  name,
   enabled,
   lastResult,
 }: {
   id: string;
   ats: string;
   slug: string;
+  /** A readable name when the slug isn't one (Workday: "ghr.wd1/Lateral-US" is Bank of America). */
+  name?: string;
   enabled: boolean;
   /** From the most recent search run, if this company was in it. */
   lastResult?: { ok: boolean; count: number; error?: string };
@@ -30,8 +33,14 @@ export function TargetCompanyRow({
     <li className="flex flex-wrap items-center justify-between gap-2 px-3 py-2" aria-busy={pending}>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <Badge tone="info">{ats}</Badge>
-        <a href={BOARD_URLS[ats]?.(slug)} target="_blank" rel="noreferrer" className={enabled ? `${linkClass} inline-flex items-center gap-1` : "text-muted line-through"}>
-          {slug}
+        <a
+          href={BOARD_URLS[ats]?.(slug)}
+          target="_blank"
+          rel="noreferrer"
+          title={name ? slug : undefined}
+          className={enabled ? `${linkClass} inline-flex items-center gap-1` : "text-muted line-through"}
+        >
+          {name ?? slug}
           {enabled ? <Icon name="external-link" className="size-3" /> : null}
         </a>
         {enabled && lastResult ? (

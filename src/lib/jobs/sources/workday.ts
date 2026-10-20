@@ -7,6 +7,7 @@ import { companyFromSlug, finalizeJob, parseDate } from "../normalize";
 import { isExcludedTitle, titleSimilarity } from "../scoring";
 import { SourceError, type NormalizedJob } from "../types";
 import { fetchJson, parseItems } from "./http";
+import { findWorkdayEmployer } from "./workday-employers";
 
 /**
  * Workday career sites ({tenant}.wd{N}.myworkdayjobs.com/{site}) have no public API. The site's own
@@ -21,7 +22,7 @@ import { fetchJson, parseItems } from "./http";
  * Shapes verified live on 2026-10-20 against Leidos, CrowdStrike, Booz Allen, Northrop Grumman, RTX,
  * Boeing, Capital One, NVIDIA and Mastercard. A wrong site name returns 404; a wrong tenant or wdN, 422.
  * The hiring organization is a legal entity ("631 Booz Allen Hamilton_United States", often empty),
- * so the company name comes from the site name.
+ * so the company name comes from the list of checked employers, else from the site name.
  *
  * Big sites hold thousands of postings and listings have no descriptions, so a search takes the
  * first results for the profile's top titles, ranks them by title, and fetches details for the best
@@ -62,11 +63,14 @@ const SITE_WORDS = new Set([
 ]);
 
 /**
- * A display name from the site name, else from the tenant: "Northrop_Grumman_External_Site" ->
- * "Northrop Grumman", "REC_RTX_Ext_Gateway" -> "RTX", "NVIDIAExternalCareerSite" -> "NVIDIA",
- * "crowdstrikecareers" -> "Crowdstrike", and leidos's "External" -> "Leidos".
+ * The name from the list of checked employers ("bah.wd1/BAH_Jobs" -> "Booz Allen Hamilton"). Otherwise
+ * guessed from the site name, else the tenant: "Northrop_Grumman_External_Site" -> "Northrop Grumman",
+ * "REC_RTX_Ext_Gateway" -> "RTX", "NVIDIAExternalCareerSite" -> "NVIDIA", "acmecareers" -> "Acme",
+ * and leidos's "External" -> "Leidos".
  */
 export function workdayCompanyName(b: WorkdayBoard): string {
+  const listed = findWorkdayEmployer(`${b.tenant}.${b.dataCenter}/${b.site}`);
+  if (listed) return listed.name;
   const words = b.site
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")

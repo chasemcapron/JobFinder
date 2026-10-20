@@ -23,6 +23,7 @@ import { suggestCompanies, type CompanySuggestion } from "@/lib/ai/suggest-compa
 import { inspectSheet, SHEET_FIELD_LABELS } from "@/lib/google/sheets";
 import { getGoogleAccessToken } from "@/lib/google/tokens";
 import { rescoreStoredMatches } from "@/lib/jobs/search";
+import { findWorkdayEmployer } from "@/lib/jobs/sources/workday-employers";
 import { parseColumnLetter, parseList, parseSheetId, parseTargetCompany } from "@/lib/parse-input";
 import { ensureProfile, listTargetCompanies } from "@/lib/profile";
 import { currentUserId } from "@/lib/session";
@@ -191,6 +192,25 @@ export async function addSuggestedCompanies(entries: { ats: AtsType; slug: strin
       .onConflictDoNothing();
     revalidatePath("/settings");
     return { ok: true, message: `Added ${valid.length} compan${valid.length === 1 ? "y" : "ies"}. Refresh jobs to search them.` };
+  } catch (err) {
+    return errorState(err);
+  }
+}
+
+/** Adds employers from the checked Workday list. Only listed slugs are accepted. */
+export async function addWorkdayEmployers(slugs: string[]): Promise<ActionState> {
+  try {
+    const userId = await userIdOrThrow();
+    const picked = [...new Set(slugs)].map(findWorkdayEmployer).filter((e) => e !== undefined);
+    if (picked.length === 0) return { ok: false, message: "Nothing to add." };
+    const db = await getDb();
+    await db
+      .insert(targetCompanies)
+      .values(picked.map((e) => ({ ats: "workday" as const, slug: e.slug, userId })))
+      .onConflictDoNothing();
+    revalidatePath("/settings");
+    const names = [...new Set(picked.map((e) => e.name))];
+    return { ok: true, message: `Added ${names.length > 3 ? `${names.length} employers` : names.join(", ")}. Refresh jobs to search them.` };
   } catch (err) {
     return errorState(err);
   }

@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { parseTargetCompany } from "@/lib/parse-input";
 import { parseLocation } from "../location";
+import { buildSourceTasks, MAX_WORKDAY_SITES_PER_SEARCH, takeTurns } from ".";
 import {
   fetchWorkday,
   normalizeWorkdayJob,
@@ -10,8 +12,10 @@ import {
   rankForDetails,
   workdayCompanyName,
   workdayLocation,
+  workdaySiteUrl,
   type WorkdaySearch,
 } from "./workday";
+import { findWorkdayEmployer, WORKDAY_EMPLOYERS } from "./workday-employers";
 
 // Trimmed copies of live CrowdStrike responses captured 2026-10-20: a "security analyst" search
 // (US, foreign and multi-location postings) and one posting's details.
@@ -33,15 +37,23 @@ describe("parseWorkdaySlug / workdayCompanyName", () => {
   });
 
   it.each([
-    ["ngc.wd1/Northrop_Grumman_External_Site", "Northrop Grumman"],
-    ["globalhr.wd5/REC_RTX_Ext_Gateway", "RTX"],
-    ["nvidia.wd5/NVIDIAExternalCareerSite", "NVIDIA"],
-    ["capitalone.wd12/Capital_One", "Capital One"],
-    ["crowdstrike.wd5/crowdstrikecareers", "Crowdstrike"],
-    ["leidos.wd5/External", "Leidos"],
-    ["mastercard.wd1/CorporateCareers", "Mastercard"],
-    ["boeing.wd1/EXTERNAL_CAREERS", "Boeing"],
-  ])("names %s %s", (slug, name) => expect(workdayCompanyName(parseWorkdaySlug(slug))).toBe(name));
+    ["bah.wd1/BAH_Jobs", "Booz Allen Hamilton"],
+    ["BAH.wd1/bah_jobs", "Booz Allen Hamilton"],
+    ["ghr.wd1/Lateral-US", "Bank of America"],
+    ["crowdstrike.wd5/crowdstrikecareers", "CrowdStrike"],
+  ])("uses the checked employer's name for %s", (slug, name) => expect(workdayCompanyName(parseWorkdaySlug(slug))).toBe(name));
+
+  // Unlisted sites (the tenants here are made up, so the list doesn't match).
+  it.each([
+    ["example.wd1/Northrop_Grumman_External_Site", "Northrop Grumman"],
+    ["example.wd5/REC_RTX_Ext_Gateway", "RTX"],
+    ["example.wd5/NVIDIAExternalCareerSite", "NVIDIA"],
+    ["example.wd12/Capital_One", "Capital One"],
+    ["example.wd5/acmecareers", "Acme"],
+    ["leidos.wd9/External", "Leidos"],
+    ["mastercard.wd9/CorporateCareers", "Mastercard"],
+    ["boeing.wd9/EXTERNAL_CAREERS", "Boeing"],
+  ])("guesses a name for %s: %s", (slug, name) => expect(workdayCompanyName(parseWorkdaySlug(slug))).toBe(name));
 });
 
 describe("workdayLocation", () => {
@@ -87,7 +99,7 @@ describe("normalizeWorkdayJob", () => {
       source: "workday",
       externalId: "crowdstrike:719f119d666e1001c0adee45de700000",
       title: "Analyst I, Falcon Complete (Hybrid, San Antonio)",
-      company: "Crowdstrike",
+      company: "CrowdStrike",
       locationRaw: "Remote, USA • San Antonio, TX, USA",
       country: "US",
       remote: true,
@@ -178,7 +190,7 @@ describe("fetchWorkday", () => {
       "Sr. Product Manager, Red Teaming AI – AIDR (HYBRID)",
     ]);
     expect(jobs).toHaveLength(4);
-    expect(jobs.every((j) => j.source === "workday" && j.company === "Crowdstrike")).toBe(true);
+    expect(jobs.every((j) => j.source === "workday" && j.company === "CrowdStrike")).toBe(true);
   });
 
   it("keeps the US filter on sites that have it, and searches each title once", async () => {
@@ -202,5 +214,42 @@ describe("fetchWorkday", () => {
     await expect(fetchWorkday(SLUG, search(["Security Analyst"]), signal())).rejects.toThrow(
       "No Workday career site at https://crowdstrike.wd5.myworkdayjobs.com/crowdstrikecareers",
     );
+  });
+});
+
+describe("Workday sites per search", () => {
+  const profile = { titles: ["Security Analyst"], searchKeywords: [], skills: [], preferredLocations: [], remotePreference: "any" } as never;
+
+  it("takeTurns keeps short lists and rotates long ones daily, so every item gets a turn", () => {
+    const items = Array.from({ length: 30 }, (_, i) => i);
+    expect(takeTurns(items.slice(0, 5), 12, new Date())).toEqual([0, 1, 2, 3, 4]);
+    const seen = new Set<number>();
+    for (let d = 0; d < 3; d++) {
+      const today = takeTurns(items, 12, new Date(Date.UTC(2026, 9, 20 + d)));
+      expect(today).toHaveLength(12);
+      today.forEach((x) => seen.add(x));
+    }
+    expect(seen.size).toBe(30);
+  });
+
+  it(`searches at most ${MAX_WORKDAY_SITES_PER_SEARCH} Workday sites per run, plus every other target`, () => {
+    const targets = [
+      { ats: "greenhouse" as const, slug: "stripe" },
+      ...Array.from({ length: 20 }, (_, i) => ({ ats: "workday" as const, slug: `t${i}.wd1/External` })),
+    ];
+    const tasks = buildSourceTasks(profile, targets, new Date("2026-10-20T12:00:00Z"));
+    expect(tasks.filter((t) => t.source === "workday")).toHaveLength(MAX_WORKDAY_SITES_PER_SEARCH);
+    expect(tasks.map((t) => t.label)).toContain("greenhouse:stripe");
+  });
+});
+
+describe("WORKDAY_EMPLOYERS", () => {
+  it("are unique, valid slugs that their pasted careers URL maps back to", () => {
+    const slugs = WORKDAY_EMPLOYERS.map((e) => e.slug.toLowerCase());
+    expect(new Set(slugs).size).toBe(slugs.length);
+    for (const e of WORKDAY_EMPLOYERS) {
+      expect(parseTargetCompany(workdaySiteUrl(parseWorkdaySlug(e.slug)))).toEqual({ ats: "workday", slug: e.slug });
+      expect(findWorkdayEmployer(e.slug.toUpperCase())).toBe(e);
+    }
   });
 });

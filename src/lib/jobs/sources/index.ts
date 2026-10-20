@@ -11,16 +11,39 @@ import { fetchWorkday, WORKDAY_MAX_QUERIES, type WorkdaySearch } from "./workday
 import { TARGET_COUNTRY } from "../location";
 
 export const SOURCE_TIMEOUT_MS = 12_000;
-const MAX_CONCURRENCY = 8;
+const MAX_CONCURRENCY = 12;
 const MAX_USAJOBS_QUERIES = 2;
+/**
+ * A Workday site takes 3-11 s per search (listing pages plus up to 25 postings), so searching more
+ * than this per run, 12 at a time, could push a run past Vercel's 60 s limit.
+ */
+export const MAX_WORKDAY_SITES_PER_SEARCH = 12;
 
 export function mockJobsForced() {
   return process.env.MOCK_JOBS === "true";
 }
 
-/** One task per target company plus one per keyword query for Adzuna/USAJobs. */
-export function buildSourceTasks(profile: Profile, targets: Pick<TargetCompanyRow, "ats" | "slug">[]): SourceTask[] {
+/**
+ * At most `max` items. With more, a window that moves by `max` each day, so every item takes its
+ * turn every few days (jobs count as closed only after 21 days unseen).
+ */
+export function takeTurns<T>(items: T[], max: number, now: Date): T[] {
+  if (items.length <= max) return items;
+  const start = (Math.floor(now.getTime() / 86_400_000) * max) % items.length;
+  return Array.from({ length: max }, (_, i) => items[(start + i) % items.length]);
+}
+
+/**
+ * One task per target company (Workday sites capped per run, see MAX_WORKDAY_SITES_PER_SEARCH),
+ * plus one per keyword query for Adzuna/USAJobs.
+ */
+export function buildSourceTasks(profile: Profile, targets: Pick<TargetCompanyRow, "ats" | "slug">[], now = new Date()): SourceTask[] {
   if (mockJobsForced()) return [{ label: "sample data", source: "mock", run: async () => mockJobs() }];
+  const workdayTargets = targets.filter((t) => t.ats === "workday");
+  const searched = [
+    ...targets.filter((t) => t.ats !== "workday"),
+    ...takeTurns(workdayTargets, MAX_WORKDAY_SITES_PER_SEARCH, now),
+  ];
 
   // Workday sites are searched (they have no full feed), using the profile's top titles.
   const workday: WorkdaySearch = { queries: buildSearchQueries(profile, WORKDAY_MAX_QUERIES).map((q) => q.what), profile };
@@ -30,7 +53,7 @@ export function buildSourceTasks(profile: Profile, targets: Pick<TargetCompanyRo
     ashby: fetchAshby,
     workday: (slug, signal) => fetchWorkday(slug, workday, signal),
   };
-  const tasks: SourceTask[] = targets.map(({ ats, slug }) => ({
+  const tasks: SourceTask[] = searched.map(({ ats, slug }) => ({
     label: `${ats}:${slug}`,
     source: ats,
     run: ({ signal }: FetchContext) => fetchBoard[ats](slug, signal),
