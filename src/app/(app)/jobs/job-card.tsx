@@ -1,8 +1,9 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Badge, buttonClass, Card, cx, Icon, ScoreBadge, scoreTier, SourceBadge } from "@/components/ui";
 import { applicationStatusLabel } from "@/lib/applications";
 import { formatRelativeDate, formatSalary } from "@/lib/format";
 import { EXPERIENCE_LABELS } from "@/lib/jobs/experience";
+import { isNewMatch, type RoleMatch } from "@/lib/jobs/filters";
 import { formatLocation } from "@/lib/jobs/location";
 import type { MatchResult } from "@/lib/jobs/results";
 import { adzunaHomepage } from "@/lib/jobs/sources/adzuna";
@@ -17,104 +18,159 @@ const SOURCE_LABELS: Record<string, string> = {
   mock: "Sample",
 };
 
-function Meta({ icon, children }: { icon: "building" | "map-pin" | "calendar"; children: ReactNode }) {
-  return (
-    <span className="inline-flex min-w-0 items-center gap-1.5">
-      <Icon name={icon} className="size-3.5 shrink-0" />
-      <span className="min-w-0 break-words">{children}</span>
-    </span>
-  );
-}
-
 // Sources sometimes send a placeholder instead of a location; showing "N/A" adds nothing.
 const PLACEHOLDER_LOCATION = /^(n\/?a|none|tbd|unknown|-+)$/i;
 
+function placeOf(job: MatchResult["job"]): string | null {
+  const location = formatLocation(job, job.locationRaw).trim();
+  return location && !PLACEHOLDER_LOCATION.test(location) ? location : null;
+}
+
+/** "Company · Austin, TX · 3d ago · $97k–$131k", with separators only between parts that exist. */
+function MetaLine({ parts }: { parts: ReactNode[] }) {
+  const shown = parts.filter(Boolean);
+  return (
+    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] leading-5 text-muted">
+      {shown.map((part, i) => (
+        <span key={i} className="inline-flex items-center gap-2">
+          {i > 0 ? <span aria-hidden className="size-1 rounded-full bg-border-strong" /> : null}
+          {part}
+        </span>
+      ))}
+    </p>
+  );
+}
+
+/** "Also in 4 other places", opening to the list with each posting's own link. */
+function OtherPlaces({ others }: { others: MatchResult[] }) {
+  return (
+    <details className="group/places mt-2 text-[13px]">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 font-medium text-section-fg select-none hover:underline">
+        <Icon name="map-pin" className="size-3.5" />
+        Also in {others.length} other place{others.length === 1 ? "" : "s"}
+        <Icon name="chevron-down" className="size-3.5 transition-transform group-open/places:rotate-180" />
+      </summary>
+      <ul className="mt-1.5 flex flex-wrap gap-1.5">
+        {others.map((m) => (
+          <li key={m.job.id}>
+            <a
+              href={m.job.applyUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-subtle px-2 py-0.5 text-foreground hover:border-border-strong"
+            >
+              {placeOf(m.job) ?? "Location not listed"}
+              {m.application ? <Icon name="check" className="size-3 text-success-fg" title="Applied" /> : null}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 /**
- * `ranked` is false until the user has a resume or keywords; scores are then all 0 and shown neutral.
- * `fit` is the "Check my fit" control, shown after the other actions.
+ * One role in the results. `ranked` is false until the user has a resume or keywords (scores are
+ * then all 0 and shown neutral). `fit` is the "Check my fit" control. `index` staggers the entrance.
  */
 export function JobCard({
   match,
   actions,
   fit,
   ranked = true,
+  hasClearance = false,
+  index = 0,
 }: {
-  match: MatchResult;
+  match: RoleMatch;
   actions?: ReactNode;
   fit?: ReactNode;
   ranked?: boolean;
+  hasClearance?: boolean;
+  index?: number;
 }) {
-  const { job, application } = match;
+  const { job, application, others } = match;
   const salary = formatSalary(job.salaryMin, job.salaryMax, job.salaryCurrency);
   const posted = formatRelativeDate(job.postedAt ?? job.firstSeenAt);
-  const location = formatLocation(job, job.locationRaw).trim();
+  const isNew = isNewMatch(match);
+  const needsClearance = job.clearance === "active" && !hasClearance;
+  const source =
+    job.source === "adzuna" ? (
+      // Adzuna's terms require each displayed ad to link "Adzuna" back to their site.
+      <a href={adzunaHomepage(job.country)} target="_blank" rel="noreferrer" className="font-medium text-accent-text underline">
+        Jobs by Adzuna
+      </a>
+    ) : (
+      <SourceBadge source={job.source}>via {SOURCE_LABELS[job.source] ?? job.source}</SourceBadge>
+    );
+
   return (
-    <li>
+    <li className="rise-in" style={{ "--i": index } as CSSProperties}>
       <Card
-        padding="sm"
+        padding="none"
         interactive
         outline={ranked ? scoreTier(match.score) : undefined}
-        className={cx("flex flex-col gap-3", application && "opacity-65 transition-opacity focus-within:opacity-100 hover:opacity-100")}
+        className={cx("overflow-hidden", application && "opacity-70 transition-opacity focus-within:opacity-100 hover:opacity-100")}
       >
-        <div className="flex items-start gap-3">
+        <div className="flex items-start gap-3.5 p-4">
           <ScoreBadge
             score={match.score}
             unranked={!ranked}
             title={match.aiScored ? "AI match score: the AI read the whole posting" : "Keyword match score: how well this job fits your resume"}
           />
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-              <h3 className="min-w-0 text-base leading-snug font-semibold tracking-tight">
-                <a href={job.applyUrl} target="_blank" rel="noreferrer" className="hover:text-accent-text hover:underline">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <h3 className="min-w-0 text-[15px] leading-snug font-semibold tracking-tight">
+                <a href={job.applyUrl} target="_blank" rel="noreferrer" className="hover:text-section-fg hover:underline">
                   {job.title}
                 </a>
               </h3>
+              {isNew && !application ? (
+                <span className="rounded-[4px] bg-blue px-1.5 font-label text-[11px] leading-[18px] font-bold tracking-[0.1em] text-white uppercase">
+                  New
+                </span>
+              ) : null}
               {application ? (
                 <Badge tone="success" dot>
                   {application.status === "applied" ? "Applied" : `Applied · ${applicationStatusLabel(application.status)}`}
                 </Badge>
               ) : null}
             </div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
-              <Meta icon="building">
-                <span className="font-medium text-foreground">{job.company}</span>
-              </Meta>
-              {location && !PLACEHOLDER_LOCATION.test(location) ? <Meta icon="map-pin">{location}</Meta> : null}
-              {posted ? <Meta icon="calendar">Posted {posted}</Meta> : null}
+            <MetaLine
+              parts={[
+                <span key="c" className="font-medium text-foreground">
+                  {job.company}
+                </span>,
+                placeOf(job),
+                posted ? `Posted ${posted}` : null,
+                salary ? <span className="text-foreground">{salary}</span> : null,
+              ]}
+            />
+            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+              {needsClearance ? (
+                <Badge tone="danger" title="The posting asks for a security clearance you already hold. Change this in Settings if you have one.">
+                  <Icon name="alert-triangle" className="size-3" />
+                  Active clearance required
+                </Badge>
+              ) : null}
+              {job.experienceLevel ? <Badge>{EXPERIENCE_LABELS[job.experienceLevel]}</Badge> : null}
+              {job.minYears ? <Badge title="Smallest years of experience the posting asks for">{job.minYears}+ yrs</Badge> : null}
+              {source}
             </div>
+            {match.reasons ? (
+              <p className="mt-2.5 line-clamp-2 text-[13px] leading-5 text-muted">
+                {match.aiScored ? (
+                  <Icon name="sparkles" className="mr-1 inline size-3.5 align-[-2px] text-section-fg" title="AI fit" />
+                ) : (
+                  <span className="font-medium text-foreground">Why: </span>
+                )}
+                {match.reasons}
+              </p>
+            ) : null}
+            {others.length ? <OtherPlaces others={others} /> : null}
           </div>
         </div>
 
-        {match.reasons ? (
-          <p className="rounded-control bg-surface-subtle px-3 py-2 text-sm text-muted">
-            {match.aiScored ? (
-              <>
-                <span className="inline-flex items-center gap-1 font-medium text-foreground">
-                  <Icon name="sparkles" className="size-3.5 text-section-fg" />
-                  AI fit:
-                </span>{" "}
-              </>
-            ) : (
-              <span className="font-medium text-foreground">Why it matched: </span>
-            )}
-            {match.reasons}
-          </p>
-        ) : null}
-
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-          {job.experienceLevel ? <Badge>{EXPERIENCE_LABELS[job.experienceLevel]}</Badge> : null}
-          {salary ? <Badge tone="accent">{salary}</Badge> : null}
-          {job.source === "adzuna" ? (
-            // Adzuna's terms require each displayed ad to link "Adzuna" back to their site.
-            <a href={adzunaHomepage(job.country)} target="_blank" rel="noreferrer" className="font-medium text-accent-text underline">
-              Jobs by Adzuna
-            </a>
-          ) : (
-            <SourceBadge source={job.source}>via {SOURCE_LABELS[job.source] ?? job.source}</SourceBadge>
-          )}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+        <div className="flex flex-wrap items-center gap-2 border-t border-border bg-surface-subtle/40 px-4 py-2.5">
           <a href={job.applyUrl} target="_blank" rel="noreferrer" className={buttonClass("primary", "sm")}>
             Apply
             <Icon name="external-link" className="size-3.5" />

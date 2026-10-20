@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Alert, buttonClass, EmptyState, HIDE_BELOW_SCORE, Icon, linkClass, PageHeader } from "@/components/ui";
+import { Alert, buttonClass, EmptyState, HIDE_BELOW_SCORE, Icon, linkClass, PageHeader, SCORE_THRESHOLDS, StatTile } from "@/components/ui";
+import { applicationStats } from "@/lib/applications";
 import { aiProvider } from "@/lib/ai/provider";
 import { formatDateTime } from "@/lib/format";
-import { activeFilterCount, filterMatches, filtersToSearchParams, locationFacets, paginate, parseFilters } from "@/lib/jobs/filters";
+import { activeFilterCount, filterMatches, filtersToSearchParams, groupByRole, locationFacets, paginate, parseFilters, summarizeMatches } from "@/lib/jobs/filters";
 import { listFitChecks } from "@/lib/jobs/fit-checks";
 import { lastSearchRun, listMatches } from "@/lib/jobs/results";
 import { requireUser } from "@/lib/session";
@@ -21,15 +22,16 @@ export const maxDuration = 60;
 export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
   const { profile } = await requireUser();
   const filters = parseFilters(await searchParams);
-  const [all, lastRun] = await Promise.all([listMatches(profile.userId), lastSearchRun(profile.userId)]);
+  const [all, lastRun, stats] = await Promise.all([listMatches(profile.userId), lastSearchRun(profile.userId), applicationStats(profile.userId)]);
   const hasProfile = profile.skills.length + profile.titles.length + profile.searchKeywords.length > 0;
   // Before a resume exists every score is 0, so the "hide weak matches" default would hide everything.
-  const filtered = filterMatches(all, hasProfile ? filters : { ...filters, minScore: 0 });
+  const filtered = groupByRole(filterMatches(all, hasProfile ? filters : { ...filters, minScore: 0 }));
   const { items, page, pages, total } = paginate(filtered, filters.page);
   const facets = locationFacets(all, filters);
   const activeCount = activeFilterCount(filters);
   const weakHidden =
-    hasProfile && filters.minScore === HIDE_BELOW_SCORE ? filterMatches(all, { ...filters, minScore: 0 }).length - filtered.length : 0;
+    hasProfile && filters.minScore === HIDE_BELOW_SCORE ? groupByRole(filterMatches(all, { ...filters, minScore: 0 })).length - filtered.length : 0;
+  const { newToday, strong } = summarizeMatches(all, { ranked: hasProfile, strongAt: SCORE_THRESHOLDS.high });
   const showWeakHref = `/jobs?${filtersToSearchParams({ ...filters, minScore: 0, page: 1 }).toString()}`;
   // "Check my fit" needs the AI and a saved resume; earlier checks for this page's jobs load with it.
   const canCheckFit = Boolean(aiProvider() && profile.resumeText?.trim());
@@ -55,6 +57,21 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
         }
         action={<RefreshButton />}
       />
+
+      {all.length > 0 ? (
+        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatTile hue="blue" label="New today" value={newToday} hint="First seen in the last 24 hours" href="/jobs?sort=date" />
+          <StatTile hue="green" label="Strong matches" value={strong} hint={`Scoring ${SCORE_THRESHOLDS.high}+, not applied yet`} href={`/jobs?minScore=${SCORE_THRESHOLDS.high}`} />
+          <StatTile hue="orange" label="Applied this week" value={stats.thisWeek} hint={`${stats.total} application${stats.total === 1 ? "" : "s"} in all`} href="/applications" />
+          <StatTile
+            hue="pink"
+            label="Interviewing"
+            value={stats.interviewing}
+            hint={stats.offers ? `Plus ${stats.offers} offer${stats.offers === 1 ? "" : "s"}` : "Update statuses as you hear back"}
+            href="/applications"
+          />
+        </div>
+      ) : null}
 
       {!hasProfile && all.length > 0 ? (
         <div className="mb-4">
@@ -106,11 +123,7 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
           <section className="min-w-0 flex-1" aria-label="Results">
             <p className="mb-3 text-sm text-muted" aria-live="polite">
               <span className="font-semibold text-foreground">{total.toLocaleString()}</span>
-              {total === all.length
-                ? " jobs"
-                : activeCount === 0
-                  ? ` job${total === 1 ? "" : "s"} worth a look`
-                  : ` of ${all.length.toLocaleString()} jobs match these filters`}
+              {activeCount === 0 ? ` role${total === 1 ? "" : "s"} worth a look` : ` role${total === 1 ? "" : "s"} match these filters`}
               {pages > 1 ? ` · page ${page} of ${pages}` : ""}
               {weakHidden > 0 ? (
                 <>
@@ -146,11 +159,13 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
               </EmptyState>
             ) : (
               <ul className="flex flex-col gap-3">
-                {items.map((m) => (
+                {items.map((m, i) => (
                   <JobCard
                     key={m.job.id}
                     match={m}
+                    index={i}
                     ranked={hasProfile}
+                    hasClearance={profile.hasClearance}
                     actions={<ApplyActions jobId={m.job.id} application={m.application} />}
                     fit={canCheckFit ? <FitCheck jobId={m.job.id} initial={fitChecks.get(m.job.id) ?? null} /> : null}
                   />

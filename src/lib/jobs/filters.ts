@@ -1,5 +1,6 @@
 import { HIDE_BELOW_SCORE } from "@/components/ui";
 import { EXPERIENCE_LEVELS, JOB_SOURCES, type ExperienceLevel, type JobSource } from "@/db/schema";
+import { normalizeForKey } from "@/lib/text";
 import { countryName } from "./location";
 import type { MatchResult } from "./results";
 
@@ -141,6 +142,45 @@ export function filterMatches(rows: MatchResult[], f: JobFilters, now = new Date
   if (f.sort === "date") out.sort((a, b) => postedDate(b).getTime() - postedDate(a).getTime() || b.score - a.score);
   // "score" order comes from the query (score desc, then posted desc)
   return out;
+}
+
+export type RoleMatch = MatchResult & {
+  /** The same company and title elsewhere, in ranked order. */
+  others: MatchResult[];
+};
+
+/**
+ * One card per role: postings with the same company and title (Workday and USAJobs often list a
+ * role once per city) collapse into the first one, which is the best ranked. Order is kept.
+ */
+export function groupByRole(rows: MatchResult[]): RoleMatch[] {
+  const groups = new Map<string, RoleMatch>();
+  for (const m of rows) {
+    const key = `${normalizeForKey(m.job.company)}|${normalizeForKey(m.job.title)}`;
+    const group = groups.get(key);
+    if (group) group.others.push(m);
+    else groups.set(key, { ...m, others: [] });
+  }
+  return [...groups.values()];
+}
+
+/** Postings first seen this recently count as new. */
+export const NEW_FOR_MS = 24 * 3_600_000;
+
+export function isNewMatch(m: MatchResult, now = new Date()): boolean {
+  return now.getTime() - m.job.firstSeenAt.getTime() < NEW_FOR_MS;
+}
+
+/**
+ * Numbers for the summary tiles, counted in roles and leaving out jobs already applied to:
+ * new ones worth a look, and strong matches. Before a resume exists nothing is strong.
+ */
+export function summarizeMatches(rows: MatchResult[], opts: { ranked: boolean; strongAt: number }, now = new Date()) {
+  const open = rows.filter((m) => !m.application && (!opts.ranked || m.score >= DEFAULT_MIN_SCORE));
+  return {
+    newToday: groupByRole(open.filter((m) => isNewMatch(m, now))).length,
+    strong: opts.ranked ? groupByRole(open.filter((m) => m.score >= opts.strongAt)).length : 0,
+  };
 }
 
 export function paginate<T>(rows: T[], page: number, size = PAGE_SIZE) {
