@@ -7,12 +7,15 @@ import { env, featureStatus } from "@/lib/env";
 import { DEFAULT_COLUMN_MAP, SHEET_FIELD_LABELS } from "@/lib/google/sheets";
 import { EXPERIENCE_LABELS } from "@/lib/jobs/experience";
 import { lastSearchRun } from "@/lib/jobs/results";
+import { MAX_WORKDAY_SITES_PER_SEARCH } from "@/lib/jobs/sources";
+import { findWorkdayEmployer } from "@/lib/jobs/sources/workday-employers";
 import { listTargetCompanies } from "@/lib/profile";
 import { requireUser } from "@/lib/session";
 import { addTargetCompany, savePreferences, saveSheetSettings } from "./actions";
 import { CompanySuggestions } from "./company-suggestions";
 import { SheetTest } from "./sheet-test";
 import { TargetCompanyRow } from "./target-company-row";
+import { WorkdayEmployers } from "./workday-employers";
 
 export const metadata: Metadata = { title: "Settings · Job Finder" };
 // "Test connection" calls the Google Sheets API; "Suggest companies" calls the AI and checks job boards.
@@ -114,12 +117,17 @@ export default async function SettingsPage() {
           title="Target companies"
           description={
             <>
-              Greenhouse, Lever, and Ashby are searched per company. Add <code>ats:slug</code> (e.g.{" "}
-              <code>greenhouse:stripe</code>) or paste a job board URL.
+              Greenhouse, Lever, Ashby, and Workday are searched per company. Add <code>ats:slug</code> (e.g.{" "}
+              <code>greenhouse:stripe</code>) or paste a job board URL. For Workday, paste the careers page URL
+              (<code>….myworkdayjobs.com/…</code>) or pick from the checked list below; it&apos;s searched for your top target titles.
             </>
           }
         />
         {ai ? <CompanySuggestions aiLabel={ai} /> : null}
+        <WorkdayEmployers
+          addedSlugs={companies.filter((c) => c.ats === "workday").map((c) => c.slug)}
+          perSearch={MAX_WORKDAY_SITES_PER_SEARCH}
+        />
         {companies.length === 0 ? (
           <p className="mb-4 rounded-control border border-dashed border-border-strong px-3 py-4 text-center text-sm text-muted">
             No target companies yet.
@@ -132,6 +140,7 @@ export default async function SettingsPage() {
                 id={c.id}
                 ats={c.ats}
                 slug={c.slug}
+                name={c.ats === "workday" ? findWorkdayEmployer(c.slug)?.name : undefined}
                 enabled={c.enabled}
                 lastResult={lastResults.get(`${c.ats}:${c.slug}`)}
               />
@@ -145,7 +154,7 @@ export default async function SettingsPage() {
               id="company"
               name="company"
               className={inputClass}
-              placeholder="lever:spotify, https://jobs.ashbyhq.com/linear"
+              placeholder="lever:spotify, https://leidos.wd5.myworkdayjobs.com/External"
               autoComplete="off"
             />
           </div>

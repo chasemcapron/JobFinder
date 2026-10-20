@@ -32,12 +32,39 @@ export function parseSheetId(input: string | null | undefined): string | null {
 
 export type TargetCompanyInput = { ats: AtsType; slug: string };
 
+const WORKDAY_EXAMPLE = "https://crowdstrike.wd5.myworkdayjobs.com/crowdstrikecareers";
+
+/**
+ * Workday sites are stored as "tenant.wdN/site" (site keeps its case; it names the company). From
+ * https://{tenant}.wd{N}.myworkdayjobs.com/[en-US/]{site}/..., the newer
+ * https://wd{N}.myworkdaysite.com/[en-US/]recruiting/{tenant}/{site}/... (same API), or "workday:tenant.wdN/site".
+ */
+function parseWorkdayTarget(value: string): TargetCompanyInput | null {
+  const slug = (tenant: string, dataCenter: string, site: string): TargetCompanyInput => ({
+    ats: "workday",
+    slug: `${tenant.toLowerCase()}.${dataCenter.toLowerCase()}/${site}`,
+  });
+  const jobs = value.match(/([a-z0-9-]+)\.(wd\d+)\.myworkdayjobs\.com\/(?:[a-z]{2}-[a-z]{2}\/)?(?:wday\/cxs\/[\w-]+\/)?([\w-]+)/i);
+  if (jobs) return slug(jobs[1], jobs[2], jobs[3]);
+  const site = value.match(/(wd\d+)\.myworkdaysite\.com\/(?:[a-z]{2}-[a-z]{2}\/)?(?:recruiting|wday\/cxs)\/([\w-]+)\/([\w-]+)/i);
+  if (site) return slug(site[2], site[1], site[3]);
+  const typed = value.match(/^workday\s*:\s*([a-z0-9-]+)\.(wd\d+)\/([\w-]+)$/i);
+  if (typed) return slug(typed[1], typed[2], typed[3]);
+  if (/^workday\s*:|myworkday(jobs|site)\.com/i.test(value)) {
+    throw new Error(`Paste the Workday careers page URL, e.g. ${WORKDAY_EXAMPLE} (got "${value}").`);
+  }
+  return null;
+}
+
 /**
  * Parses "ats:slug" (e.g. "greenhouse:stripe"). Also accepts board URLs such as
- * https://boards.greenhouse.io/stripe, https://jobs.lever.co/spotify, https://jobs.ashbyhq.com/linear.
+ * https://boards.greenhouse.io/stripe, https://jobs.lever.co/spotify, https://jobs.ashbyhq.com/linear,
+ * and Workday careers pages (see parseWorkdayTarget).
  */
 export function parseTargetCompany(input: string): TargetCompanyInput {
   const value = input.trim();
+  const workday = parseWorkdayTarget(value);
+  if (workday) return workday;
   const urlPatterns: [AtsType, RegExp][] = [
     ["greenhouse", /(?:boards|job-boards)(?:\.eu)?\.greenhouse\.io\/(?:embed\/job_board\?for=)?([\w-]+)/i],
     ["lever", /jobs\.(?:eu\.)?lever\.co\/([\w-]+)/i],

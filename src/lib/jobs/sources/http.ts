@@ -3,16 +3,27 @@ import { SourceError } from "../types";
 
 const USER_AGENT = "job-finder (personal job search app; +https://github.com)";
 
-/** GET a JSON endpoint and validate the envelope. 404 becomes a readable "not found" error. */
+/**
+ * GET a JSON endpoint (or POST `body` as JSON) and validate the envelope. 404 becomes a readable
+ * "not found" error.
+ */
 export async function fetchJson<S extends z.ZodType>(
   url: string,
   schema: S,
-  opts: { signal: AbortSignal; headers?: Record<string, string>; notFoundMessage?: string },
+  opts: { signal: AbortSignal; headers?: Record<string, string>; notFoundMessage?: string; body?: unknown },
 ): Promise<z.infer<S>> {
+  const post = opts.body !== undefined;
   let res: Response;
   try {
     res = await fetch(url, {
-      headers: { Accept: "application/json", "User-Agent": USER_AGENT, ...opts.headers },
+      method: post ? "POST" : "GET",
+      headers: {
+        Accept: "application/json",
+        "User-Agent": USER_AGENT,
+        ...(post ? { "Content-Type": "application/json" } : {}),
+        ...opts.headers,
+      },
+      body: post ? JSON.stringify(opts.body) : undefined,
       signal: opts.signal,
       cache: "no-store",
     });

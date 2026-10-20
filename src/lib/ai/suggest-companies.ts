@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { ATS_TYPES, EXPERIENCE_LEVELS, type AtsType, type ExperienceLevel, type Profile } from "@/db/schema";
-import { EXPERIENCE_LABELS, inferExperienceLevel } from "@/lib/jobs/experience";
+import type { AtsType, Profile } from "@/db/schema";
+import { EXPERIENCE_LABELS, inferExperienceLevel, isTooSenior } from "@/lib/jobs/experience";
 import { isInTargetCountry } from "@/lib/jobs/location";
 import { isExcludedTitle, titleSimilarity } from "@/lib/jobs/scoring";
 import { fetchAshby } from "@/lib/jobs/sources/ashby";
@@ -22,11 +22,15 @@ export type CompanySuggestion = {
   topTitles: string[];
 };
 
+/** Boards the AI can name by slug and that can be checked quickly. Workday sites need a host and site name too. */
+const HOSTED_BOARDS = ["greenhouse", "lever", "ashby"] as const satisfies readonly AtsType[];
+type HostedBoard = (typeof HOSTED_BOARDS)[number];
+
 const SuggestionSchema = z.object({
   companies: z.array(
     z.object({
       name: z.string(),
-      ats: z.enum(ATS_TYPES).describe("Which hosted job board the company uses"),
+      ats: z.enum(HOSTED_BOARDS).describe("Which hosted job board the company uses"),
       slug: z.string().describe("The board's identifier in its URL"),
       why: z.string().describe("Under 90 characters: why it fits this candidate"),
     }),
@@ -40,7 +44,7 @@ At least half must be companies whose core business is the candidate's own field
 const PROBE_TIMEOUT_MS = 10_000;
 
 // Greenhouse can skip descriptions, which makes checking a big board several times faster.
-function fetcherFor(ats: AtsType): (slug: string, signal: AbortSignal) => Promise<NormalizedJob[]> {
+function fetcherFor(ats: HostedBoard): (slug: string, signal: AbortSignal) => Promise<NormalizedJob[]> {
   if (ats === "greenhouse") return (slug, signal) => fetchGreenhouse(slug, signal, { content: false });
   return ats === "lever" ? fetchLever : fetchAshby;
 }
@@ -77,7 +81,7 @@ Suggest 25 employers.`,
     deadline: input.deadline - 15_000,
   });
 
-  const wanted = new Map<string, { name: string; why: string; ats: AtsType; slug: string }>();
+  const wanted = new Map<string, { name: string; why: string; ats: HostedBoard; slug: string }>();
   for (const c of data.companies) {
     const slug = cleanSlug(c.slug);
     if (!slug || wanted.has(slug) || takenSlugs.has(slug)) continue;
@@ -86,8 +90,8 @@ Suggest 25 employers.`,
 
   // Each board is fetched on its own (8 at a time) so its jobs stay grouped. Round 1 tries the
   // suggested service; round 2 tries the other two for slugs that weren't found.
-  const found = new Map<string, { ats: AtsType; jobs: NormalizedJob[] }>();
-  const probeBoards = async (pairs: { ats: AtsType; slug: string }[]) => {
+  const found = new Map<string, { ats: HostedBoard; jobs: NormalizedJob[] }>();
+  const probeBoards = async (pairs: { ats: HostedBoard; slug: string }[]) => {
     const fresh = pairs.filter((p) => !found.has(p.slug));
     await Promise.all(
       chunked(fresh, 8).map(async (lane) => {
@@ -103,7 +107,7 @@ Suggest 25 employers.`,
   };
   await probeBoards([...wanted.values()].map((w) => ({ ats: w.ats, slug: w.slug })));
   const missing = [...wanted.values()].filter((w) => !found.has(w.slug));
-  await probeBoards(missing.flatMap((w) => ATS_TYPES.filter((a) => a !== w.ats).map((ats) => ({ ats, slug: w.slug }))));
+  await probeBoards(missing.flatMap((w) => HOSTED_BOARDS.filter((a) => a !== w.ats).map((ats) => ({ ats, slug: w.slug }))));
 
   const out: CompanySuggestion[] = [];
   for (const [slug, { ats, jobs }] of found) {
@@ -113,7 +117,7 @@ Suggest 25 employers.`,
     // title closely matches a target title (0.75+, so sharing one word like "Information" isn't
     // enough) and isn't two or more levels above the profile (no "Senior" roles for entry level).
     const scored = us
-      .filter((j) => !tooSenior(j.experienceLevel ?? inferExperienceLevel(j.title), profile.seniority))
+      .filter((j) => !isTooSenior(j.experienceLevel ?? inferExperienceLevel(j.title), profile.seniority))
       .map((j) => ({ title: j.title, sim: Math.max(0, ...profile.titles.map((t) => titleSimilarity(t, j.title))) }))
       .sort((a, b) => b.sim - a.sim);
     const good = scored.filter((s) => s.sim >= 0.75);
@@ -128,11 +132,6 @@ Suggest 25 employers.`,
     });
   }
   return out.filter((s) => s.usJobs > 0).sort((a, b) => b.goodMatches - a.goodMatches || b.usJobs - a.usJobs);
-}
-
-function tooSenior(job: ExperienceLevel | null, want: ExperienceLevel | null): boolean {
-  if (!job || !want) return false;
-  return EXPERIENCE_LEVELS.indexOf(job) - EXPERIENCE_LEVELS.indexOf(want) >= 2;
 }
 
 function chunked<T>(items: T[], parts: number): T[][] {

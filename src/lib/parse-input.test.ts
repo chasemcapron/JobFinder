@@ -30,8 +30,22 @@ describe("parseTargetCompany", () => {
     expect(parseTargetCompany("https://jobs.ashbyhq.com/linear/abc")).toEqual({ ats: "ashby", slug: "linear" });
     expect(parseTargetCompany("https://job-boards.greenhouse.io/figma")).toEqual({ ats: "greenhouse", slug: "figma" });
   });
+  it("parses Workday careers URLs, keeping the site name's case", () => {
+    expect(parseTargetCompany("https://crowdstrike.wd5.myworkdayjobs.com/en-US/crowdstrikecareers/job/USA---Remote/Analyst_R1")).toEqual({
+      ats: "workday",
+      slug: "crowdstrike.wd5/crowdstrikecareers",
+    });
+    expect(parseTargetCompany("https://NGC.wd1.myworkdayjobs.com/Northrop_Grumman_External_Site")).toEqual({
+      ats: "workday",
+      slug: "ngc.wd1/Northrop_Grumman_External_Site",
+    });
+    expect(parseTargetCompany("https://wd1.myworkdaysite.com/en-US/recruiting/bah/BAH_Jobs")).toEqual({ ats: "workday", slug: "bah.wd1/BAH_Jobs" });
+    expect(parseTargetCompany("workday: leidos.wd5/External")).toEqual({ ats: "workday", slug: "leidos.wd5/External" });
+  });
   it("rejects unknown ATS and malformed input", () => {
-    expect(() => parseTargetCompany("workday:acme")).toThrow(/Unknown ATS/);
+    expect(() => parseTargetCompany("taleo:acme")).toThrow(/Unknown ATS/);
+    expect(() => parseTargetCompany("workday:acme")).toThrow(/Workday careers page URL/);
+    expect(() => parseTargetCompany("https://www.myworkdayjobs.com/")).toThrow(/Workday careers page URL/);
     expect(() => parseTargetCompany("stripe")).toThrow(/ats:slug/);
   });
 });
