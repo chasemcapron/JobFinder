@@ -29,6 +29,13 @@ const MORNING_BADGE: Record<MorningRunState, { tone: "success" | "info" | "warni
 // "Test connection" calls the Google Sheets API; "Suggest companies" calls the AI and checks job boards.
 export const maxDuration = 60;
 
+const SECTIONS = [
+  ["preferences", "Preferences"],
+  ["companies", "Target companies"],
+  ["sheet", "Google Sheet"],
+  ["integrations", "Integrations"],
+] as const;
+
 export default async function SettingsPage() {
   const { profile } = await requireUser();
   const [companies, lastRun, morning] = await Promise.all([
@@ -45,9 +52,26 @@ export default async function SettingsPage() {
   return (
     <>
       <PageHeader title="Settings" description="Search preferences, target companies, Google Sheet, and email." />
+      <nav
+        aria-label="Settings sections"
+        className="sticky top-0 z-10 -mx-4 mb-6 overflow-x-auto bg-background/85 px-4 py-2.5 backdrop-blur sm:mx-0 sm:px-0"
+      >
+        <ul className="flex gap-2">
+          {SECTIONS.map(([id, label]) => (
+            <li key={id}>
+              <a
+                href={`#${id}`}
+                className="block rounded-pill border border-border px-3 py-1 font-label text-[13px] leading-5 font-semibold tracking-[0.08em] whitespace-nowrap text-muted uppercase no-underline transition-colors hover:border-section hover:text-section-fg"
+              >
+                {label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
       <div className="flex flex-col gap-6">
 
-      <Card>
+      <Card id="preferences" className="scroll-mt-16">
         <CardHeader icon={<Icon name="search" />} title="Search preferences" description="Used to build search queries and to rank matches." />
         <ActionForm action={savePreferences}>
           <div className="grid gap-4 md:grid-cols-2">
@@ -133,7 +157,7 @@ export default async function SettingsPage() {
         </ActionForm>
       </Card>
 
-      <Card>
+      <Card id="companies" className="scroll-mt-16">
         <CardHeader
           icon={<Icon name="building" />}
           title="Target companies"
@@ -183,7 +207,7 @@ export default async function SettingsPage() {
         </ActionForm>
       </Card>
 
-      <Card id="sheet">
+      <Card id="sheet" className="scroll-mt-16">
         <CardHeader
           icon={<Icon name="sheet" />}
           title="Google Sheet"
@@ -253,7 +277,7 @@ export default async function SettingsPage() {
         </div>
       </Card>
 
-      <Card>
+      <Card id="integrations" className="scroll-mt-16">
         <CardHeader icon={<Icon name="settings" />} title="Integrations" description="What's live and what's running in mock mode on this deployment." />
         <ul className="divide-y divide-border">
           <li className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
