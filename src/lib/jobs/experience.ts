@@ -9,6 +9,10 @@ export const EXPERIENCE_LABELS: Record<ExperienceLevel, string> = {
   executive: "Director / Executive",
 };
 
+/** A level filter value: a level, or "unstated" for postings whose title and description give none (about 30%). */
+export const LEVEL_UNSTATED = "unstated";
+export type LevelFilter = ExperienceLevel | typeof LEVEL_UNSTATED;
+
 // Checked in order; first match wins, so more specific patterns come first.
 const TITLE_RULES: [ExperienceLevel, RegExp][] = [
   ["internship", /\b(intern(ship)?|co-?op|apprentice(ship)?|summer (analyst|associate))\b/i],

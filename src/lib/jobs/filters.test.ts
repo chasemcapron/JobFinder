@@ -88,6 +88,12 @@ describe("filterMatches", () => {
     expect(filterMatches(rows, f({ levels: ["senior", "mid"] }), NOW)).toHaveLength(4);
   });
 
+  it("can include postings that state no level", () => {
+    expect(titles(filterMatches(rows, f({ levels: ["unstated"] }), NOW))).toEqual(["Payments Engineer"]);
+    expect(titles(filterMatches(rows, f({ levels: ["mid", "unstated"] }), NOW))).toEqual(["Frontend Engineer", "Payments Engineer"]);
+    expect(parseFilters({ level: ["entry", "unstated", "bogus"] }).levels).toEqual(["entry", "unstated"]);
+  });
+
   it("filters by source", () => {
     expect(titles(filterMatches(rows, f({ sources: ["lever", "adzuna"] }), NOW))).toEqual(["Platform Engineer", "Payments Engineer"]);
   });

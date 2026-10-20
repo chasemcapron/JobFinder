@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useTransition, type FormEvent } from "react";
 import { Button, HIDE_BELOW_SCORE, inputClass, Label, selectClass } from "@/components/ui";
 import { EXPERIENCE_LEVELS } from "@/db/schema";
-import { EXPERIENCE_LABELS } from "@/lib/jobs/experience";
+import { EXPERIENCE_LABELS, LEVEL_UNSTATED } from "@/lib/jobs/experience";
 import type { FacetOption, JobFilters } from "@/lib/jobs/filters";
 
 const SOURCE_OPTIONS = [
@@ -170,6 +170,10 @@ export function FilterPanel({
               {EXPERIENCE_LABELS[l]}
             </label>
           ))}
+          <label className="flex min-h-7 cursor-pointer items-center gap-2 text-sm text-muted">
+            <input type="checkbox" name="level" value={LEVEL_UNSTATED} defaultChecked={filters.levels.includes(LEVEL_UNSTATED)} className="size-4 accent-accent" />
+            Not stated
+          </label>
         </div>
       </fieldset>
 
