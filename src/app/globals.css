@@ -199,6 +199,17 @@
 }
 
 @layer base {
+  /* Height of the sticky app header, measured by AppHeader; these are its usual heights for the first paint. */
+  html {
+    --header-h: 113px;
+    scroll-padding-top: var(--header-h);
+  }
+  @media (width >= 40rem) {
+    html {
+      --header-h: 57px;
+    }
+  }
+
   body {
     background: var(--background);
     color: var(--foreground);

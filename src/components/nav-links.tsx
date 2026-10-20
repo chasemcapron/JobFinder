@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { cx, Icon, type IconName } from "./ui";
 
 const LINKS: readonly { href: string; label: string; icon: IconName; section: string; activeClass: string; iconClass: string }[] = [
@@ -11,6 +11,30 @@ const LINKS: readonly { href: string; label: string; icon: IconName; section: st
   { href: "/resume", label: "Resume", icon: "file", section: "resume", activeClass: "bg-green text-ink", iconClass: "text-[#6fdc97]" },
   { href: "/settings", label: "Settings", icon: "settings", section: "settings", activeClass: "bg-pink text-ink", iconClass: "text-[#ff93b9]" },
 ];
+
+/**
+ * The sticky app header. Its height changes with the viewport (the nav wraps to a second row on
+ * phones), so it's measured into `--header-h` on <html>, which sticky bars and anchor jumps use to sit below it.
+ */
+export function AppHeader({ children, className }: { children: ReactNode; className?: string }) {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const header = ref.current;
+    if (!header) return;
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() => root.style.setProperty("--header-h", `${header.offsetHeight}px`));
+    observer.observe(header);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--header-h");
+    };
+  }, []);
+  return (
+    <header ref={ref} className={className}>
+      {children}
+    </header>
+  );
+}
 
 /** Tags its children with the current section so tokens like `text-section-fg` pick up the section colour. */
 export function SectionScope({ children, className, id }: { children: ReactNode; className?: string; id?: string }) {
