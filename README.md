@@ -153,6 +153,8 @@ curl -H "Authorization: Bearer $CRON_SECRET" "https://<your-domain>/api/cron/mor
 
 To preview the email without sending: Settings → **Preview the email** (or `/api/digest/preview` while signed in).
 
+The email also reminds you, once, about applications still marked **Applied** 7 to 30 days later, with a link to update their status. On days with no new matches but a reminder due, it sends just the reminder.
+
 **Email delivery:** in Resend, verify a domain you own and set `EMAIL_FROM` to an address on it. For a quick test without a domain, `EMAIL_FROM="Job Finder <onboarding@resend.dev>"` works, but Resend only delivers it to the email address of your Resend account. The digest goes to the email of your Google account.
 
 ---

@@ -160,6 +160,56 @@ describe("runDigestForUser", () => {
   });
 });
 
+describe("follow-up reminders", () => {
+  const daysBefore = (days: number) => new Date(SUMMER_7AM.getTime() - days * 86_400_000);
+  const apply = (i: number, appliedDaysAgo: number, status: "applied" | "interviewing" = "applied") =>
+    db.insert(schema.applications).values({ userId, jobId: jobIds[i], appliedAt: daysBefore(appliedDaysAgo), status });
+  const collect = (sent: EmailMessage[]) => async (m: EmailMessage) => (sent.push(m), { channel: "console" as const, id: null });
+
+  it("reminds once about applications still marked Applied 7-30 days later, oldest first", async () => {
+    await apply(0, 8); // Engineer 1
+    await apply(1, 20); // Engineer 2
+    await apply(2, 3); // too recent
+    await apply(3, 45); // too old to bring up
+    await apply(4, 10, "interviewing"); // heard back
+    const sent: EmailMessage[] = [];
+    const outcome = await runDigestForUser(userId, { db, now: SUMMER_7AM, runSearch: noSearch, send: collect(sent) });
+    expect(outcome).toMatchObject({ status: "sent", jobs: 9, followUps: 2 });
+    expect(sent[0].subject).toBe("9 new job matches: Engineer 6 at Co 6 + more · 2 to follow up");
+    expect(sent[0].html).toContain("Time to follow up");
+    expect(sent[0].html).toContain("/applications");
+    expect(sent[0].text).toMatch(/Engineer 2[\s\S]*Applied Jun 11 · 20 days ago[\s\S]*Engineer 1[\s\S]*Applied Jun 23 · 8 days ago/);
+    expect(sent[0].text).not.toMatch(/Engineer 3\b|Engineer 4\b|Engineer 5\b/);
+
+    // Next day: every match was sent and both reminders went out, so there's nothing to repeat.
+    const next = await runDigestForUser(userId, { db, now: new Date("2026-07-02T12:00:00Z"), runSearch: noSearch, send: collect(sent) });
+    expect(next).toMatchObject({ status: "skipped", reason: "No new matches to send" });
+    expect(sent).toHaveLength(1);
+  });
+
+  it("sends a reminder-only email when there are no new matches", async () => {
+    await db.delete(schema.jobMatches);
+    await apply(0, 9);
+    const sent: EmailMessage[] = [];
+    const outcome = await runDigestForUser(userId, { db, now: SUMMER_7AM, runSearch: noSearch, send: collect(sent) });
+    expect(outcome).toMatchObject({ status: "sent", jobs: 0, followUps: 1 });
+    expect(sent[0].subject).toBe("Time to follow up on 1 application: Engineer 1 at Co 1");
+    expect(await db.select().from(schema.emailLog)).toHaveLength(0);
+    const [app] = await db.select().from(schema.applications);
+    expect(app.followUpSentAt).toEqual(SUMMER_7AM);
+  });
+
+  it("keeps the reminder for next time when sending fails", async () => {
+    await apply(0, 9);
+    const failingSend = vi.fn(async () => {
+      throw new Error("Resend down");
+    });
+    expect(await runDigestForUser(userId, { db, now: SUMMER_7AM, runSearch: noSearch, send: failingSend })).toMatchObject({ status: "error" });
+    const [app] = await db.select().from(schema.applications);
+    expect(app.followUpSentAt).toBeNull();
+  });
+});
+
 describe("renderDigest", () => {
   it("renders title, company, location, score, reason, and apply link for each job", async () => {
     const { html, text, subject } = await renderDigest(

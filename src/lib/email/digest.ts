@@ -1,9 +1,9 @@
 import { render } from "@react-email/components";
-import { and, desc, eq, gt, gte, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lte } from "drizzle-orm";
 import { createElement } from "react";
 import { getDb, type Db } from "@/db";
 import { applications, emailLog, jobMatches, jobs, profiles, users } from "@/db/schema";
-import { MorningDigestEmail, type DigestJob } from "@/emails/morning-digest";
+import { MorningDigestEmail, type DigestFollowUp, type DigestJob } from "@/emails/morning-digest";
 import { env } from "@/lib/env";
 import { formatLocation } from "@/lib/jobs/location";
 import { inTargetCountry } from "@/lib/jobs/results";
@@ -16,9 +16,22 @@ export const DIGEST_HOUR = 7;
 export const DIGEST_MAX_JOBS = 10;
 /** Matches below this aren't worth an email. */
 export const DIGEST_MIN_SCORE = 50;
+/** An application still marked "applied" this many days later gets one follow-up reminder. */
+export const FOLLOW_UP_AFTER_DAYS = 7;
+/** Older applications are left alone, so the first email after this shipped didn't list months of them. */
+const FOLLOW_UP_WITHIN_DAYS = 30;
+const FOLLOW_UP_MAX = 5;
+const DAY_MS = 86_400_000;
 
 export type DigestOutcome =
-  | { userId: string; status: "sent"; jobs: number; channel: SendResult["channel"]; search: RunSummary["status"] | "skipped" }
+  | {
+      userId: string;
+      status: "sent";
+      jobs: number;
+      followUps: number;
+      channel: SendResult["channel"];
+      search: RunSummary["status"] | "skipped";
+    }
   | { userId: string; status: "skipped"; reason: string }
   | { userId: string; status: "error"; error: string };
 
@@ -55,12 +68,44 @@ export async function pickDigestJobs(userId: string, db: Db, limit = DIGEST_MAX_
     .limit(limit);
 }
 
-export async function renderDigest(digestJobs: DigestJob[], now: Date) {
+/**
+ * Applications to suggest following up on: still "applied" a week later (7-30 days ago), not
+ * reminded before, oldest first.
+ */
+export async function pickFollowUps(userId: string, db: Db, now = new Date()) {
+  return db
+    .select({ id: applications.id, appliedAt: applications.appliedAt, title: jobs.title, company: jobs.company, applyUrl: jobs.applyUrl })
+    .from(applications)
+    .innerJoin(jobs, eq(jobs.id, applications.jobId))
+    .where(
+      and(
+        eq(applications.userId, userId),
+        eq(applications.status, "applied"),
+        isNull(applications.followUpSentAt),
+        lte(applications.appliedAt, new Date(now.getTime() - FOLLOW_UP_AFTER_DAYS * DAY_MS)),
+        gt(applications.appliedAt, new Date(now.getTime() - FOLLOW_UP_WITHIN_DAYS * DAY_MS)),
+      ),
+    )
+    .orderBy(asc(applications.appliedAt))
+    .limit(FOLLOW_UP_MAX);
+}
+
+export function toDigestFollowUp(f: Awaited<ReturnType<typeof pickFollowUps>>[number], now: Date): DigestFollowUp {
+  const days = Math.floor((now.getTime() - f.appliedAt.getTime()) / DAY_MS);
+  const date = f.appliedAt.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: APP_TIME_ZONE });
+  return { title: f.title, company: f.company, applyUrl: f.applyUrl, appliedLabel: `Applied ${date} · ${days} days ago` };
+}
+
+export async function renderDigest(digestJobs: DigestJob[], now: Date, followUps: DigestFollowUp[] = []) {
   const dateLabel = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: APP_TIME_ZONE });
-  const element = createElement(MorningDigestEmail, { jobs: digestJobs, dateLabel, appUrl: env.appUrl });
+  const element = createElement(MorningDigestEmail, { jobs: digestJobs, followUps, dateLabel, appUrl: env.appUrl });
   const [html, text] = await Promise.all([render(element), render(element, { plainText: true })]);
+  const n = followUps.length;
   const top = digestJobs[0];
-  const subject = `${digestJobs.length} new job match${digestJobs.length === 1 ? "" : "es"}: ${top.title} at ${top.company}${digestJobs.length > 1 ? " + more" : ""}`;
+  const first = followUps[0];
+  const subject = top
+    ? `${digestJobs.length} new job match${digestJobs.length === 1 ? "" : "es"}: ${top.title} at ${top.company}${digestJobs.length > 1 ? " + more" : ""}${n ? ` · ${n} to follow up` : ""}`
+    : `Time to follow up on ${n} application${n === 1 ? "" : "s"}: ${first.title} at ${first.company}${n > 1 ? " + more" : ""}`;
   return { html, text, subject };
 }
 
@@ -112,7 +157,8 @@ export async function runDigestForUser(userId: string, opts: DigestOptions = {})
     }
 
     const picked = await pickDigestJobs(userId, db);
-    if (picked.length === 0) return { userId, status: "skipped", reason: "No new matches to send" };
+    const followUps = await pickFollowUps(userId, db, now);
+    if (picked.length === 0 && followUps.length === 0) return { userId, status: "skipped", reason: "No new matches to send" };
 
     const digestJobs: DigestJob[] = picked.map(({ job, score, reasons }) => ({
       title: job.title,
@@ -123,7 +169,11 @@ export async function runDigestForUser(userId: string, opts: DigestOptions = {})
       applyUrl: job.applyUrl,
       adzunaAttributionUrl: job.source === "adzuna" ? adzunaHomepage(job.country) : null,
     }));
-    const message = await renderDigest(digestJobs, now);
+    const message = await renderDigest(
+      digestJobs,
+      now,
+      followUps.map((f) => toDigestFollowUp(f, now)),
+    );
     let result: SendResult;
     try {
       result = await (opts.send ?? sendEmail)({ to: row.email, ...message });
@@ -132,11 +182,16 @@ export async function runDigestForUser(userId: string, opts: DigestOptions = {})
       await db.update(profiles).set({ lastDigestDate: row.lastDigestDate }).where(eq(profiles.userId, userId));
       throw err;
     }
-    await db
-      .insert(emailLog)
-      .values(picked.map(({ job }) => ({ userId, jobId: job.id, channel: result.channel, sentAt: now })))
-      .onConflictDoNothing();
-    return { userId, status: "sent", jobs: picked.length, channel: result.channel, search: searchStatus };
+    if (picked.length) {
+      await db
+        .insert(emailLog)
+        .values(picked.map(({ job }) => ({ userId, jobId: job.id, channel: result.channel, sentAt: now })))
+        .onConflictDoNothing();
+    }
+    if (followUps.length) {
+      await db.update(applications).set({ followUpSentAt: now }).where(inArray(applications.id, followUps.map((f) => f.id)));
+    }
+    return { userId, status: "sent", jobs: picked.length, followUps: followUps.length, channel: result.channel, search: searchStatus };
   } catch (err) {
     console.error("Digest failed", err);
     return { userId, status: "error", error: err instanceof Error ? err.message : String(err) };

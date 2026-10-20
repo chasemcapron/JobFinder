@@ -222,6 +222,8 @@ export const applications = pgTable(
     sheetSyncStatus: text("sheet_sync_status").$type<SheetSyncStatus>().notNull().default("pending"),
     sheetSyncError: text("sheet_sync_error"),
     sheetSyncedAt: timestamp("sheet_synced_at", { mode: "date" }),
+    /** When the morning email suggested following up (once per application). */
+    followUpSentAt: timestamp("follow_up_sent_at", { mode: "date" }),
   },
   (t) => [uniqueIndex("applications_user_job_idx").on(t.userId, t.jobId)],
 );

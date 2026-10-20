@@ -12,6 +12,15 @@ export type DigestJob = {
   adzunaAttributionUrl: string | null;
 };
 
+/** An application still marked "applied" a week later. */
+export type DigestFollowUp = {
+  title: string;
+  company: string;
+  /** e.g. "Applied Oct 13 · 8 days ago" */
+  appliedLabel: string;
+  applyUrl: string;
+};
+
 /*
  * Email clients don't support CSS variables, so these are the light-theme tokens from
  * globals.css as literal hex values.
@@ -37,8 +46,25 @@ function scoreColors(score: number) {
 
 const fontFamily = "-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
-export function MorningDigestEmail({ jobs, dateLabel, appUrl }: { jobs: DigestJob[]; dateLabel: string; appUrl: string }) {
-  const preview = `${jobs.length} new match${jobs.length === 1 ? "" : "es"}: ${jobs[0]?.title ?? ""} at ${jobs[0]?.company ?? ""}`;
+export function MorningDigestEmail({
+  jobs,
+  followUps = [],
+  dateLabel,
+  appUrl,
+}: {
+  jobs: DigestJob[];
+  followUps?: DigestFollowUp[];
+  dateLabel: string;
+  appUrl: string;
+}) {
+  const followUpCount = `${followUps.length} application${followUps.length === 1 ? "" : "s"} to follow up`;
+  const preview = jobs.length
+    ? `${jobs.length} new match${jobs.length === 1 ? "" : "es"}: ${jobs[0].title} at ${jobs[0].company}`
+    : `${followUpCount}: ${followUps[0]?.title ?? ""} at ${followUps[0]?.company ?? ""}`;
+  const summary = [
+    jobs.length ? `${jobs.length} new ${jobs.length === 1 ? "match" : "matches"}` : null,
+    followUps.length ? followUpCount : null,
+  ].filter(Boolean);
   return (
     <Html lang="en">
       <Head />
@@ -49,10 +75,10 @@ export function MorningDigestEmail({ jobs, dateLabel, appUrl }: { jobs: DigestJo
             Job Finder
           </Text>
           <Heading as="h1" style={{ fontSize: 22, lineHeight: "28px", margin: "0 0 4px", color: c.foreground }}>
-            Your top new job matches
+            {jobs.length ? "Your top new job matches" : "Time to follow up"}
           </Heading>
           <Text style={{ margin: "0 0 20px", color: c.muted, fontSize: 14, lineHeight: "20px" }}>
-            {dateLabel} · {jobs.length} new {jobs.length === 1 ? "match" : "matches"}
+            {[dateLabel, ...summary].join(" · ")}
           </Text>
           {jobs.map((job, i) => {
             const s = scoreColors(job.score);
@@ -117,6 +143,48 @@ export function MorningDigestEmail({ jobs, dateLabel, appUrl }: { jobs: DigestJo
               </Section>
             );
           })}
+          {followUps.length ? (
+            <>
+              {jobs.length ? (
+                <Heading as="h2" style={{ fontSize: 17, lineHeight: "23px", margin: "24px 0 4px", color: c.foreground }}>
+                  Time to follow up
+                </Heading>
+              ) : null}
+              <Text style={{ margin: "0 0 12px", color: c.muted, fontSize: 14, lineHeight: "20px" }}>
+                Still marked &ldquo;Applied&rdquo; after a week. A short follow-up note can help; if you&apos;ve heard back, update the
+                status so this stops.
+              </Text>
+              <Section
+                style={{ backgroundColor: c.surface, border: `1px solid ${c.border}`, borderRadius: 12, padding: 16, marginBottom: 12 }}
+              >
+                {followUps.map((f, i) => (
+                  <Text key={i} style={{ margin: i ? "12px 0 0" : 0, fontSize: 14, lineHeight: "20px", color: c.muted }}>
+                    <Link href={f.applyUrl} style={{ color: c.foreground, fontWeight: 600, textDecoration: "none" }}>
+                      {f.title}
+                    </Link>
+                    <br />
+                    {f.company} · {f.appliedLabel}
+                  </Text>
+                ))}
+                <Link
+                  href={`${appUrl}/applications`}
+                  style={{
+                    display: "inline-block",
+                    marginTop: 14,
+                    border: `1px solid ${c.border}`,
+                    color: c.accentText,
+                    padding: "7px 14px",
+                    borderRadius: 8,
+                    fontSize: 14,
+                    fontWeight: 500,
+                    textDecoration: "none",
+                  }}
+                >
+                  Update statuses
+                </Link>
+              </Section>
+            </>
+          ) : null}
           <Hr style={{ borderColor: c.border, margin: "20px 0" }} />
           <Text style={{ fontSize: 12, color: c.muted, margin: 0 }}>
             <Link href={`${appUrl}/jobs`} style={{ color: c.accentText, fontWeight: 500 }}>
