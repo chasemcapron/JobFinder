@@ -3,7 +3,7 @@ import { Badge, buttonClass, Card, cx, Icon, ScoreBadge, scoreTier, SourceBadge 
 import { applicationStatusLabel } from "@/lib/applications";
 import { formatRelativeDate, formatSalary } from "@/lib/format";
 import { EXPERIENCE_LABELS } from "@/lib/jobs/experience";
-import type { RoleMatch } from "@/lib/jobs/filters";
+import { isNewMatch, type RoleMatch } from "@/lib/jobs/filters";
 import { formatLocation } from "@/lib/jobs/location";
 import type { MatchResult } from "@/lib/jobs/results";
 import { adzunaHomepage } from "@/lib/jobs/sources/adzuna";
@@ -17,9 +17,6 @@ const SOURCE_LABELS: Record<string, string> = {
   usajobs: "USAJobs",
   mock: "Sample",
 };
-
-/** Postings first seen this recently get a NEW tag. */
-const NEW_FOR_MS = 24 * 3_600_000;
 
 // Sources sometimes send a placeholder instead of a location; showing "N/A" adds nothing.
 const PLACEHOLDER_LOCATION = /^(n\/?a|none|tbd|unknown|-+)$/i;
@@ -94,7 +91,7 @@ export function JobCard({
   const { job, application, others } = match;
   const salary = formatSalary(job.salaryMin, job.salaryMax, job.salaryCurrency);
   const posted = formatRelativeDate(job.postedAt ?? job.firstSeenAt);
-  const isNew = Date.now() - job.firstSeenAt.getTime() < NEW_FOR_MS;
+  const isNew = isNewMatch(match);
   const needsClearance = job.clearance === "active" && !hasClearance;
   const source =
     job.source === "adzuna" ? (

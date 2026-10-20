@@ -4,7 +4,7 @@ import { Alert, buttonClass, EmptyState, HIDE_BELOW_SCORE, Icon, linkClass, Page
 import { applicationStats } from "@/lib/applications";
 import { aiProvider } from "@/lib/ai/provider";
 import { formatDateTime } from "@/lib/format";
-import { activeFilterCount, filterMatches, filtersToSearchParams, groupByRole, locationFacets, paginate, parseFilters } from "@/lib/jobs/filters";
+import { activeFilterCount, filterMatches, filtersToSearchParams, groupByRole, locationFacets, paginate, parseFilters, summarizeMatches } from "@/lib/jobs/filters";
 import { listFitChecks } from "@/lib/jobs/fit-checks";
 import { lastSearchRun, listMatches } from "@/lib/jobs/results";
 import { requireUser } from "@/lib/session";
@@ -31,11 +31,7 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
   const activeCount = activeFilterCount(filters);
   const weakHidden =
     hasProfile && filters.minScore === HIDE_BELOW_SCORE ? groupByRole(filterMatches(all, { ...filters, minScore: 0 })).length - filtered.length : 0;
-  // Summary tiles count roles (a role listed in five cities counts once), leaving out ones already applied to.
-  const now = Date.now();
-  const open = all.filter((m) => !m.application && (!hasProfile || m.score >= HIDE_BELOW_SCORE));
-  const newToday = groupByRole(open.filter((m) => now - m.job.firstSeenAt.getTime() < 86_400_000)).length;
-  const strong = hasProfile ? groupByRole(open.filter((m) => m.score >= SCORE_THRESHOLDS.high)).length : 0;
+  const { newToday, strong } = summarizeMatches(all, { ranked: hasProfile, strongAt: SCORE_THRESHOLDS.high });
   const showWeakHref = `/jobs?${filtersToSearchParams({ ...filters, minScore: 0, page: 1 }).toString()}`;
   // "Check my fit" needs the AI and a saved resume; earlier checks for this page's jobs load with it.
   const canCheckFit = Boolean(aiProvider() && profile.resumeText?.trim());

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPglite, schema, type Db } from "@/db";
-import { markApplied, syncApplicationToSheet, updateApplicationStatus } from "@/lib/applications";
+import { markApplied, summarizeApplications, syncApplicationToSheet, updateApplicationStatus } from "@/lib/applications";
 import { getGoogleAccessToken, GoogleNotConnectedError } from "@/lib/google/tokens";
 import { ensureProfile } from "@/lib/profile";
 import { localDate, localHour } from "@/lib/time";
@@ -170,5 +170,25 @@ describe("time helpers", () => {
     expect(localHour(new Date("2026-12-01T13:00:00Z"))).toBe(7);
     // 03:00 UTC on the 2nd is still the 1st in Chicago
     expect(localDate(new Date("2026-12-02T03:00:00Z"))).toBe("2026-12-01");
+  });
+});
+
+describe("summarizeApplications", () => {
+  it("counts this week, where things stand, and the response rate without withdrawn ones", () => {
+    const now = new Date("2026-10-20T12:00:00Z");
+    const ago = (d: number) => new Date(now.getTime() - d * 86_400_000);
+    const stats = summarizeApplications(
+      [
+        { status: "applied", appliedAt: ago(1) },
+        { status: "applied", appliedAt: ago(10) },
+        { status: "interviewing", appliedAt: ago(5) },
+        { status: "offer", appliedAt: ago(30) },
+        { status: "rejected", appliedAt: ago(20) },
+        { status: "withdrawn", appliedAt: ago(3) },
+      ],
+      now,
+    );
+    expect(stats).toEqual({ total: 6, thisWeek: 3, interviewing: 1, offers: 1, responseRate: 3 / 5 });
+    expect(summarizeApplications([], now).responseRate).toBeNull();
   });
 });

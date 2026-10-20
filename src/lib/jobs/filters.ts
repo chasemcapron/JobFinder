@@ -164,6 +164,25 @@ export function groupByRole(rows: MatchResult[]): RoleMatch[] {
   return [...groups.values()];
 }
 
+/** Postings first seen this recently count as new. */
+export const NEW_FOR_MS = 24 * 3_600_000;
+
+export function isNewMatch(m: MatchResult, now = new Date()): boolean {
+  return now.getTime() - m.job.firstSeenAt.getTime() < NEW_FOR_MS;
+}
+
+/**
+ * Numbers for the summary tiles, counted in roles and leaving out jobs already applied to:
+ * new ones worth a look, and strong matches. Before a resume exists nothing is strong.
+ */
+export function summarizeMatches(rows: MatchResult[], opts: { ranked: boolean; strongAt: number }, now = new Date()) {
+  const open = rows.filter((m) => !m.application && (!opts.ranked || m.score >= DEFAULT_MIN_SCORE));
+  return {
+    newToday: groupByRole(open.filter((m) => isNewMatch(m, now))).length,
+    strong: opts.ranked ? groupByRole(open.filter((m) => m.score >= opts.strongAt)).length : 0,
+  };
+}
+
 export function paginate<T>(rows: T[], page: number, size = PAGE_SIZE) {
   const pages = Math.max(1, Math.ceil(rows.length / size));
   const current = Math.min(page, pages);
