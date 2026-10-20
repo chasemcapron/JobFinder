@@ -178,6 +178,7 @@
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-display-face), var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-label: var(--font-label-face), var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
@@ -246,6 +247,16 @@
 .stripe > span:nth-child(2) { animation-delay: 0.08s; }
 .stripe > span:nth-child(3) { animation-delay: 0.16s; }
 .stripe > span:nth-child(4) { animation-delay: 0.24s; }
+
+/* List items rise in once, staggered by their --i index (capped so long lists don't drag). */
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.rise-in {
+  animation: rise-in 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(min(var(--i, 0), 12) * 35ms);
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,
