@@ -100,7 +100,8 @@ export default async function SettingsPage() {
             Email me the top new matches every morning (7:00 AM Central)
           </label>
           <p className="-mt-2 text-xs text-muted">
-            Up to 10 matches scoring 50+ that haven&apos;t been emailed or applied to.{" "}
+            Up to 10 matches scoring 50+ that haven&apos;t been emailed or applied to, plus a one-time reminder for applications
+            still marked Applied after a week.{" "}
             <a href="/api/digest/preview" target="_blank" rel="noreferrer" className={linkClass}>
               Preview the email
             </a>

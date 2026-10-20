@@ -1,4 +1,4 @@
-import { renderDigest, pickDigestJobs } from "@/lib/email/digest";
+import { pickDigestJobs, pickFollowUps, renderDigest, toDigestFollowUp } from "@/lib/email/digest";
 import { getDb } from "@/db";
 import { formatLocation } from "@/lib/jobs/location";
 import { adzunaHomepage } from "@/lib/jobs/sources/adzuna";
@@ -9,10 +9,11 @@ export async function GET() {
   const userId = await currentUserId();
   if (!userId) return new Response("Not signed in", { status: 401 });
   const db = await getDb();
-  const picked = await pickDigestJobs(userId, db);
-  if (picked.length === 0) {
+  const now = new Date();
+  const [picked, followUps] = await Promise.all([pickDigestJobs(userId, db), pickFollowUps(userId, db, now)]);
+  if (picked.length === 0 && followUps.length === 0) {
     return new Response(
-      "<!doctype html><meta charset=utf-8><body style='font-family:sans-serif;padding:2rem'>No new matches above the digest threshold yet. Refresh jobs first.</body>",
+      "<!doctype html><meta charset=utf-8><body style='font-family:sans-serif;padding:2rem'>No new matches above the digest threshold and no applications to follow up on yet. Refresh jobs first.</body>",
       { headers: { "Content-Type": "text/html; charset=utf-8" } },
     );
   }
@@ -26,7 +27,8 @@ export async function GET() {
       applyUrl: job.applyUrl,
       adzunaAttributionUrl: job.source === "adzuna" ? adzunaHomepage(job.country) : null,
     })),
-    new Date(),
+    now,
+    followUps.map((f) => toDigestFollowUp(f, now)),
   );
   return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
 }
