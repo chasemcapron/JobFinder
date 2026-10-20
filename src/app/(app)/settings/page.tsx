@@ -54,7 +54,7 @@ export default async function SettingsPage() {
       <PageHeader title="Settings" description="Search preferences, target companies, Google Sheet, and email." />
       <nav
         aria-label="Settings sections"
-        className="sticky top-0 z-10 -mx-4 mb-6 overflow-x-auto bg-background/85 px-4 py-2.5 backdrop-blur sm:mx-0 sm:px-0"
+        className="sticky top-(--header-h) z-30 -mx-4 mb-6 overflow-x-auto bg-background/85 px-4 py-2.5 backdrop-blur [scrollbar-width:none] sm:mx-0 sm:px-0"
       >
         <ul className="flex gap-2">
           {SECTIONS.map(([id, label]) => (

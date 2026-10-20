@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { signOut } from "@/auth";
-import { NavLinks, SectionScope } from "@/components/nav-links";
+import { AppHeader, NavLinks, SectionScope } from "@/components/nav-links";
 import { Avatar, BrandMark, Button, Icon } from "@/components/ui";
 import { requireUser } from "@/lib/session";
 
@@ -20,7 +20,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       >
         Skip to content
       </a>
-      <header className="sticky top-0 z-40 border-b border-border bg-surface/90 backdrop-blur-md">
+      <AppHeader className="sticky top-0 z-40 border-b border-border bg-surface/90 backdrop-blur-md">
         <div aria-hidden className="stripe grid h-1 grid-cols-4">
           <span className="bg-pink" />
           <span className="bg-orange" />
@@ -48,7 +48,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
             </form>
           </div>
         </div>
-      </header>
+      </AppHeader>
       <SectionScope id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-10">
         {children}
       </SectionScope>
