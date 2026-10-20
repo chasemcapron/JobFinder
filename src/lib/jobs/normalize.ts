@@ -25,8 +25,8 @@ function combinedLevel(fromTitle: ExperienceLevel | null, years: number | null):
 
 /**
  * Fills in everything an adapter didn't provide: parsed location, experience level (from the
- * title and the years of experience asked for), clearance requirement, salary parsed from the
- * description, trimmed text.
+ * title and the years of experience asked for; an internship title overrides the adapter's level),
+ * clearance requirement, salary parsed from the description, trimmed text.
  */
 export function finalizeJob(input: JobInput): NormalizedJob {
   const { countryHint, ...job } = input;
@@ -35,6 +35,7 @@ export function finalizeJob(input: JobInput): NormalizedJob {
     job.salaryMin == null && job.salaryMax == null ? parseSalaryFromText(job.description) : null;
   const title = job.title.replace(/\s+/g, " ").trim();
   const minYears = job.minYears !== undefined ? job.minYears : requiredYears(job.description);
+  const fromTitle = inferExperienceLevel(title);
   return {
     ...job,
     title,
@@ -44,7 +45,8 @@ export function finalizeJob(input: JobInput): NormalizedJob {
     state: job.state ?? parsed.state,
     country: job.country ?? parsed.country,
     remote: job.remote ?? parsed.remote,
-    experienceLevel: job.experienceLevel ?? combinedLevel(inferExperienceLevel(title), minYears),
+    // USAJobs levels by pay grade, which makes a GS-4 "Intern" entry level.
+    experienceLevel: fromTitle === "internship" ? fromTitle : (job.experienceLevel ?? combinedLevel(fromTitle, minYears)),
     minYears,
     clearance: job.clearance !== undefined ? job.clearance : clearanceRequirement(job.description),
     description: job.description.trim().slice(0, MAX_DESCRIPTION_CHARS),

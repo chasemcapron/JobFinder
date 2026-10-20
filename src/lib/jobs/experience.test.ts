@@ -4,6 +4,12 @@ import { coerceExperienceLevel, inferExperienceLevel } from "./experience";
 describe("inferExperienceLevel", () => {
   it.each([
     ["Software Engineering Intern, Summer 2027", "internship"],
+    ["INFORMATION TECHNOLOGY INTERN", "internship"],
+    ["Cybersecurity Interns - Summer 2027", "internship"],
+    ["Security Internships (Fall)", "internship"],
+    ["Student Trainee (Information Technology)", "internship"],
+    ["IT Co-ops, Spring", "internship"],
+    ["Security Trainee", "entry"],
     ["Senior Software Engineer", "senior"],
     ["Sr. Data Analyst", "senior"],
     ["Staff Engineer, Payments", "lead"],
