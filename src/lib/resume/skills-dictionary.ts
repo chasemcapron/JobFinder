@@ -23,6 +23,17 @@ export const KNOWN_SKILLS = [
   // Cloud / devops
   "AWS", "Azure", "GCP", "Google Cloud", "Docker", "Kubernetes", "Terraform", "Ansible", "Jenkins", "GitHub Actions",
   "CI/CD", "Linux", "Serverless", "Lambda", "CloudFormation", "Prometheus", "Grafana", "Datadog", "Nginx",
+  // Security: tools, practices, frameworks and certifications (so a security resume still yields
+  // skills when the AI is unavailable)
+  "Cybersecurity", "Information Security", "Network Security", "Cloud Security", "SIEM", "Splunk", "Microsoft Sentinel",
+  "QRadar", "SOAR", "EDR", "XDR", "CrowdStrike", "Microsoft Defender", "SentinelOne", "Carbon Black", "IDS/IPS",
+  "Snort", "Suricata", "Zeek", "Wireshark", "tcpdump", "Nmap", "Metasploit", "Burp Suite", "Nessus", "Qualys",
+  "Tenable", "OpenVAS", "Kali Linux", "Active Directory", "Entra ID", "Azure AD", "Okta", "IAM", "MFA", "PKI",
+  "Firewalls", "Palo Alto Networks", "Fortinet", "VPN", "TCP/IP", "DNS", "Incident Response", "Threat Hunting",
+  "Threat Intelligence", "Vulnerability Management", "Penetration Testing", "Digital Forensics", "Malware Analysis",
+  "Log Analysis", "MITRE ATT&CK", "NIST CSF", "NIST 800-53", "ISO 27001", "SOC 2", "PCI DSS", "HIPAA",
+  "CIS Controls", "Risk Assessment", "GRC", "Security+", "CySA+", "Network+", "CEH", "CISSP", "CISM", "CISA", "GSEC",
+  "OSCP", "CCNA",
   // Practices / tools
   "Git", "Agile", "Scrum", "Jira", "TDD", "System Design", "Distributed Systems", "Security", "OAuth",
   "Figma", "UX Research", "Product Management", "Project Management", "Salesforce", "SAP", "Six Sigma",

@@ -196,6 +196,8 @@ describe("usajobs adapter", () => {
       state: "DC",
       country: "US",
       experienceLevel: "senior",
+      minYears: null, // "One year of specialized experience at the GS-12 level" is about grade, not years
+      clearance: null,
       salaryMin: 99200,
       salaryMax: 128956,
       salaryCurrency: "USD",

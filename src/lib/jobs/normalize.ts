@@ -1,21 +1,32 @@
-import type { JobSource } from "@/db/schema";
+import { EXPERIENCE_LEVELS, type ExperienceLevel, type JobSource } from "@/db/schema";
 import { normalizeForKey } from "@/lib/text";
 import { inferExperienceLevel } from "./experience";
+import { clearanceRequirement, levelFromYears, requiredYears } from "./requirements";
 import { parseLocation } from "./location";
 import { parseSalaryFromText } from "./salary";
 import type { NormalizedJob } from "./types";
 
 export const MAX_DESCRIPTION_CHARS = 20_000;
 
-type JobInput = Omit<NormalizedJob, "city" | "state" | "country" | "remote" | "experienceLevel" | "salaryMin" | "salaryMax" | "salaryCurrency"> &
-  Partial<Pick<NormalizedJob, "city" | "state" | "country" | "remote" | "experienceLevel" | "salaryMin" | "salaryMax" | "salaryCurrency">> & {
+type Derived = "city" | "state" | "country" | "remote" | "experienceLevel" | "minYears" | "clearance" | "salaryMin" | "salaryMax" | "salaryCurrency";
+type JobInput = Omit<NormalizedJob, Derived> &
+  Partial<Pick<NormalizedJob, Derived>> & {
     /** Passed to the location parser when the source provides a separate country. */
     countryHint?: string | null;
   };
 
+/** The more senior of the title's level and the years asked for, except that an internship stays one. */
+function combinedLevel(fromTitle: ExperienceLevel | null, years: number | null): ExperienceLevel | null {
+  if (years === null || fromTitle === "internship") return fromTitle;
+  const fromYears = levelFromYears(years);
+  if (!fromTitle) return fromYears;
+  return EXPERIENCE_LEVELS.indexOf(fromYears) > EXPERIENCE_LEVELS.indexOf(fromTitle) ? fromYears : fromTitle;
+}
+
 /**
- * Fills in everything an adapter didn't provide: parsed location, inferred
- * experience level, salary parsed from the description, trimmed text.
+ * Fills in everything an adapter didn't provide: parsed location, experience level (from the
+ * title and the years of experience asked for), clearance requirement, salary parsed from the
+ * description, trimmed text.
  */
 export function finalizeJob(input: JobInput): NormalizedJob {
   const { countryHint, ...job } = input;
@@ -23,6 +34,7 @@ export function finalizeJob(input: JobInput): NormalizedJob {
   const salaryFromText =
     job.salaryMin == null && job.salaryMax == null ? parseSalaryFromText(job.description) : null;
   const title = job.title.replace(/\s+/g, " ").trim();
+  const minYears = job.minYears !== undefined ? job.minYears : requiredYears(job.description);
   return {
     ...job,
     title,
@@ -32,7 +44,9 @@ export function finalizeJob(input: JobInput): NormalizedJob {
     state: job.state ?? parsed.state,
     country: job.country ?? parsed.country,
     remote: job.remote ?? parsed.remote,
-    experienceLevel: job.experienceLevel ?? inferExperienceLevel(title),
+    experienceLevel: job.experienceLevel ?? combinedLevel(inferExperienceLevel(title), minYears),
+    minYears,
+    clearance: job.clearance !== undefined ? job.clearance : clearanceRequirement(job.description),
     description: job.description.trim().slice(0, MAX_DESCRIPTION_CHARS),
     salaryMin: job.salaryMin ?? salaryFromText?.min ?? null,
     salaryMax: job.salaryMax ?? salaryFromText?.max ?? null,

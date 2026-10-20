@@ -116,6 +116,11 @@ export function normalizeUsajobsItem(item: z.infer<typeof Item>, near?: string |
     countryHint: "US",
     remote: details?.RemoteIndicator === true || nationwide || undefined,
     experienceLevel: level ?? undefined,
+    // Federal agencies sponsor the clearance after the offer, so it never rules an applicant out.
+    clearance: null,
+    // "One year of specialized experience at the GS-14 level" is the standard federal wording; the
+    // grade carries the level, and reading it as "1 year" would make senior roles look entry-level.
+    minYears: null,
     description: htmlToText([details?.JobSummary, duties, d.QualificationSummary].filter(Boolean).join("\n\n")),
     // The API writes the default port into links (https://www.usajobs.gov:443/job/…).
     applyUrl: d.PositionURI.replace(/^(https:\/\/[^/]+):443\//, "$1/"),

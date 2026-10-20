@@ -13,10 +13,14 @@ export const EXPERIENCE_LABELS: Record<ExperienceLevel, string> = {
 const TITLE_RULES: [ExperienceLevel, RegExp][] = [
   ["internship", /\b(intern(ship)?|co-?op|apprentice(ship)?|summer (analyst|associate))\b/i],
   ["executive", /\b(chief|cto|ceo|cfo|coo|cio|ciso|vp|vice president|svp|evp|head of|director)\b/i],
-  ["lead", /\b(staff|principal|distinguished|lead|architect|manager)\b/i],
-  ["senior", /\b(senior|sr\.?|iii|iv)\b/i],
-  ["entry", /\b(junior|jr\.?|entry[- ]level|graduate|new grad|associate|assistant|trainee|early career)\b|\b(i)\s*$/i],
-  ["mid", /\b(mid[- ]level|intermediate|ii)\b/i],
+  ["lead", /\b(staff|principal|distinguished|lead|architect|manager|supervisory|supervisor|sme|subject matter expert)\b/i],
+  // SOC tiers: Tier 1 triages alerts (entry), Tier 2 investigates, Tier 3 hunts.
+  ["senior", /\b(senior|sr\.?|iii|iv|(tier|level)[\s-]?(3|iii)|l3)\b/i],
+  [
+    "entry",
+    /\b(junior|jr\.?|entry[- ]level|graduate|new grad|associate|assistant|trainee|early career|university|rotational|development program|(tier|level)[\s-]?(1|i)|l1)\b|\b(analyst|engineer|specialist|technician|administrator)\s+(i|1)\b|\b(i)\s*$/i,
+  ],
+  ["mid", /\b(mid[- ]level|intermediate|journeyman|ii|(tier|level)[\s-]?(2|ii)|l2)\b|,\s*mid\b|\bmid\s*$/i],
 ];
 
 /** Infers an experience level from a job title. Returns null when the title gives no signal. */
