@@ -3,6 +3,7 @@ import { ActionForm } from "@/components/action-form";
 import { Alert, Badge, Card, CardHeader, FieldHint, Icon, inputClass, Label, linkClass, PageHeader, selectClass } from "@/components/ui";
 import { EXPERIENCE_LEVELS, SHEET_FIELDS } from "@/db/schema";
 import { aiLabel } from "@/lib/ai/provider";
+import { loadMorningRunStatus, type MorningRunState } from "@/lib/email/health";
 import { env, featureStatus } from "@/lib/env";
 import { DEFAULT_COLUMN_MAP, SHEET_FIELD_LABELS } from "@/lib/google/sheets";
 import { EXPERIENCE_LABELS } from "@/lib/jobs/experience";
@@ -18,12 +19,23 @@ import { TargetCompanyRow } from "./target-company-row";
 import { WorkdayEmployers } from "./workday-employers";
 
 export const metadata: Metadata = { title: "Settings · Job Finder" };
+
+const MORNING_BADGE: Record<MorningRunState, { tone: "success" | "info" | "warning" | "neutral"; label: string }> = {
+  ran: { tone: "success", label: "Ran today" },
+  scheduled: { tone: "info", label: "Scheduled" },
+  missed: { tone: "warning", label: "Missed today" },
+  off: { tone: "neutral", label: "Off" },
+};
 // "Test connection" calls the Google Sheets API; "Suggest companies" calls the AI and checks job boards.
 export const maxDuration = 60;
 
 export default async function SettingsPage() {
   const { profile } = await requireUser();
-  const [companies, lastRun] = await Promise.all([listTargetCompanies(profile.userId), lastSearchRun(profile.userId)]);
+  const [companies, lastRun, morning] = await Promise.all([
+    listTargetCompanies(profile.userId),
+    lastSearchRun(profile.userId),
+    loadMorningRunStatus(profile.userId),
+  ]);
   const lastResults = new Map((lastRun?.sourceResults ?? []).map((r) => [r.source, r]));
   const features = featureStatus();
   const columnMap = profile.sheetColumnMap ?? DEFAULT_COLUMN_MAP;
@@ -234,6 +246,13 @@ export default async function SettingsPage() {
       <Card>
         <CardHeader icon={<Icon name="settings" />} title="Integrations" description="What's live and what's running in mock mode on this deployment." />
         <ul className="divide-y divide-border">
+          <li className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
+            <span className="font-medium">Morning email</span>
+            <span className="flex items-center gap-2 text-muted">
+              {morning.note}
+              <Badge tone={MORNING_BADGE[morning.state].tone} dot>{MORNING_BADGE[morning.state].label}</Badge>
+            </span>
+          </li>
           {features.map((f) => (
             <li key={f.key} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
               <span className="font-medium">{f.label}</span>
@@ -244,6 +263,16 @@ export default async function SettingsPage() {
             </li>
           ))}
         </ul>
+        {morning.state === "missed" ? (
+          <div className="mt-4">
+            <Alert tone="warning" title="Check the cron job in Vercel">
+              Open your Vercel project → Logs and filter by <code>/api/cron/morning</code>. A 401 means <code>CRON_SECRET</code> in
+              Vercel doesn&apos;t match; 503 means it isn&apos;t set; no entries at all means the cron isn&apos;t registered
+              (Settings → Cron Jobs). To run it now, call <code>/api/cron/morning?force=1</code> with{" "}
+              <code>Authorization: Bearer &lt;CRON_SECRET&gt;</code>.
+            </Alert>
+          </div>
+        ) : null}
       </Card>
       </div>
     </>

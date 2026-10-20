@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPglite, schema, type Db } from "@/db";
 import { GET as cronGET } from "@/app/api/cron/morning/route";
 import { pickDigestJobs, renderDigest, runDigestForUser, shouldSendNow } from "@/lib/email/digest";
+import { loadMorningRunStatus } from "@/lib/email/health";
 import type { EmailMessage } from "@/lib/email/send";
 import { ensureProfile } from "@/lib/profile";
 
@@ -200,5 +201,21 @@ describe("cron route auth", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("loadMorningRunStatus", () => {
+  it("reads today's cron search and the digest it sent", async () => {
+    await db.insert(schema.searchRuns).values({ userId, trigger: "manual", startedAt: SUMMER_8AM, status: "ok", jobsFetched: 5 });
+    await db.insert(schema.searchRuns).values({ userId, trigger: "cron", startedAt: SUMMER_7AM, status: "ok", jobsFetched: 1145 });
+    await runDigestForUser(userId, { db, now: SUMMER_7AM, runSearch: noSearch, send: async () => ({ channel: "console", id: null }) });
+
+    const status = await loadMorningRunStatus(userId, db, SUMMER_8AM);
+    expect(status.state).toBe("ran");
+    expect(status.note).toMatch(/searched 1,145 postings, emailed 10 matches/); // the manual search isn't counted
+  });
+
+  it("flags a morning with no run", async () => {
+    expect((await loadMorningRunStatus(userId, db, SUMMER_8AM)).state).toBe("missed");
   });
 });
