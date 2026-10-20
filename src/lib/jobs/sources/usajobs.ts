@@ -8,16 +8,16 @@ import type { NormalizedJob, SearchQuery } from "../types";
 import { fetchJson, parseItems } from "./http";
 
 /**
- * GET https://data.usajobs.gov/api/Search?Keyword&LocationName&ResultsPerPage&DatePosted&RemoteIndicator
+ * GET https://data.usajobs.gov/api/Search?Keyword&LocationName&ResultsPerPage&DatePosted&RemoteIndicator&HiringPath
  * Headers: Host: data.usajobs.gov, User-Agent: <registered email>, Authorization-Key: <key>
- * Shape taken from the USAJobs API reference (developer.usajobs.gov/api-reference/get-api-search),
- * NOT yet verified live — no API key was available while building:
- * { SearchResult: { SearchResultCount, SearchResultItems: [{ MatchedObjectId, MatchedObjectDescriptor: {
+ * Verified live 2026-10-20:
+ * { SearchResult: { SearchResultCount, SearchResultCountAll, SearchResultItems: [{ MatchedObjectId, MatchedObjectDescriptor: {
  *   PositionID, PositionTitle, PositionURI, ApplyURI[], PositionLocationDisplay,
- *   PositionLocation[{ LocationName, CountryCode, CountrySubDivisionCode, CityName }],
- *   OrganizationName, DepartmentName, JobGrade[{ Code }], QualificationSummary,
- *   PositionRemuneration[{ MinimumRange, MaximumRange, RateIntervalCode }], PublicationStartDate,
- *   UserArea: { Details: { JobSummary, MajorDuties, LowGrade, HighGrade } } } }] } }
+ *   PositionLocation[{ LocationName, CountryCode: "United States" (a country name, not a code), CityName }],
+ *   OrganizationName, DepartmentName, JobGrade[{ Code: "GS" | "GG" | "NH" | "ES" | … }], QualificationSummary,
+ *   PositionRemuneration[{ MinimumRange, MaximumRange, RateIntervalCode }] (amounts are strings), PublicationStartDate,
+ *   UserArea: { Details: { JobSummary, MajorDuties, LowGrade, HighGrade, HiringPath[], RemoteIndicator, … } } } }] } }
+ * Remote postings are listed at "Anywhere in the U.S. (remote job), United States" with RemoteIndicator true.
  */
 const numberish = z.union([z.number(), z.string()]).nullish();
 const textish = z.union([z.string(), z.array(z.string())]).nullish();
@@ -47,7 +47,7 @@ const Descriptor = z.object({
   UserArea: z
     .object({
       Details: z
-        .object({ JobSummary: z.string().nullish(), MajorDuties: textish, LowGrade: numberish })
+        .object({ JobSummary: z.string().nullish(), MajorDuties: textish, LowGrade: numberish, RemoteIndicator: z.boolean().nullish() })
         .nullish(),
     })
     .nullish(),
@@ -66,28 +66,59 @@ export function levelFromGsGrade(grade: number | null): ExperienceLevel | null {
   return "executive";
 }
 
-const RATE_INTERVALS: Record<string, string> = { PA: "year", PH: "hour", PM: "month", PW: "week", PD: "day", BW: "biweekly" };
+/** Pay plans on the GS grade scale: GG is the intelligence agencies' copy of it, GL law enforcement, GM legacy managers. */
+const GS_SCALE_PLANS = new Set(["GS", "GG", "GL", "GM"]);
+/** DoD acquisition demo (NH) broadband levels, as the lowest GS grade each one spans. */
+const NH_LEVEL_TO_GS: Record<number, number> = { 1: 1, 2: 5, 3: 12, 4: 14 };
+const EXECUTIVE_PLANS = new Set(["ES", "SES", "SL", "ST"]);
 
-export function normalizeUsajobsItem(item: z.infer<typeof Item>): NormalizedJob {
+/** Level from the pay plan and the posting's lowest grade; null for plans with their own scales (FP, NF, AD, …). */
+export function levelFromPayPlan(plan: string | null | undefined, lowGrade: number | string | null | undefined): ExperienceLevel | null {
+  if (!plan) return null;
+  if (EXECUTIVE_PLANS.has(plan)) return "executive";
+  const grade = Number(lowGrade);
+  if (GS_SCALE_PLANS.has(plan)) return levelFromGsGrade(grade);
+  if (plan === "NH") return levelFromGsGrade(NH_LEVEL_TO_GS[grade] ?? null);
+  return null;
+}
+
+const RATE_INTERVALS: Record<string, string> = { PA: "year", PH: "hour", PM: "month", PW: "week", PD: "day", BW: "biweekly" };
+const US = "United States";
+const NATIONWIDE_REMOTE = /anywhere in the u\.?s\.?|\(remote job\)/i;
+/** Who may apply: everyone, students and recent graduates. The other paths are for current federal employees, veterans, spouses, etc. */
+const OPEN_HIRING_PATHS = "public;student;graduates";
+
+/**
+ * Null for postings with no US location (embassies, overseas bases). Multi-location postings list the
+ * searched city first (`near`, e.g. "Chicago, IL"), since the job's city comes from the first place.
+ */
+export function normalizeUsajobsItem(item: z.infer<typeof Item>, near?: string | null): NormalizedJob | null {
   const d = item.MatchedObjectDescriptor;
   const details = d.UserArea?.Details;
+  const places = (d.PositionLocation ?? []).filter((l) => l.LocationName);
+  const usPlaces = places.filter((l) => (l.CountryCode ?? US) === US);
+  if (places.length > 0 && usPlaces.length === 0) return null;
+  const display = d.PositionLocationDisplay ?? "";
+  const nationwide = usPlaces.some((l) => NATIONWIDE_REMOTE.test(l.LocationName ?? "")) || NATIONWIDE_REMOTE.test(display);
+  const named = usPlaces.map((l) => l.LocationName as string).filter((name) => !NATIONWIDE_REMOTE.test(name));
+  const city = near?.split(",")[0].trim().toLowerCase();
+  if (city) named.sort((a, b) => Number(b.toLowerCase().startsWith(`${city},`)) - Number(a.toLowerCase().startsWith(`${city},`)));
   const duties = Array.isArray(details?.MajorDuties) ? details.MajorDuties.join("\n") : (details?.MajorDuties ?? "");
   const pay = d.PositionRemuneration?.[0];
   const interval = RATE_INTERVALS[pay?.RateIntervalCode ?? ""] ?? pay?.RateIntervalCode;
-  const locations = (d.PositionLocation ?? []).map((l) => l.LocationName).filter(Boolean) as string[];
-  const display = d.PositionLocationDisplay ?? "";
-  const isGs = (d.JobGrade ?? []).some((g) => g.Code === "GS");
+  const level = (d.JobGrade ?? []).map((g) => levelFromPayPlan(g.Code, details?.LowGrade)).find(Boolean);
   return finalizeJob({
     source: "usajobs",
     externalId: d.PositionID || item.MatchedObjectId,
     title: d.PositionTitle,
     company: d.OrganizationName || d.DepartmentName || "U.S. Federal Government",
-    locationRaw: locations.slice(0, 5).join(" • ") || display || null,
-    countryHint: d.PositionLocation?.[0]?.CountryCode ?? "US",
-    remote: /remote/i.test(`${display} ${locations.join(" ")}`) || undefined,
-    experienceLevel: isGs ? (levelFromGsGrade(Number(details?.LowGrade)) ?? undefined) : undefined,
+    locationRaw: named.slice(0, 5).join(" • ") || (nationwide ? null : display || null),
+    countryHint: "US",
+    remote: details?.RemoteIndicator === true || nationwide || undefined,
+    experienceLevel: level ?? undefined,
     description: htmlToText([details?.JobSummary, duties, d.QualificationSummary].filter(Boolean).join("\n\n")),
-    applyUrl: d.PositionURI,
+    // The API writes the default port into links (https://www.usajobs.gov:443/job/…).
+    applyUrl: d.PositionURI.replace(/^(https:\/\/[^/]+):443\//, "$1/"),
     postedAt: parseDate(d.PublicationStartDate),
     salaryMin: annualize(pay?.MinimumRange == null ? null : Number(pay.MinimumRange), interval),
     salaryMax: annualize(pay?.MaximumRange == null ? null : Number(pay.MaximumRange), interval),
@@ -100,7 +131,7 @@ export function usajobsConfigured() {
 }
 
 export async function fetchUsajobs(query: SearchQuery, signal: AbortSignal): Promise<NormalizedJob[]> {
-  const params = new URLSearchParams({ Keyword: query.what, ResultsPerPage: "100", DatePosted: "30" });
+  const params = new URLSearchParams({ Keyword: query.what, ResultsPerPage: "100", DatePosted: "30", HiringPath: OPEN_HIRING_PATHS });
   if (query.where) params.set("LocationName", query.where);
   if (query.remoteOnly) params.set("RemoteIndicator", "True");
   const data = await fetchJson(`https://data.usajobs.gov/api/Search?${params}`, Envelope, {
@@ -111,5 +142,7 @@ export async function fetchUsajobs(query: SearchQuery, signal: AbortSignal): Pro
       "Authorization-Key": env.usajobsApiKey ?? "",
     },
   });
-  return parseItems(data.SearchResult.SearchResultItems ?? [], Item).map(normalizeUsajobsItem);
+  return parseItems(data.SearchResult.SearchResultItems ?? [], Item)
+    .map((item) => normalizeUsajobsItem(item, query.where))
+    .filter((job): job is NormalizedJob => job !== null);
 }

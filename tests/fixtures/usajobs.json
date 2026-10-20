@@ -2,8 +2,8 @@
   "LanguageCode": "EN",
   "SearchParameters": {},
   "SearchResult": {
-    "SearchResultCount": 2,
-    "SearchResultCountAll": 2,
+    "SearchResultCount": 4,
+    "SearchResultCountAll": 4,
     "SearchResultItems": [
       {
         "MatchedObjectId": "123456789",
@@ -52,14 +52,56 @@
           "PositionTitle": "IT Specialist (APPSW)",
           "PositionURI": "https://www.usajobs.gov/job/987654321",
           "PositionLocationDisplay": "Anywhere in the U.S. (remote job)",
-          "PositionLocation": [{ "LocationName": "Anywhere in the U.S. (remote job)", "CountryCode": "United States" }],
+          "PositionLocation": [
+            {
+              "LocationName": "Anywhere in the U.S. (remote job), United States",
+              "CountryCode": "United States",
+              "CityName": "Anywhere in the U.S. (remote job), United States"
+            }
+          ],
           "OrganizationName": "Internal Revenue Service",
           "JobGrade": [{ "Code": "GS" }],
           "PositionRemuneration": [{ "MinimumRange": 50, "MaximumRange": 65, "RateIntervalCode": "PH" }],
           "PublicationStartDate": "2026-10-05T00:00:00.0000",
-          "UserArea": { "Details": { "JobSummary": "Develop applications.", "MajorDuties": "Write code.", "LowGrade": "11" } }
+          "UserArea": {
+            "Details": { "JobSummary": "Develop applications.", "MajorDuties": "Write code.", "LowGrade": "11", "RemoteIndicator": true }
+          }
         },
         "RelevanceRank": 1
+      },
+      {
+        "MatchedObjectId": "555000111",
+        "MatchedObjectDescriptor": {
+          "PositionID": "NGA-26-1001",
+          "PositionTitle": "Cybersecurity Analyst",
+          "PositionURI": "https://www.usajobs.gov:443/job/555000111",
+          "PositionLocationDisplay": "Multiple Locations",
+          "PositionLocation": [
+            { "LocationName": "Camp Arifjan, Kuwait", "CountryCode": "Kuwait" },
+            { "LocationName": "St. Louis, Missouri", "CountryCode": "United States" },
+            { "LocationName": "Springfield, Virginia", "CountryCode": "United States" }
+          ],
+          "OrganizationName": "National Geospatial-Intelligence Agency",
+          "JobGrade": [{ "Code": "GG" }],
+          "PositionRemuneration": [{ "MinimumRange": "59966", "MaximumRange": "94317", "RateIntervalCode": "PA" }],
+          "PublicationStartDate": "2026-10-12T00:00:00.0000",
+          "UserArea": { "Details": { "JobSummary": "Monitor and defend agency networks.", "LowGrade": "7", "RemoteIndicator": false } }
+        },
+        "RelevanceRank": 2
+      },
+      {
+        "MatchedObjectId": "555000222",
+        "MatchedObjectDescriptor": {
+          "PositionTitle": "Information Technology Specialist",
+          "PositionURI": "https://www.usajobs.gov:443/job/555000222",
+          "PositionLocationDisplay": "Aviano, Italy",
+          "PositionLocation": [{ "LocationName": "Aviano, Italy", "CountryCode": "Italy" }],
+          "OrganizationName": "U.S. Air Forces in Europe",
+          "JobGrade": [{ "Code": "GS" }],
+          "PublicationStartDate": "2026-10-12T00:00:00.0000",
+          "UserArea": { "Details": { "JobSummary": "Overseas IT support.", "LowGrade": "9" } }
+        },
+        "RelevanceRank": 3
       }
     ]
   }

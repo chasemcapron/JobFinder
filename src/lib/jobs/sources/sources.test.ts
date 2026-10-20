@@ -5,10 +5,10 @@ import { fetchAdzuna } from "./adzuna";
 import { fetchAshby } from "./ashby";
 import { fetchGreenhouse, greenhouseLocation } from "./greenhouse";
 import { fetchLever } from "./lever";
-import { fetchUsajobs, levelFromGsGrade } from "./usajobs";
+import { fetchUsajobs, levelFromGsGrade, levelFromPayPlan } from "./usajobs";
 
 // greenhouse/lever/ashby fixtures are trimmed copies of real responses captured 2026-10-15.
-// adzuna/usajobs fixtures follow the providers' documented response shapes.
+// The adzuna fixture follows the documented response shape; usajobs follows a live response (2026-10-20), trimmed.
 const fixture = (name: string) => JSON.parse(readFileSync(path.join(process.cwd(), "tests/fixtures", name), "utf8"));
 
 function mockFetch(body: unknown, status = 200) {
@@ -178,12 +178,15 @@ describe("usajobs adapter", () => {
     const jobs = await fetchUsajobs({ what: "IT Specialist", where: null, remoteOnly: true }, signal());
     const [url, init] = spy.mock.calls[0] as unknown as [string, RequestInit];
     expect(new URL(url).searchParams.get("RemoteIndicator")).toBe("True");
+    expect(new URL(url).searchParams.get("HiringPath")).toBe("public;student;graduates");
     expect(init.headers).toMatchObject({
       Host: "data.usajobs.gov",
       "User-Agent": "someone@example.com",
       "Authorization-Key": "test-key",
     });
-    const [dc, remote] = jobs;
+    // The Italy-only posting is dropped; the one with Kuwait and US locations stays, listed by its US places.
+    expect(jobs.map((j) => j.title)).toEqual(["IT SPECIALIST (INFOSEC/NETWORK)", "IT Specialist (APPSW)", "Cybersecurity Analyst"]);
+    const [dc, remote, gg] = jobs;
     expect(dc).toMatchObject({
       source: "usajobs",
       externalId: "ABC-12345",
@@ -198,7 +201,27 @@ describe("usajobs adapter", () => {
       salaryCurrency: "USD",
       applyUrl: "https://www.usajobs.gov/job/123456789",
     });
-    expect(remote).toMatchObject({ remote: true, salaryMin: 104000, experienceLevel: "mid" });
+    expect(remote).toMatchObject({ remote: true, city: null, country: "US", salaryMin: 104000, experienceLevel: "mid" });
+    expect(gg).toMatchObject({
+      locationRaw: "St. Louis, Missouri • Springfield, Virginia",
+      city: "St. Louis",
+      state: "MO",
+      country: "US",
+      experienceLevel: "entry",
+      applyUrl: "https://www.usajobs.gov/job/555000111",
+    });
+  });
+
+  it("lists the searched city first for multi-location postings", async () => {
+    vi.stubEnv("USAJOBS_API_KEY", "test-key");
+    vi.stubEnv("USAJOBS_USER_AGENT", "someone@example.com");
+    mockFetch(fixture("usajobs.json"));
+    const jobs = await fetchUsajobs({ what: "cyber", where: "Springfield, VA", remoteOnly: false }, signal());
+    expect(jobs.find((j) => j.title === "Cybersecurity Analyst")).toMatchObject({
+      locationRaw: "Springfield, Virginia • St. Louis, Missouri",
+      city: "Springfield",
+      state: "VA",
+    });
   });
 
   it("maps GS grades to levels", () => {
@@ -207,5 +230,15 @@ describe("usajobs adapter", () => {
     expect(levelFromGsGrade(13)).toBe("senior");
     expect(levelFromGsGrade(15)).toBe("executive");
     expect(levelFromGsGrade(null)).toBeNull();
+  });
+
+  it("maps other pay plans onto the GS scale", () => {
+    expect(levelFromPayPlan("GG", "7")).toBe("entry");
+    expect(levelFromPayPlan("GL", 9)).toBe("mid");
+    expect(levelFromPayPlan("NH", "2")).toBe("entry");
+    expect(levelFromPayPlan("NH", "3")).toBe("senior");
+    expect(levelFromPayPlan("ES", "00")).toBe("executive");
+    expect(levelFromPayPlan("FP", "04")).toBeNull();
+    expect(levelFromPayPlan(null, "7")).toBeNull();
   });
 });
