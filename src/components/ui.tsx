@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 
 /*
@@ -287,8 +288,8 @@ export function CardHeader({
           </span>
         ) : null}
         <div className="min-w-0">
-          <h2 className="text-base font-semibold tracking-tight">{title}</h2>
-          {description ? <p className="mt-1 text-sm text-muted">{description}</p> : null}
+          <h2 className="font-label text-[17px] leading-6 font-semibold tracking-[0.06em] uppercase">{title}</h2>
+          {description ? <p className="mt-0.5 text-sm text-muted">{description}</p> : null}
         </div>
       </div>
       {action}
@@ -524,7 +525,7 @@ export function PageHeader({
       <div className="flex min-w-0 items-start gap-3.5">
         <SectionTile />
         <div className="min-w-0">
-          {eyebrow ? <p className="mb-1 text-xs font-medium tracking-wide text-section-fg uppercase">{eyebrow}</p> : null}
+          {eyebrow ? <Kicker className="mb-1 block text-section-fg">{eyebrow}</Kicker> : null}
           <h1 className="font-display text-[1.75rem] leading-9 font-bold tracking-tight text-balance">{title}</h1>
           <span aria-hidden className="mt-1 block h-1 w-10 rounded-pill bg-section" />
           {description ? <p className="mt-2 max-w-2xl text-sm text-muted">{description}</p> : null}
@@ -549,6 +550,86 @@ export function Divider({ label, className }: { label?: ReactNode; className?: s
 /** Loading placeholder block; size it with className (e.g. "h-4 w-32"). */
 export function Skeleton({ className, ...props }: ComponentProps<"div">) {
   return <div aria-hidden className={cx("animate-pulse rounded-md bg-surface-subtle", className)} {...props} />;
+}
+
+/* ------------------------------------------------------- Flat colour tiles */
+
+/** The four flat hues. Text on each solid fill is AA: white on blue, charcoal on the others. */
+export type Hue = "blue" | "green" | "orange" | "pink";
+
+const hueSolid: Record<Hue, string> = {
+  blue: "bg-blue text-white",
+  green: "bg-green text-ink",
+  orange: "bg-orange text-ink",
+  pink: "bg-pink text-ink",
+};
+
+/** Small condensed all-caps label, as on the colour bars ("APPLIED", "NEW TODAY"). */
+export function Kicker({ children, className }: { children: ReactNode; className?: string }) {
+  return <span className={cx("font-label text-[13px] leading-4 font-semibold tracking-[0.08em] uppercase", className)}>{children}</span>;
+}
+
+/**
+ * A flat, solid colour tile holding one big number: the at-a-glance summaries at the top of a
+ * page. With `href` the whole tile is a link (e.g. to the filtered list it counts).
+ */
+export function StatTile({
+  label,
+  value,
+  hint,
+  hue,
+  href,
+  className,
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  hint?: ReactNode;
+  hue: Hue;
+  href?: string;
+  className?: string;
+}) {
+  const body = (
+    <>
+      <Kicker>{label}</Kicker>
+      <span className="mt-auto font-display text-[2.5rem] leading-none font-bold tracking-tight tabular-nums">{value}</span>
+      {hint ? <span className="text-xs leading-4 font-medium">{hint}</span> : null}
+    </>
+  );
+  const classes = cx(
+    "flex min-h-28 flex-col gap-2 rounded-card p-4 no-underline",
+    hueSolid[hue],
+    href && "transition-[transform,filter] duration-150 hover:-translate-y-0.5 hover:brightness-105 active:translate-y-0",
+    className,
+  );
+  return href ? (
+    <Link href={href} className={classes}>
+      {body}
+    </Link>
+  ) : (
+    <div className={classes}>{body}</div>
+  );
+}
+
+/** A solid colour bar with a condensed caps heading, for columns and groups (the pipeline's "INTERVIEWING"). */
+export function BarHeading({
+  hue,
+  children,
+  count,
+  as: Tag = "h2",
+  className,
+}: {
+  hue: Hue;
+  children: ReactNode;
+  count?: number;
+  as?: "h2" | "h3";
+  className?: string;
+}) {
+  return (
+    <div className={cx("flex items-center justify-between gap-2 rounded-control px-3 py-1.5", hueSolid[hue], className)}>
+      <Tag className="font-label text-[15px] leading-6 font-bold tracking-[0.1em] uppercase">{children}</Tag>
+      {count !== undefined ? <span className="font-label text-[15px] leading-6 font-bold tabular-nums">{count}</span> : null}
+    </div>
+  );
 }
 
 /** A labelled number, for summary rows (e.g. "Applied this week: 4"). */
