@@ -29,7 +29,7 @@ export async function aiJson<S extends z.ZodType>(opts: {
   prompt: string;
   tier?: GeminiTier;
   maxTokens?: number;
-  hedgeAfterMs?: number;
+  hedgeAfterMs?: number | null;
   deadline?: number;
 }): Promise<{ data: z.infer<S>; provider: AiProvider; model: string }> {
   const provider = aiProvider();

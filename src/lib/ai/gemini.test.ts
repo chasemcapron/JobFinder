@@ -152,6 +152,18 @@ describe("geminiJson", () => {
       expect(fetchMock).toHaveBeenCalledTimes(3);
     });
 
+    it("with hedging off, waits for a slow model and asks the next only after a failure", async () => {
+      fetchMock
+        .mockImplementationOnce(after(25_000, busy))
+        .mockImplementationOnce(after(500, () => ok({ score: 4, reason: "second" })));
+      const pending = call({ hedgeAfterMs: null, deadline: Date.now() + 45_000 });
+      await vi.advanceTimersByTimeAsync(24_000);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect((await pending).data.reason).toBe("second");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
     it("gives up at the deadline and calls that busy", async () => {
       fetchMock.mockImplementation(after(120_000, () => ok({ score: 1, reason: "never" })));
       const pending = call({ hedgeAfterMs: 5_000, deadline: Date.now() + 20_000 }).catch((e) => e);

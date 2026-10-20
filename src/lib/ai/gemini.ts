@@ -159,8 +159,8 @@ export async function geminiJson<S extends z.ZodType>(opts: {
   system: string;
   prompt: string;
   tier?: GeminiTier;
-  /** How long to wait for one model before also asking the next. */
-  hedgeAfterMs?: number;
+  /** How long to wait for one model before also asking the next; null asks the next one only after a failure. */
+  hedgeAfterMs?: number | null;
   /** Epoch ms when every attempt is abandoned (keeps callers inside Vercel's 60 s limit). */
   deadline?: number;
   maxOutputTokens?: number;
@@ -170,7 +170,7 @@ export async function geminiJson<S extends z.ZodType>(opts: {
   const responseJsonSchema = toGeminiSchema(opts.schema);
   const models = geminiModels(opts.tier ?? "quality");
   const deadline = opts.deadline ?? Date.now() + DEFAULT_BUDGET_MS;
-  const hedgeAfterMs = opts.hedgeAfterMs ?? 20_000;
+  const hedgeAfterMs = opts.hedgeAfterMs === undefined ? 20_000 : opts.hedgeAfterMs;
   const attempts: GeminiAttempt[] = [];
 
   const stop = new AbortController();
@@ -193,7 +193,7 @@ export async function geminiJson<S extends z.ZodType>(opts: {
     while (running.size > 0) {
       let hedgeTimer: ReturnType<typeof setTimeout> | undefined;
       const contenders: Promise<Settled | "hedge">[] = [...running.values()];
-      if (canStart()) {
+      if (hedgeAfterMs !== null && canStart()) {
         contenders.push(
           new Promise((resolve) => {
             hedgeTimer = setTimeout(() => resolve("hedge"), Math.max(0, lastStart + hedgeAfterMs - Date.now()));
