@@ -1,0 +1,37 @@
+{
+  "jobPostingInfo": {
+    "id": "719f119d666e1001c0adee45de700000",
+    "title": "Analyst I, Falcon Complete (Hybrid, San Antonio)",
+    "jobDescription": "<p>As a global leader in cybersecurity, CrowdStrike protects the people, processes and technologies that drive modern organizations. Since 2011, our mission hasn’t changed — we’re here to stop breaches, and we’ve redefined modern security with the world’s most advanced AI-native platform. We work on large scale distributed systems, processing almost 3 trillion events per day and this traffic is growing daily. Our customers span all industries, and they count on CrowdStrike to keep their business ... ations, job level, supervisory status, and location. The base salary range for this position for all U.S. candidates is $85,000 - $120,000 per year, with eligibility for bonuses, equity grants and a comprehensive benefits package that includes health insurance, 401k and paid time",
+    "location": "USA - Remote",
+    "additionalLocations": [
+      "USA - San Antonio, TX"
+    ],
+    "postedOn": "Posted 5 Days Ago",
+    "startDate": "2026-10-15",
+    "timeType": "Full time",
+    "jobReqId": "R30220",
+    "jobPostingId": "Analyst-I--Falcon-Complete--Hybrid--San-Antonio-_R30220",
+    "jobPostingSiteId": "crowdstrikecareers",
+    "country": {
+      "descriptor": "United States of America",
+      "id": "bc33aa3152ec42d4995f4791a106ed09"
+    },
+    "canApply": true,
+    "posted": true,
+    "includeResumeParsing": true,
+    "jobRequisitionLocation": {
+      "descriptor": "USA TX Remote",
+      "country": {
+        "descriptor": "United States of America",
+        "id": "bc33aa3152ec42d4995f4791a106ed09",
+        "alpha2Code": "US"
+      }
+    },
+    "externalUrl": "https://crowdstrike.wd5.myworkdayjobs.com/crowdstrikecareers/job/USA---Remote/Analyst-I--Falcon-Complete--Hybrid--San-Antonio-_R30220"
+  },
+  "hiringOrganization": {
+    "name": "CrowdStrike, Inc.",
+    "url": ""
+  }
+}

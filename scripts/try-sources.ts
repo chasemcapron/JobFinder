@@ -1,19 +1,29 @@
 /**
  * Dev tool: fetch real postings from the given boards and print a parsing summary.
  * Usage: npx tsx scripts/try-sources.ts greenhouse:stripe lever:spotify ashby:ramp
+ * Workday sites are searched rather than listed, so pass search terms with --q:
+ *   npx tsx scripts/try-sources.ts https://leidos.wd5.myworkdayjobs.com/External --q "security analyst"
  */
 import { runSourceTasks } from "@/lib/jobs/sources";
 import { fetchAshby } from "@/lib/jobs/sources/ashby";
 import { fetchGreenhouse } from "@/lib/jobs/sources/greenhouse";
 import { fetchLever } from "@/lib/jobs/sources/lever";
+import { fetchWorkday } from "@/lib/jobs/sources/workday";
 import { dedupeJobs } from "@/lib/jobs/normalize";
 import { parseTargetCompany } from "@/lib/parse-input";
 import type { SourceTask } from "@/lib/jobs/types";
 
-const fetchers = { greenhouse: fetchGreenhouse, lever: fetchLever, ashby: fetchAshby };
-
 async function main() {
-  const targets = process.argv.slice(2).map(parseTargetCompany);
+  const args = process.argv.slice(2);
+  const queries = args.flatMap((a, i) => (args[i - 1] === "--q" ? [a] : []));
+  const targets = args.filter((a, i) => a !== "--q" && args[i - 1] !== "--q").map(parseTargetCompany);
+  const workday = { queries, profile: { titles: queries, excludeKeywords: [], seniority: null } };
+  const fetchers = {
+    greenhouse: (slug: string, signal: AbortSignal) => fetchGreenhouse(slug, signal),
+    lever: fetchLever,
+    ashby: fetchAshby,
+    workday: (slug: string, signal: AbortSignal) => fetchWorkday(slug, workday, signal),
+  };
   const tasks: SourceTask[] = targets.map((t) => ({
     label: `${t.ats}:${t.slug}`,
     source: t.ats,

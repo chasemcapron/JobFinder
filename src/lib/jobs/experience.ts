@@ -27,6 +27,12 @@ export function inferExperienceLevel(title: string): ExperienceLevel | null {
   return null;
 }
 
+/** True when a job is two or more levels above the one wanted (e.g. a "Senior" role for an entry-level profile). */
+export function isTooSenior(job: ExperienceLevel | null, want: ExperienceLevel | null): boolean {
+  if (!job || !want) return false;
+  return EXPERIENCE_LEVELS.indexOf(job) - EXPERIENCE_LEVELS.indexOf(want) >= 2;
+}
+
 export function isExperienceLevel(value: unknown): value is ExperienceLevel {
   return typeof value === "string" && (EXPERIENCE_LEVELS as readonly string[]).includes(value);
 }

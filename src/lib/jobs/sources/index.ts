@@ -1,4 +1,4 @@
-import type { Profile, SourceRunResult, TargetCompanyRow } from "@/db/schema";
+import type { AtsType, Profile, SourceRunResult, TargetCompanyRow } from "@/db/schema";
 import { buildSearchQueries } from "../queries";
 import type { FetchContext, NormalizedJob, SourceTask } from "../types";
 import { adzunaConfigured, fetchAdzuna, MAX_ADZUNA_QUERIES } from "./adzuna";
@@ -7,6 +7,7 @@ import { fetchGreenhouse } from "./greenhouse";
 import { fetchLever } from "./lever";
 import { mockJobs } from "./mock";
 import { fetchUsajobs, usajobsConfigured } from "./usajobs";
+import { fetchWorkday, WORKDAY_MAX_QUERIES, type WorkdaySearch } from "./workday";
 import { TARGET_COUNTRY } from "../location";
 
 export const SOURCE_TIMEOUT_MS = 12_000;
@@ -21,11 +22,18 @@ export function mockJobsForced() {
 export function buildSourceTasks(profile: Profile, targets: Pick<TargetCompanyRow, "ats" | "slug">[]): SourceTask[] {
   if (mockJobsForced()) return [{ label: "sample data", source: "mock", run: async () => mockJobs() }];
 
+  // Workday sites are searched (they have no full feed), using the profile's top titles.
+  const workday: WorkdaySearch = { queries: buildSearchQueries(profile, WORKDAY_MAX_QUERIES).map((q) => q.what), profile };
+  const fetchBoard: Record<AtsType, (slug: string, signal: AbortSignal) => Promise<NormalizedJob[]>> = {
+    greenhouse: (slug, signal) => fetchGreenhouse(slug, signal),
+    lever: fetchLever,
+    ashby: fetchAshby,
+    workday: (slug, signal) => fetchWorkday(slug, workday, signal),
+  };
   const tasks: SourceTask[] = targets.map(({ ats, slug }) => ({
     label: `${ats}:${slug}`,
     source: ats,
-    run: ({ signal }: FetchContext) =>
-      ats === "greenhouse" ? fetchGreenhouse(slug, signal) : ats === "lever" ? fetchLever(slug, signal) : fetchAshby(slug, signal),
+    run: ({ signal }: FetchContext) => fetchBoard[ats](slug, signal),
   }));
 
   if (adzunaConfigured()) {

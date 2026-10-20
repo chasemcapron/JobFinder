@@ -8,6 +8,7 @@ const BOARD_URLS: Record<string, (slug: string) => string> = {
   greenhouse: (s) => `https://job-boards.greenhouse.io/${s}`,
   lever: (s) => `https://jobs.lever.co/${s}`,
   ashby: (s) => `https://jobs.ashbyhq.com/${s}`,
+  workday: (s) => `https://${s.split("/")[0]}.myworkdayjobs.com/${s.split("/")[1]}`,
 };
 
 export function TargetCompanyRow({

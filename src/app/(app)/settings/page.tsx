@@ -114,8 +114,9 @@ export default async function SettingsPage() {
           title="Target companies"
           description={
             <>
-              Greenhouse, Lever, and Ashby are searched per company. Add <code>ats:slug</code> (e.g.{" "}
-              <code>greenhouse:stripe</code>) or paste a job board URL.
+              Greenhouse, Lever, Ashby, and Workday are searched per company. Add <code>ats:slug</code> (e.g.{" "}
+              <code>greenhouse:stripe</code>) or paste a job board URL. For Workday, paste the careers page URL
+              (<code>….myworkdayjobs.com/…</code>); it&apos;s searched for your top target titles.
             </>
           }
         />
@@ -145,7 +146,7 @@ export default async function SettingsPage() {
               id="company"
               name="company"
               className={inputClass}
-              placeholder="lever:spotify, https://jobs.ashbyhq.com/linear"
+              placeholder="lever:spotify, https://leidos.wd5.myworkdayjobs.com/External"
               autoComplete="off"
             />
           </div>

@@ -115,7 +115,7 @@ export const profiles = pgTable("profiles", {
 });
 
 // "mock" is local sample data, used only when no real source can run (see lib/jobs/sources/mock.ts).
-export const JOB_SOURCES = ["greenhouse", "lever", "ashby", "adzuna", "usajobs", "mock"] as const;
+export const JOB_SOURCES = ["greenhouse", "lever", "ashby", "workday", "adzuna", "usajobs", "mock"] as const;
 export type JobSource = (typeof JOB_SOURCES)[number];
 
 export const jobs = pgTable(
@@ -226,7 +226,7 @@ export const applications = pgTable(
   (t) => [uniqueIndex("applications_user_job_idx").on(t.userId, t.jobId)],
 );
 
-export const ATS_TYPES = ["greenhouse", "lever", "ashby"] as const;
+export const ATS_TYPES = ["greenhouse", "lever", "ashby", "workday"] as const;
 export type AtsType = (typeof ATS_TYPES)[number];
 
 export const targetCompanies = pgTable(
