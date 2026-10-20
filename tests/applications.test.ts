@@ -188,7 +188,7 @@ describe("summarizeApplications", () => {
       ],
       now,
     );
-    expect(stats).toEqual({ total: 6, thisWeek: 3, interviewing: 1, offers: 1, responseRate: 3 / 5 });
+    expect(stats).toEqual({ total: 6, thisWeek: 3, interviewing: 1, offers: 1, answered: 3, considered: 5, responseRate: 3 / 5 });
     expect(summarizeApplications([], now).responseRate).toBeNull();
   });
 });

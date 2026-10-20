@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { getDb, type Db } from "@/db";
 import { applications, emailLog, jobMatches, jobs, profiles, searchRuns, users } from "@/db/schema";
 import { MorningDigestEmail, type DigestFollowUp, type DigestJob } from "@/emails/morning-digest";
+import { FOLLOW_UP_AFTER_DAYS } from "@/lib/applications";
 import { env } from "@/lib/env";
 import { formatLocation } from "@/lib/jobs/location";
 import { inTargetCountry } from "@/lib/jobs/results";
@@ -24,8 +25,6 @@ export const FRESH_SEARCH_MS = 6 * 3_600_000;
 const INLINE_SEARCH_BUDGET_MS = 35_000;
 /** Matches below this aren't worth an email. */
 export const DIGEST_MIN_SCORE = 50;
-/** An application still marked "applied" this many days later gets one follow-up reminder. */
-export const FOLLOW_UP_AFTER_DAYS = 7;
 /** Older applications are left alone, so the first email after this shipped didn't list months of them. */
 const FOLLOW_UP_WITHIN_DAYS = 30;
 const FOLLOW_UP_MAX = 5;
