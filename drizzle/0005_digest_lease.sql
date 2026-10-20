@@ -1,0 +1,1 @@
+ALTER TABLE "profiles" ADD COLUMN "digest_claimed_at" timestamp;

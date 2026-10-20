@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, lt, sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
 import { jobMatches, jobs, searchRuns, type JobSource, type Profile, type SourceRunResult, type TargetCompanyRow } from "@/db/schema";
 import { aiProvider } from "@/lib/ai/provider";
@@ -43,6 +43,24 @@ function chunk<T>(items: T[], size: number): T[][] {
 
 type JobForScoring = ScoredJob & { company: string; source: JobSource };
 
+/** No search runs this long: Vercel stops a function after 60 s. */
+export const ABANDONED_RUN_MS = 5 * 60_000;
+export const ABANDONED_RUN_ERROR = "Stopped before finishing (the server function ran out of time)";
+
+/** Marks runs still "running" past ABANDONED_RUN_MS as stopped, so they don't read as in progress forever. */
+export async function closeAbandonedRuns(userId: string, db: Db, now: Date) {
+  await db
+    .update(searchRuns)
+    .set({ status: "error", finishedAt: now, error: ABANDONED_RUN_ERROR })
+    .where(
+      and(
+        eq(searchRuns.userId, userId),
+        eq(searchRuns.status, "running"),
+        lt(searchRuns.startedAt, new Date(now.getTime() - ABANDONED_RUN_MS)),
+      ),
+    );
+}
+
 /**
  * The one job-search pipeline, shared by the "Refresh jobs" button and the morning cron:
  * fetch all sources in parallel → normalize → dedupe → keep US jobs → store → score (see
@@ -53,6 +71,7 @@ export async function runJobSearch(userId: string, opts: Options): Promise<RunSu
   const db = opts.db ?? (await getDb());
   const profile = await ensureProfile(userId, db);
   const targets = await listEnabledTargetCompanies(userId, db);
+  await closeAbandonedRuns(userId, db, new Date(started));
   const [run] = await db.insert(searchRuns).values({ userId, trigger: opts.trigger }).returning({ id: searchRuns.id });
   const errors: string[] = [];
 

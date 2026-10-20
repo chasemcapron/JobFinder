@@ -1,25 +1,32 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPglite, schema, type Db } from "@/db";
 import { GET as cronGET } from "@/app/api/cron/morning/route";
+import { GET as searchCronGET } from "@/app/api/cron/search/route";
 import { pickDigestJobs, renderDigest, runDigestForUser, shouldSendNow } from "@/lib/email/digest";
 import { loadMorningRunStatus } from "@/lib/email/health";
 import type { EmailMessage } from "@/lib/email/send";
+import { ABANDONED_RUN_ERROR, closeAbandonedRuns } from "@/lib/jobs/search";
+import { pruneOldData } from "@/lib/maintenance";
 import { ensureProfile } from "@/lib/profile";
 
 // 12:00 UTC on a summer day = 7 AM CDT; 13:00 UTC on a winter day = 7 AM CST.
 const SUMMER_7AM = new Date("2026-07-01T12:00:00Z");
 const SUMMER_8AM = new Date("2026-07-01T13:00:00Z");
+const SUMMER_9AM = new Date("2026-07-01T14:00:00Z");
 const WINTER_6AM = new Date("2026-12-01T12:00:00Z");
 const WINTER_7AM = new Date("2026-12-01T13:00:00Z");
+const WINTER_8AM = new Date("2026-12-01T14:00:00Z");
 
 describe("shouldSendNow", () => {
-  it("sends only at 7 AM Chicago time, across daylight saving", () => {
+  it("sends at 7 AM Chicago time with an 8 AM retry, across daylight saving", () => {
     expect(shouldSendNow(SUMMER_7AM, null).send).toBe(true);
-    expect(shouldSendNow(SUMMER_8AM, null).send).toBe(false);
+    expect(shouldSendNow(SUMMER_8AM, null)).toEqual({ send: true, reason: "8 AM retry" });
+    expect(shouldSendNow(SUMMER_9AM, null).send).toBe(false);
     expect(shouldSendNow(WINTER_6AM, null).send).toBe(false);
     expect(shouldSendNow(WINTER_7AM, null).send).toBe(true);
+    expect(shouldSendNow(WINTER_8AM, null).send).toBe(true);
     // Vercel Hobby crons can fire late within the hour
     expect(shouldSendNow(new Date("2026-07-01T12:59:00Z"), null).send).toBe(true);
   });
@@ -88,10 +95,52 @@ describe("runDigestForUser", () => {
     expect(sent[0].html).toContain("https://example.com/1");
     expect(sent[0].text).toContain("Engineer 10");
     expect(sent[0].text).not.toContain("Engineer 11");
+    expect(sent[0].idempotencyKey).toBe(`morning-digest/${userId}/2026-07-01`);
     const logged = await db.select().from(schema.emailLog).where(eq(schema.emailLog.userId, userId));
     expect(logged).toHaveLength(10);
     const profile = await db.query.profiles.findFirst({ where: eq(schema.profiles.userId, userId) });
-    expect(profile?.lastDigestDate).toBe("2026-07-01");
+    expect(profile).toMatchObject({ lastDigestDate: "2026-07-01", digestClaimedAt: null });
+  });
+
+  it("retries a run that was cut off, at 8 AM, without searching again", async () => {
+    // A 7 AM run claimed the day, then Vercel stopped the function before it finished.
+    await db.update(schema.profiles).set({ digestClaimedAt: SUMMER_7AM }).where(eq(schema.profiles.userId, userId));
+    const search = vi.fn(noSearch);
+    const send = vi.fn(async () => ({ channel: "console" as const, id: null }));
+    const outcome = await runDigestForUser(userId, { db, now: SUMMER_8AM, runSearch: search, send });
+    expect(outcome).toMatchObject({ status: "sent", jobs: 10, search: "skipped" });
+    expect(search).not.toHaveBeenCalled();
+  });
+
+  it("leaves a claim that's still in progress alone", async () => {
+    await db.update(schema.profiles).set({ digestClaimedAt: SUMMER_7AM }).where(eq(schema.profiles.userId, userId));
+    const oneMinuteLater = new Date(SUMMER_7AM.getTime() + 60_000);
+    expect(await runDigestForUser(userId, { db, now: oneMinuteLater, runSearch: noSearch })).toEqual({
+      userId,
+      status: "skipped",
+      reason: "Another run is already sending today's digest",
+    });
+  });
+
+  it("emails from the early search when it ran, and searches itself when it didn't", async () => {
+    const search = vi.fn(noSearch);
+    const send = async () => ({ channel: "console" as const, id: null });
+    await db.insert(schema.searchRuns).values({ userId, trigger: "cron", startedAt: new Date("2026-07-01T10:05:00Z"), status: "ok" });
+    expect(await runDigestForUser(userId, { db, now: SUMMER_7AM, runSearch: search, send })).toMatchObject({ search: "skipped" });
+    expect(search).not.toHaveBeenCalled();
+
+    // The next morning's early search failed, so the email searches first.
+    await db.insert(schema.searchRuns).values({ userId, trigger: "cron", startedAt: new Date("2026-07-02T10:05:00Z"), status: "error" });
+    await runDigestForUser(userId, { db, now: new Date("2026-07-02T12:00:00Z"), runSearch: search, send });
+    expect(search).toHaveBeenCalledWith(userId, expect.objectContaining({ trigger: "cron", deadline: expect.any(Number) }));
+  });
+
+  it("finishes a day with nothing to send, so the 8 AM run doesn't search again", async () => {
+    await db.delete(schema.jobMatches);
+    const search = vi.fn(noSearch);
+    expect(await runDigestForUser(userId, { db, now: SUMMER_7AM, runSearch: search })).toMatchObject({ reason: "No new matches to send" });
+    expect(await runDigestForUser(userId, { db, now: SUMMER_8AM, runSearch: search })).toMatchObject({ reason: "Already sent today (2026-07-01)" });
+    expect(search).toHaveBeenCalledTimes(1);
   });
 
   it("skips the second cron invocation and the same day, then sends only unsent jobs the next day", async () => {
@@ -240,17 +289,57 @@ describe("cron route auth", () => {
     expect((await cronGET(wrong)).status).toBe(401);
   });
 
-  it("accepts the right token and exits early outside 7 AM Chicago", async () => {
+  it("accepts the right token and exits early outside the 7-8 AM Chicago window", async () => {
     vi.stubEnv("CRON_SECRET", "s3cret-value");
-    vi.useFakeTimers({ now: SUMMER_8AM, toFake: ["Date"] });
+    vi.useFakeTimers({ now: SUMMER_9AM, toFake: ["Date"] });
     try {
       const ok = new NextRequest("http://localhost/api/cron/morning", { headers: { authorization: "Bearer s3cret-value" } });
       const res = await cronGET(ok);
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ ok: true, skipped: "It's 8:00 in America/Chicago, not 7:00" });
+      expect(await res.json()).toEqual({ ok: true, skipped: "It's 9:00 in America/Chicago; the digest goes out at 7:00 (retry at 8:00)" });
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("guards the search cron the same way", async () => {
+    vi.stubEnv("CRON_SECRET", "");
+    expect((await searchCronGET(new NextRequest("http://localhost/api/cron/search"))).status).toBe(503);
+    vi.stubEnv("CRON_SECRET", "s3cret-value");
+    const wrong = new NextRequest("http://localhost/api/cron/search", { headers: { authorization: "Bearer nope" } });
+    expect((await searchCronGET(wrong)).status).toBe(401);
+  });
+});
+
+describe("closeAbandonedRuns", () => {
+  it("marks runs still 'running' after five minutes as stopped, and leaves a fresh one alone", async () => {
+    const now = SUMMER_7AM;
+    await db.insert(schema.searchRuns).values([
+      { userId, trigger: "cron", startedAt: new Date(now.getTime() - 6 * 60_000) },
+      { userId, trigger: "manual", startedAt: new Date(now.getTime() - 30_000) },
+    ]);
+    await closeAbandonedRuns(userId, db, now);
+    const runs = await db.select().from(schema.searchRuns).orderBy(schema.searchRuns.startedAt);
+    expect(runs.map((r) => r.status)).toEqual(["error", "running"]);
+    expect(runs[0].error).toBe(ABANDONED_RUN_ERROR);
+  });
+});
+
+describe("pruneOldData", () => {
+  it("drops jobs unseen for 60 days unless someone applied, and search runs older than 90 days", async () => {
+    const now = SUMMER_7AM;
+    const daysAgo = (d: number) => new Date(now.getTime() - d * 86_400_000);
+    await db.update(schema.jobs).set({ lastSeenAt: daysAgo(61) }).where(inArray(schema.jobs.id, jobIds.slice(0, 3)));
+    await db.insert(schema.applications).values({ userId, jobId: jobIds[0] });
+    await db.insert(schema.searchRuns).values([
+      { userId, trigger: "cron", startedAt: daysAgo(91), status: "ok" },
+      { userId, trigger: "cron", startedAt: daysAgo(30), status: "ok" },
+    ]);
+    expect(await pruneOldData(db, now)).toEqual({ jobs: 2, searchRuns: 1 });
+    const left = await db.select({ id: schema.jobs.id }).from(schema.jobs);
+    expect(left.map((j) => j.id)).toContain(jobIds[0]); // applied to, so kept
+    expect(left).toHaveLength(jobIds.length - 2);
+    expect(await db.select().from(schema.applications)).toHaveLength(1);
   });
 });
 
@@ -266,6 +355,6 @@ describe("loadMorningRunStatus", () => {
   });
 
   it("flags a morning with no run", async () => {
-    expect((await loadMorningRunStatus(userId, db, SUMMER_8AM)).state).toBe("missed");
+    expect((await loadMorningRunStatus(userId, db, SUMMER_9AM)).state).toBe("missed");
   });
 });
