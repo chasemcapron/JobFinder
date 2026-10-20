@@ -24,23 +24,32 @@ describe("morningRunStatus", () => {
     expect(s.note).toMatch(/with errors: searched 1,145 postings, no new matches to email\.$/);
   });
 
-  it("shows a run in progress", () => {
-    const s = morningRunStatus({ ...base, now: at("12:04:30"), lastDigestDate: "2026-07-01", lastRun: run("12:04:00", "running") });
-    expect(s).toMatchObject({ state: "ran" });
-    expect(s.note).toMatch(/^Running now/);
+  it("shows a search in progress", () => {
+    const s = morningRunStatus({ ...base, now: at("10:04:30"), lastRun: run("10:04:00", "running") });
+    expect(s).toMatchObject({ state: "scheduled" });
+    expect(s.note).toMatch(/^Searching now/);
   });
 
-  it("waits until the 7 AM hour is over", () => {
+  it("treats a run still 'running' past the function limit as cut off", () => {
+    const s = morningRunStatus({ ...base, now: at("14:30:00"), lastRun: run("10:04:00", "running") });
+    expect(s.state).toBe("missed");
+    expect(s.note).toMatch(/^This morning's run failed: Stopped before finishing/);
+  });
+
+  it("waits through the 7 AM hour and the 8 AM retry", () => {
     expect(morningRunStatus({ ...base, now: at("11:30:00") }).state).toBe("scheduled"); // 6:30 AM
     expect(morningRunStatus({ ...base, now: at("12:59:00") }).state).toBe("scheduled"); // 7:59 AM
+    const retry = morningRunStatus({ ...base, now: at("13:30:00") }); // 8:30 AM
+    expect(retry).toMatchObject({ state: "scheduled" });
+    expect(retry.note).toMatch(/^Not sent yet; retries before 9 AM/);
   });
 
-  it("flags a missed morning from 8 AM, naming the last automatic run", () => {
+  it("flags a missed morning from 9 AM, naming the last automatic run", () => {
     const yesterday = { startedAt: new Date("2026-06-30T12:04:00Z"), status: "ok", jobsFetched: 900, error: null };
-    const s = morningRunStatus({ ...base, now: at("13:00:00"), lastDigestDate: "2026-06-30", lastRun: yesterday });
+    const s = morningRunStatus({ ...base, now: at("14:00:00"), lastDigestDate: "2026-06-30", lastRun: yesterday });
     expect(s.state).toBe("missed");
     expect(s.note).toMatch(/^This morning's run didn't happen \(last automatic run Jun 30, 7:04\sAM CDT\)\.$/);
-    expect(morningRunStatus({ ...base, now: at("13:00:00") }).note).toContain("no automatic run yet");
+    expect(morningRunStatus({ ...base, now: at("14:00:00") }).note).toContain("no automatic run yet");
   });
 
   it("is off when the email is turned off", () => {

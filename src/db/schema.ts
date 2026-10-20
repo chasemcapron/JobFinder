@@ -106,8 +106,10 @@ export const profiles = pgTable("profiles", {
   sheetColumnMap: jsonb("sheet_column_map").$type<SheetColumnMap>(),
   // Email
   emailEnabled: boolean("email_enabled").notNull().default(true),
-  /** America/Chicago date (YYYY-MM-DD) of the last morning digest sent. */
+  /** America/Chicago date (YYYY-MM-DD) of the last finished morning run (sent, or nothing new to send). */
   lastDigestDate: text("last_digest_date"),
+  /** When a morning run claimed today's digest; cleared when it finishes. A stale claim means that run died. */
+  digestClaimedAt: timestamp("digest_claimed_at", { mode: "date" }),
   /** Bumped when anything that affects scoring changes, so stale matches get re-scored. */
   matchingUpdatedAt: timestamp("matching_updated_at", { mode: "date" }).notNull().defaultNow(),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),

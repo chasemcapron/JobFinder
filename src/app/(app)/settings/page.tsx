@@ -267,10 +267,10 @@ export default async function SettingsPage() {
         {morning.state === "missed" ? (
           <div className="mt-4">
             <Alert tone="warning" title="Check the cron job in Vercel">
-              Open your Vercel project → Logs and filter by <code>/api/cron/morning</code>. A 401 means <code>CRON_SECRET</code> in
-              Vercel doesn&apos;t match; 503 means it isn&apos;t set; no entries at all means the cron isn&apos;t registered
-              (Settings → Cron Jobs). To run it now, call <code>/api/cron/morning?force=1</code> with{" "}
-              <code>Authorization: Bearer &lt;CRON_SECRET&gt;</code>.
+              Open your Vercel project → Logs and filter by <code>/api/cron</code> (the search runs around 5 AM, the email at
+              7 and 8). A 401 means <code>CRON_SECRET</code> in Vercel doesn&apos;t match; 503 means it isn&apos;t set; no
+              entries at all means the crons aren&apos;t registered (Settings → Cron Jobs). To run it now, call{" "}
+              <code>/api/cron/morning?force=1</code> with <code>Authorization: Bearer &lt;CRON_SECRET&gt;</code>.
             </Alert>
           </div>
         ) : null}

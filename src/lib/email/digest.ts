@@ -1,8 +1,8 @@
 import { render } from "@react-email/components";
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or } from "drizzle-orm";
 import { createElement } from "react";
 import { getDb, type Db } from "@/db";
-import { applications, emailLog, jobMatches, jobs, profiles, users } from "@/db/schema";
+import { applications, emailLog, jobMatches, jobs, profiles, searchRuns, users } from "@/db/schema";
 import { MorningDigestEmail, type DigestFollowUp, type DigestJob } from "@/emails/morning-digest";
 import { env } from "@/lib/env";
 import { formatLocation } from "@/lib/jobs/location";
@@ -13,7 +13,15 @@ import { APP_TIME_ZONE, localDate, localHour } from "@/lib/time";
 import { sendEmail, type SendResult } from "./send";
 
 export const DIGEST_HOUR = 7;
+/** 8 AM is the retry slot for a 7 AM run that failed or was cut off. */
+export const DIGEST_RETRY_HOUR = DIGEST_HOUR + 1;
 export const DIGEST_MAX_JOBS = 10;
+/** A claim older than this belongs to a run that died: Vercel stops a function after 60 s. */
+export const DIGEST_LEASE_MS = 5 * 60_000;
+/** A search this recent (normally the 5 AM search cron) counts as this morning's; the email doesn't search again. */
+export const FRESH_SEARCH_MS = 6 * 3_600_000;
+/** An inline search (the 5 AM one didn't happen) stops scoring by then, leaving room to render and send. */
+const INLINE_SEARCH_BUDGET_MS = 35_000;
 /** Matches below this aren't worth an email. */
 export const DIGEST_MIN_SCORE = 50;
 /** An application still marked "applied" this many days later gets one follow-up reminder. */
@@ -35,14 +43,28 @@ export type DigestOutcome =
   | { userId: string; status: "skipped"; reason: string }
   | { userId: string; status: "error"; error: string };
 
-/** Vercel Cron runs in UTC with no DST; both 12:00 and 13:00 UTC fire, and only the one that's 7 AM in Chicago sends. */
+/**
+ * Vercel Cron runs in UTC with no DST; 12:00, 13:00 and 14:00 UTC all fire. The one that's 7 AM in
+ * Chicago sends, and the one that's 8 AM retries if the 7 AM run didn't finish.
+ */
 export function shouldSendNow(now: Date, lastDigestDate: string | null, force = false): { send: boolean; reason: string } {
   const today = localDate(now);
   if (lastDigestDate === today) return { send: false, reason: `Already sent today (${today})` };
   if (force) return { send: true, reason: "forced" };
   const hour = localHour(now);
-  if (hour !== DIGEST_HOUR) return { send: false, reason: `It's ${hour}:00 in ${APP_TIME_ZONE}, not ${DIGEST_HOUR}:00` };
-  return { send: true, reason: "7 AM in Chicago" };
+  if (hour === DIGEST_HOUR) return { send: true, reason: "7 AM in Chicago" };
+  if (hour === DIGEST_RETRY_HOUR) return { send: true, reason: "8 AM retry" };
+  return { send: false, reason: `It's ${hour}:00 in ${APP_TIME_ZONE}; the digest goes out at ${DIGEST_HOUR}:00 (retry at ${DIGEST_RETRY_HOUR}:00)` };
+}
+
+/** True when a search finished recently enough to email from (normally the 5 AM search cron). */
+async function searchedRecently(userId: string, db: Db, now: Date): Promise<boolean> {
+  const since = new Date(now.getTime() - FRESH_SEARCH_MS);
+  const recent = await db.query.searchRuns.findFirst({
+    where: and(eq(searchRuns.userId, userId), gt(searchRuns.startedAt, since), inArray(searchRuns.status, ["ok", "partial"])),
+    columns: { id: true },
+  });
+  return Boolean(recent);
 }
 
 /** Top matches that haven't been emailed or applied to yet. */
@@ -114,19 +136,31 @@ type DigestOptions = {
   now?: Date;
   /** Skip the 7 AM check (still only once per day). */
   force?: boolean;
-  /** Set false to email from existing matches without searching first. */
+  /** Set false to email from existing matches without searching first. Otherwise it searches unless one ran recently. */
   search?: boolean;
   runSearch?: typeof runJobSearch;
   send?: typeof sendEmail;
 };
 
-/** One user's morning run: search, pick new top matches, email them, record what was sent. */
+/**
+ * One user's morning run: claim today, search unless the 5 AM search already ran, pick new top
+ * matches and due follow-ups, email them, record what was sent, then mark today done.
+ *
+ * The claim is a lease: a run Vercel cuts off at 60 s leaves `digestClaimedAt` set without
+ * finishing the day, and once that's older than DIGEST_LEASE_MS the 8 AM retry takes over. The
+ * retry skips the search (the likely thing that ran out of time) and sends what's already matched.
+ */
 export async function runDigestForUser(userId: string, opts: DigestOptions = {}): Promise<DigestOutcome> {
   const db = opts.db ?? (await getDb());
   const now = opts.now ?? new Date();
   try {
     const [row] = await db
-      .select({ email: users.email, emailEnabled: profiles.emailEnabled, lastDigestDate: profiles.lastDigestDate })
+      .select({
+        email: users.email,
+        emailEnabled: profiles.emailEnabled,
+        lastDigestDate: profiles.lastDigestDate,
+        digestClaimedAt: profiles.digestClaimedAt,
+      })
       .from(profiles)
       .innerJoin(users, eq(users.id, profiles.userId))
       .where(eq(profiles.userId, userId));
@@ -136,19 +170,28 @@ export async function runDigestForUser(userId: string, opts: DigestOptions = {})
     const gate = shouldSendNow(now, row.lastDigestDate, opts.force);
     if (!gate.send) return { userId, status: "skipped", reason: gate.reason };
 
-    // Claim today before the slow part so an overlapping cron invocation can't double-send.
+    // Claim today so an overlapping cron invocation can't double-send; a claim past its lease is free to take.
     const today = localDate(now);
     const claimed = await db
       .update(profiles)
-      .set({ lastDigestDate: today })
-      .where(and(eq(profiles.userId, userId), row.lastDigestDate ? eq(profiles.lastDigestDate, row.lastDigestDate) : isNull(profiles.lastDigestDate)))
+      .set({ digestClaimedAt: now })
+      .where(
+        and(
+          eq(profiles.userId, userId),
+          or(isNull(profiles.digestClaimedAt), lt(profiles.digestClaimedAt, new Date(now.getTime() - DIGEST_LEASE_MS))),
+          row.lastDigestDate ? eq(profiles.lastDigestDate, row.lastDigestDate) : isNull(profiles.lastDigestDate),
+        ),
+      )
       .returning({ userId: profiles.userId });
     if (claimed.length === 0) return { userId, status: "skipped", reason: "Another run is already sending today's digest" };
+    const earlierRunDied = row.digestClaimedAt !== null && localDate(row.digestClaimedAt) === today;
+    const finishDay = () => db.update(profiles).set({ lastDigestDate: today, digestClaimedAt: null }).where(eq(profiles.userId, userId));
 
     let searchStatus: RunSummary["status"] | "skipped" = "skipped";
-    if (opts.search !== false) {
+    if (opts.search !== false && !earlierRunDied && !(await searchedRecently(userId, db, now))) {
       try {
-        searchStatus = (await (opts.runSearch ?? runJobSearch)(userId, { trigger: "cron", db })).status;
+        const deadline = Date.now() + INLINE_SEARCH_BUDGET_MS;
+        searchStatus = (await (opts.runSearch ?? runJobSearch)(userId, { trigger: "cron", db, deadline })).status;
       } catch (err) {
         // Still email whatever matches exist from earlier searches.
         console.error("Morning search failed", err);
@@ -158,7 +201,10 @@ export async function runDigestForUser(userId: string, opts: DigestOptions = {})
 
     const picked = await pickDigestJobs(userId, db);
     const followUps = await pickFollowUps(userId, db, now);
-    if (picked.length === 0 && followUps.length === 0) return { userId, status: "skipped", reason: "No new matches to send" };
+    if (picked.length === 0 && followUps.length === 0) {
+      await finishDay();
+      return { userId, status: "skipped", reason: "No new matches to send" };
+    }
 
     const digestJobs: DigestJob[] = picked.map(({ job, score, reasons }) => ({
       title: job.title,
@@ -176,12 +222,14 @@ export async function runDigestForUser(userId: string, opts: DigestOptions = {})
     );
     let result: SendResult;
     try {
-      result = await (opts.send ?? sendEmail)({ to: row.email, ...message });
+      // Same key all day: if a run is cut off after Resend accepted the email, the retry can't send it twice.
+      result = await (opts.send ?? sendEmail)({ to: row.email, ...message, idempotencyKey: `morning-digest/${userId}/${today}` });
     } catch (err) {
-      // Release today's claim so the next scheduled invocation can try again.
-      await db.update(profiles).set({ lastDigestDate: row.lastDigestDate }).where(eq(profiles.userId, userId));
+      // Release the claim so the 8 AM invocation can try again.
+      await db.update(profiles).set({ digestClaimedAt: null }).where(eq(profiles.userId, userId));
       throw err;
     }
+    await finishDay();
     if (picked.length) {
       await db
         .insert(emailLog)

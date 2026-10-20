@@ -3,7 +3,8 @@ import { getDb, type Db } from "@/db";
 import { emailLog, profiles, searchRuns } from "@/db/schema";
 import { formatDateTime } from "@/lib/format";
 import { localDate, localHour } from "@/lib/time";
-import { DIGEST_HOUR } from "./digest";
+import { ABANDONED_RUN_ERROR, ABANDONED_RUN_MS } from "@/lib/jobs/search";
+import { DIGEST_HOUR, DIGEST_RETRY_HOUR } from "./digest";
 
 export type MorningRunState = "off" | "ran" | "scheduled" | "missed";
 
@@ -19,24 +20,31 @@ export type MorningRunInput = {
 };
 
 /**
- * Whether this morning's cron run happened. The cron route can't record anything when Vercel never
- * calls it or the call is rejected (no CRON_SECRET, or a wrong one), so a missing run is the signal:
- * Vercel fires the 7 AM job somewhere within that hour, so by 8 AM Chicago today's run is overdue.
+ * Whether this morning's cron run happened. The cron routes can't record anything when Vercel never
+ * calls them or the call is rejected (no CRON_SECRET, or a wrong one), so a missing run is the signal.
+ * The search runs early, the email at 7 AM (Vercel fires somewhere within that hour), and 8 AM retries
+ * a run that didn't finish, so by 9 AM Chicago an unfinished day is a missed one.
  */
-export function morningRunStatus({ now, emailEnabled, lastDigestDate, lastRun, lastEmail }: MorningRunInput): {
+export function morningRunStatus({ now, emailEnabled, lastDigestDate, lastRun: run, lastEmail }: MorningRunInput): {
   state: MorningRunState;
   note: string;
 } {
   const today = localDate(now);
+  // A run "running" past the function limit was cut off; the next search marks it, but say so now.
+  const lastRun =
+    run?.status === "running" && now.getTime() - run.startedAt.getTime() > ABANDONED_RUN_MS
+      ? { ...run, status: "error", error: ABANDONED_RUN_ERROR }
+      : run;
   const lastRunText = lastRun ? `last automatic run ${formatDateTime(lastRun.startedAt)}` : "no automatic run yet";
   if (!emailEnabled) return { state: "off", note: `Turned off, so there's no morning search either (${lastRunText}).` };
+  const ranToday = lastRun !== null && localDate(lastRun.startedAt) === today;
 
+  if (lastDigestDate !== today && ranToday && lastRun.status === "running") {
+    return { state: "scheduled", note: `Searching now (started ${formatDateTime(lastRun.startedAt)}).` };
+  }
   if (lastDigestDate === today) {
     const parts: string[] = [];
-    if (lastRun?.status === "running" && localDate(lastRun.startedAt) === today) {
-      return { state: "ran", note: `Running now (started ${formatDateTime(lastRun.startedAt)}).` };
-    }
-    if (lastRun && localDate(lastRun.startedAt) === today) {
+    if (ranToday) {
       const searched = `searched ${lastRun.jobsFetched.toLocaleString()} postings`;
       parts.push(
         lastRun.status === "ok" ? `Ran ${formatDateTime(lastRun.startedAt)}: ${searched}` : `Ran ${formatDateTime(lastRun.startedAt)} with errors: ${searched}`,
@@ -52,7 +60,10 @@ export function morningRunStatus({ now, emailEnabled, lastDigestDate, lastRun, l
     return { state: "ran", note: `${parts.join(", ")}.` };
   }
 
-  if (localHour(now) <= DIGEST_HOUR) return { state: "scheduled", note: `Runs at 7 AM Central (${lastRunText}).` };
+  const hour = localHour(now);
+  if (hour <= DIGEST_HOUR) return { state: "scheduled", note: `Searches early, emails at 7 AM Central (${lastRunText}).` };
+  if (hour === DIGEST_RETRY_HOUR) return { state: "scheduled", note: `Not sent yet; retries before 9 AM Central (${lastRunText}).` };
+  if (ranToday && lastRun.error) return { state: "missed", note: `This morning's run failed: ${lastRun.error} (${lastRunText}).` };
   return { state: "missed", note: `This morning's run didn't happen (${lastRunText}).` };
 }
 
