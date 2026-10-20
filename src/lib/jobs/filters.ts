@@ -1,3 +1,4 @@
+import { HIDE_BELOW_SCORE } from "@/components/ui";
 import { EXPERIENCE_LEVELS, JOB_SOURCES, type ExperienceLevel, type JobSource } from "@/db/schema";
 import { countryName } from "./location";
 import type { MatchResult } from "./results";
@@ -20,6 +21,13 @@ export type JobFilters = {
   page: number;
 };
 
+/**
+ * Matches under this score are hidden unless the user asks for them ("Any"). They're kept in
+ * the database (and re-ranked as the profile changes) but they're noise, e.g. a credit analyst
+ * role for a security analyst.
+ */
+export const DEFAULT_MIN_SCORE = HIDE_BELOW_SCORE;
+
 export const DEFAULT_FILTERS: JobFilters = {
   q: "",
   country: null,
@@ -30,7 +38,7 @@ export const DEFAULT_FILTERS: JobFilters = {
   sources: [],
   posted: "any",
   applied: "dim",
-  minScore: 0,
+  minScore: DEFAULT_MIN_SCORE,
   sort: "score",
   page: 1,
 };
@@ -52,7 +60,8 @@ function pick<T extends string>(v: string | undefined, allowed: readonly T[], fa
 
 /** Parses URL search params into filters, ignoring anything invalid. */
 export function parseFilters(params: Params): JobFilters {
-  const minScore = Number(one(params.minScore));
+  const rawMin = one(params.minScore);
+  const minScore = rawMin == null || rawMin === "" ? DEFAULT_MIN_SCORE : Number(rawMin);
   const page = Number(one(params.page));
   return {
     q: (one(params.q) ?? "").trim().slice(0, 200),
@@ -64,7 +73,7 @@ export function parseFilters(params: Params): JobFilters {
     sources: many(params.source).filter((s): s is JobSource => (JOB_SOURCES as readonly string[]).includes(s)),
     posted: pick(one(params.posted), POSTED_WITHIN, "any"),
     applied: pick(one(params.applied), ["dim", "hide", "only"] as const, "dim"),
-    minScore: Number.isFinite(minScore) ? Math.max(0, Math.min(100, Math.round(minScore))) : 0,
+    minScore: Number.isFinite(minScore) ? Math.max(0, Math.min(100, Math.round(minScore))) : DEFAULT_MIN_SCORE,
     sort: pick(one(params.sort), ["score", "date"] as const, "score"),
     page: Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1,
   };
@@ -83,7 +92,7 @@ export function filtersToSearchParams(f: Partial<JobFilters>): URLSearchParams {
   for (const s of full.sources) p.append("source", s);
   if (full.posted !== "any") p.set("posted", full.posted);
   if (full.applied !== "dim") p.set("applied", full.applied);
-  if (full.minScore > 0) p.set("minScore", String(full.minScore));
+  if (full.minScore !== DEFAULT_MIN_SCORE) p.set("minScore", String(full.minScore));
   if (full.sort !== "score") p.set("sort", full.sort);
   if (full.page > 1) p.set("page", String(full.page));
   return p;
@@ -178,6 +187,6 @@ export function activeFilterCount(f: JobFilters): number {
     (f.sources.length ? 1 : 0) +
     (f.posted !== "any" ? 1 : 0) +
     (f.applied !== "dim" ? 1 : 0) +
-    (f.minScore > 0 ? 1 : 0)
+    (f.minScore !== DEFAULT_MIN_SCORE ? 1 : 0)
   );
 }

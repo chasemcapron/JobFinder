@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { claudeJson, getClaude } from "@/lib/ai/claude";
+import { AiUnavailableError } from "@/lib/ai/gemini";
+import { aiJson, aiProvider } from "@/lib/ai/provider";
 import { EXPERIENCE_LABELS } from "./experience";
 import { formatLocation } from "./location";
 import type { MatchProfile, ScoredJob } from "./scoring";
@@ -7,8 +8,9 @@ import type { MatchProfile, ScoredJob } from "./scoring";
 export type AiScore = { score: number; reason: string };
 
 const BATCH_SIZE = 10;
-const CONCURRENCY = 3;
-/** Per-job description budget sent to Claude. Postings repeat boilerplate; the top carries the signal. */
+/** Free-tier Gemini allows only a handful of requests per minute; two at a time stays under it. */
+const CONCURRENCY = 2;
+/** Per-job description budget. Postings repeat boilerplate; the top carries the signal. */
 const DESCRIPTION_CHARS = 2_500;
 
 const ResultSchema = z.object({
@@ -21,10 +23,11 @@ const ResultSchema = z.object({
   ),
 });
 
-const SYSTEM = `You score how well job postings fit a candidate. For each job return a 0-100 score and a one-sentence reason.
-Scoring guide: 90+ near-perfect fit (title, level, core skills, and location all line up); 70-89 strong fit with a minor gap; 50-69 plausible but notable gaps; 25-49 weak; under 25 wrong field or level.
-Weigh role type and seniority most, then skills, then location/remote preferences. Penalize clear dealbreakers (wrong level, on-site in a city the candidate doesn't want, a different profession).
-Reasons should be specific (mention the matching skills or the gap) and must not exceed 120 characters.`;
+const SYSTEM = `You score how well US job postings fit one candidate. For each job return a 0-100 score and a one-sentence reason.
+Scoring guide: 90+ near-perfect (role, level, core skills and location all line up); 75-89 strong with a minor gap; 50-74 plausible with real gaps; 25-49 weak; under 25 wrong field or wrong level.
+Judge the kind of work first. A posting in a different profession scores under 15 even when it shares tools or words with the candidate's field: for a security analyst, a "Credit Risk Analyst" or "Securities Analyst" is a different profession; Python and SQL appearing in a finance role do not make it a fit.
+Then seniority: an entry-level candidate should not get above 40 for roles asking for 5+ years, "Senior", "Staff", "Lead" or "Principal" titles. Then skills, then location/remote preference.
+Reasons must be specific (name the matching skills or the gap), under 120 characters, and never mention the score.`;
 
 function describeProfile(p: MatchProfile): string {
   const lines = [
@@ -45,16 +48,23 @@ function describeJob(id: string, job: ScoredJob & { company: string }): string {
   return `<job id="${id}">\n${job.title} at ${job.company} | ${formatLocation(job, job.locationRaw)}${level}\n${desc}\n</job>`;
 }
 
-async function scoreBatch(profile: MatchProfile, batch: [string, ScoredJob & { company: string }][]): Promise<Map<string, AiScore>> {
-  const result = await claudeJson({
+async function scoreBatch(
+  profile: MatchProfile,
+  batch: [string, ScoredJob & { company: string }][],
+  deadline: number,
+): Promise<Map<string, AiScore>> {
+  const { data } = await aiJson({
     schema: ResultSchema,
     system: SYSTEM,
     prompt: `<candidate>\n${describeProfile(profile)}\n</candidate>\n\n${batch.map(([id, j]) => describeJob(id, j)).join("\n\n")}\n\nScore every job above.`,
-    maxTokens: 4000,
+    tier: "fast",
+    maxTokens: 4_000,
+    timeoutMs: 20_000,
+    deadline,
   });
   const out = new Map<string, AiScore>();
   const wanted = new Set(batch.map(([id]) => id));
-  for (const r of result.results) {
+  for (const r of data.results) {
     if (!wanted.has(r.id)) continue;
     out.set(r.id, {
       score: Math.max(0, Math.min(100, Math.round(r.score))),
@@ -65,32 +75,41 @@ async function scoreBatch(profile: MatchProfile, batch: [string, ScoredJob & { c
 }
 
 /**
- * Scores jobs with Claude in small batches. Returns whatever succeeded; a failed batch is
- * logged and its jobs keep their keyword score. Returns an empty map without an API key.
+ * Scores jobs with the configured AI in small batches. Returns whatever succeeded: a failed
+ * batch keeps its jobs on their keyword score, and a rate limit stops the remaining batches.
+ * No batch starts after `deadline`, so the caller stays inside its time limit.
  */
-export async function scoreWithClaude(
+export async function scoreWithAi(
   profile: MatchProfile,
   jobs: Map<string, ScoredJob & { company: string }>,
+  opts: { deadline?: number } = {},
 ): Promise<{ scores: Map<string, AiScore>; errors: string[] }> {
   const scores = new Map<string, AiScore>();
   const errors: string[] = [];
-  if (!getClaude() || jobs.size === 0) return { scores, errors };
+  if (!aiProvider() || jobs.size === 0) return { scores, errors };
+  const deadline = opts.deadline ?? Date.now() + 30_000;
   const entries = [...jobs.entries()];
   const batches: (typeof entries)[] = [];
   for (let i = 0; i < entries.length; i += BATCH_SIZE) batches.push(entries.slice(i, i + BATCH_SIZE));
 
   let next = 0;
+  let stopped = false;
   async function worker() {
-    while (next < batches.length) {
+    while (!stopped && next < batches.length && deadline - Date.now() > 3_000) {
       const batch = batches[next++];
       try {
-        for (const [id, s] of await scoreBatch(profile, batch)) scores.set(id, s);
+        for (const [id, s] of await scoreBatch(profile, batch, deadline)) scores.set(id, s);
       } catch (err) {
-        console.error("Claude scoring batch failed", err);
+        console.error("AI scoring batch failed", err);
         errors.push(err instanceof Error ? err.message : String(err));
+        if (err instanceof AiUnavailableError && err.rateLimited) stopped = true;
       }
     }
   }
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batches.length) }, worker));
-  return { scores, errors };
+  if (!stopped && next < batches.length) {
+    const left = batches.slice(next).reduce((n, b) => n + b.length, 0);
+    errors.push(`ran out of time; ${left} job(s) kept their keyword score`);
+  }
+  return { scores, errors: [...new Set(errors)] };
 }

@@ -1,10 +1,10 @@
-import { eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it } from "vitest";
+import { desc, eq } from "drizzle-orm";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPglite, schema, type Db } from "@/db";
 import { mockJobs } from "@/lib/jobs/sources/mock";
-import { runSourceTasks } from "@/lib/jobs/sources";
+import { buildSourceTasks, runSourceTasks } from "@/lib/jobs/sources";
 import { listMatches } from "@/lib/jobs/results";
-import { runJobSearch } from "@/lib/jobs/search";
+import { rescoreStoredMatches, runJobSearch } from "@/lib/jobs/search";
 import type { SourceTask } from "@/lib/jobs/types";
 import { ensureProfile, SEED_TARGET_COMPANIES } from "@/lib/profile";
 
@@ -114,6 +114,128 @@ describe("runJobSearch", () => {
     const summary = await runJobSearch(userId, { trigger: "cron", db, buildTasks: () => [brokenTask] });
     expect(summary.status).toBe("error");
     expect(summary.jobsFetched).toBe(0);
+  });
+});
+
+describe("scoring pipeline", () => {
+  const matchTitles = async () =>
+    (
+      await db
+        .select({ title: schema.jobs.title, score: schema.jobMatches.score, aiScored: schema.jobMatches.aiScored })
+        .from(schema.jobMatches)
+        .innerJoin(schema.jobs, eq(schema.jobs.id, schema.jobMatches.jobId))
+        .where(eq(schema.jobMatches.userId, userId))
+        .orderBy(desc(schema.jobMatches.score))
+    ).map((r) => r);
+  const setProfile = (values: Partial<typeof schema.profiles.$inferInsert>) =>
+    db
+      .update(schema.profiles)
+      .set({ ...values, matchingUpdatedAt: new Date(Date.now() + 1_000) })
+      .where(eq(schema.profiles.userId, userId));
+
+  it("re-ranks matches already stored when the profile changes, without fetching", async () => {
+    await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [sampleTask] });
+    expect((await matchTitles())[0].title).toBe("Senior Backend Engineer");
+
+    await setProfile({ titles: ["Data Analyst"], skills: ["SQL", "Tableau", "Excel"], keywords: [], preferredLocations: [] });
+    await rescoreStoredMatches(userId, db);
+    const after = await matchTitles();
+    // The Data Analyst posting was weak for the old profile but is stored, so it can rise to the top.
+    expect(after[0].title).toBe("Data Analyst");
+    expect(after[0].score).toBeGreaterThanOrEqual(75);
+    expect(after.find((m) => m.title === "Senior Backend Engineer")!.score).toBeLessThan(25);
+  });
+
+  it("drops jobs whose title has an excluded word, including ones already stored", async () => {
+    await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [sampleTask] });
+    expect((await matchTitles()).some((m) => /backend/i.test(m.title))).toBe(true);
+    await setProfile({ excludeKeywords: ["backend"] });
+    await rescoreStoredMatches(userId, db);
+    expect((await matchTitles()).some((m) => /backend/i.test(m.title))).toBe(false);
+  });
+
+  it("never uses or keeps sample jobs in production", async () => {
+    await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [sampleTask] });
+    expect((await matchTitles()).length).toBeGreaterThan(0);
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      const profile = await ensureProfile(userId, db);
+      expect(buildSourceTasks(profile, [])).toEqual([]);
+      // No target companies or keyed sources: nothing to fetch, and no sample-data fallback.
+      const summary = await runJobSearch(userId, { trigger: "manual", db, buildTasks: (p) => buildSourceTasks(p, []) });
+      expect(summary.sources).toEqual([]);
+      expect(await matchTitles()).toEqual([]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  describe("with Gemini configured", () => {
+    let aiCalls = 0;
+    beforeEach(() => {
+      aiCalls = 0;
+      vi.stubEnv("GEMINI_API_KEY", "test-key");
+      // Answers every job id in the prompt with a fixed score, like the real batch endpoint would.
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string, init: RequestInit) => {
+          aiCalls++;
+          const prompt: string = JSON.parse(String(init.body)).contents[0].parts[0].text;
+          const ids = [...prompt.matchAll(/<job id="([^"]+)">/g)].map((m) => m[1]);
+          const results = ids.map((id) => ({ id, score: 91, reason: "Strong backend payments fit" }));
+          return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ results }) }] }, finishReason: "STOP" }] }));
+        }),
+      );
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    });
+
+    it("AI-scores the top candidates and doesn't re-score them on the next run", async () => {
+      const first = await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [sampleTask], maxAiScores: 3 });
+      expect(first.aiScored).toBe(3);
+      const rows = await matchTitles();
+      expect(rows.filter((r) => r.aiScored)).toHaveLength(3);
+      expect(rows[0]).toMatchObject({ score: 91, aiScored: true });
+
+      const callsAfterFirst = aiCalls;
+      const second = await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [sampleTask], maxAiScores: 3 });
+      // The 3 fresh AI scores are kept; the next 3 candidates get scored instead.
+      expect(second.aiScored).toBe(3);
+      expect((await matchTitles()).filter((r) => r.aiScored)).toHaveLength(6);
+      expect(aiCalls).toBe(callsAfterFirst + 1);
+    });
+
+    it("scores one role posted in several cities once and shares the result", async () => {
+      const [base] = mockJobs();
+      const cities = ["Chicago, IL", "Austin, TX", "Denver, CO"].map((loc, i) => ({
+        ...base,
+        externalId: `multi-${i}`,
+        dedupeKey: `multi-${i}`,
+        locationRaw: loc,
+        city: loc.split(",")[0],
+        state: loc.split(", ")[1],
+      }));
+      const fetchSpy = vi.mocked(globalThis.fetch);
+      const summary = await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [{ label: "multi", source: "mock", run: async () => cities }] });
+      const prompt: string = JSON.parse(String(fetchSpy.mock.calls[0][1]!.body)).contents[0].parts[0].text;
+      expect([...prompt.matchAll(/<job id=/g)]).toHaveLength(1);
+      expect(summary.aiScored).toBe(3);
+      expect((await matchTitles()).every((m) => m.aiScored && m.score === 91)).toBe(true);
+    });
+
+    it("falls back to keyword scores when Gemini is busy", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(JSON.stringify({ error: { code: 503, message: "high demand" } }), { status: 503 })),
+      );
+      const summary = await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [sampleTask] });
+      expect(summary.aiScored).toBe(0);
+      expect(summary.status).toBe("partial");
+      expect(summary.errors[0]).toMatch(/AI scoring: Gemini is busy/);
+      expect((await matchTitles())[0].title).toBe("Senior Backend Engineer");
+    });
   });
 });
 

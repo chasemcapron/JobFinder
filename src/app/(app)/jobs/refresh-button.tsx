@@ -54,6 +54,16 @@ export function RefreshButton({ label = "Refresh jobs" }: { label?: string }) {
 
 function RunResult({ summary }: { summary: RunSummary }) {
   const failed = summary.sources.filter((s) => !s.ok);
+  if (summary.sources.length === 0) {
+    return (
+      <Alert tone="warning" title="Nothing to search yet">
+        <p>
+          Add target companies (their Greenhouse, Lever or Ashby job boards) in Settings, or a free USAJobs key, then
+          refresh. Your saved jobs were re-ranked against your current profile.
+        </p>
+      </Alert>
+    );
+  }
   return (
     <Alert
       tone={summary.status === "ok" ? "success" : summary.status === "partial" ? "warning" : "error"}
@@ -62,7 +72,7 @@ function RunResult({ summary }: { summary: RunSummary }) {
       <p>
         {summary.jobsFetched.toLocaleString()} postings fetched, {summary.jobsNew.toLocaleString()} new,{" "}
         {summary.matchesScored.toLocaleString()} matches ranked
-        {summary.aiScored ? ` (${summary.aiScored} scored by Claude)` : ""}.
+        {summary.aiScored ? ` (the top ${summary.aiScored} scored by AI)` : ""}.
       </p>
       {failed.length ? (
         <details className="mt-1">

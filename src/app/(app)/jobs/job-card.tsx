@@ -28,8 +28,21 @@ function Meta({ icon, children }: { icon: "building" | "map-pin" | "calendar"; c
 // Sources sometimes send a placeholder instead of a location; showing "N/A" adds nothing.
 const PLACEHOLDER_LOCATION = /^(n\/?a|none|tbd|unknown|-+)$/i;
 
-/** `ranked` is false until the user has a resume or keywords; scores are then all 0 and shown neutral. */
-export function JobCard({ match, actions, ranked = true }: { match: MatchResult; actions?: ReactNode; ranked?: boolean }) {
+/**
+ * `ranked` is false until the user has a resume or keywords; scores are then all 0 and shown neutral.
+ * `fit` is the "Check my fit" control, shown after the other actions.
+ */
+export function JobCard({
+  match,
+  actions,
+  fit,
+  ranked = true,
+}: {
+  match: MatchResult;
+  actions?: ReactNode;
+  fit?: ReactNode;
+  ranked?: boolean;
+}) {
   const { job, application } = match;
   const salary = formatSalary(job.salaryMin, job.salaryMax, job.salaryCurrency);
   const posted = formatRelativeDate(job.postedAt ?? job.firstSeenAt);
@@ -46,7 +59,7 @@ export function JobCard({ match, actions, ranked = true }: { match: MatchResult;
           <ScoreBadge
             score={match.score}
             unranked={!ranked}
-            title={match.aiScored ? "Match score from Claude" : "Match score: how well this job fits your resume"}
+            title={match.aiScored ? "AI match score: the AI read the whole posting" : "Keyword match score: how well this job fits your resume"}
           />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
@@ -73,7 +86,16 @@ export function JobCard({ match, actions, ranked = true }: { match: MatchResult;
 
         {match.reasons ? (
           <p className="rounded-control bg-surface-subtle px-3 py-2 text-sm text-muted">
-            <span className="font-medium text-foreground">Why it matched: </span>
+            {match.aiScored ? (
+              <>
+                <span className="inline-flex items-center gap-1 font-medium text-foreground">
+                  <Icon name="sparkles" className="size-3.5 text-section-fg" />
+                  AI fit:
+                </span>{" "}
+              </>
+            ) : (
+              <span className="font-medium text-foreground">Why it matched: </span>
+            )}
             {match.reasons}
           </p>
         ) : null}
@@ -97,6 +119,7 @@ export function JobCard({ match, actions, ranked = true }: { match: MatchResult;
             <Icon name="external-link" className="size-3.5" />
           </a>
           {actions}
+          {fit}
         </div>
       </Card>
     </li>

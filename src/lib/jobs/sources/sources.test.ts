@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchAdzuna } from "./adzuna";
 import { fetchAshby } from "./ashby";
-import { fetchGreenhouse } from "./greenhouse";
+import { fetchGreenhouse, greenhouseLocation } from "./greenhouse";
 import { fetchLever } from "./lever";
 import { fetchUsajobs, levelFromGsGrade } from "./usajobs";
 
@@ -22,6 +22,26 @@ const signal = () => new AbortController().signal;
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+});
+
+describe("greenhouseLocation", () => {
+  // Shapes from Cloudflare's live board (2026-10-19): `location` is only "Hybrid" for ~85% of postings.
+  const meta = (value: unknown) => [{ name: "Cost Center", value: "4700 - Security" }, { name: "Job Posting Location", value }];
+
+  it("keeps a real location as-is", () => {
+    expect(greenhouseLocation({ location: { name: "Austin, TX" }, metadata: meta(["Singapore"]) })).toBe("Austin, TX");
+  });
+
+  it("uses the posting-location field when the location is just a work arrangement, US cities first", () => {
+    expect(greenhouseLocation({ location: { name: "Hybrid" }, metadata: meta(["London, UK", "New York, US"]) })).toBe("New York, US; London, UK");
+    expect(greenhouseLocation({ location: { name: "In-Office" }, metadata: meta(["Singapore"]) })).toBe("Singapore");
+    expect(greenhouseLocation({ location: { name: "Remote" }, metadata: meta("Austin, US") })).toBe("Remote; Austin, US");
+  });
+
+  it("falls back to offices, then to the vague value", () => {
+    expect(greenhouseLocation({ location: { name: "Hybrid" }, offices: [{ name: "Lisbon", location: "Lisbon, Portugal" }] })).toBe("Lisbon, Portugal");
+    expect(greenhouseLocation({ location: { name: "Hybrid" } })).toBe("Hybrid");
+  });
 });
 
 describe("greenhouse adapter", () => {

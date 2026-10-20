@@ -5,7 +5,7 @@ import { searchRuns } from "@/db/schema";
 import { runJobSearch } from "@/lib/jobs/search";
 import { currentUserId } from "@/lib/session";
 
-// Sources are fetched in parallel with 12s timeouts, then Claude scores a capped batch.
+// Sources are fetched in parallel with 12s timeouts, then the AI scores a capped batch (finishing by ~42s).
 export const maxDuration = 60;
 
 export async function POST() {

@@ -8,7 +8,7 @@ A personal web app: matches job postings to the owner's resume, tracks applicati
 
 ## Hard rules
 
-- **Free to run.** Don't add paid services or anything that needs a credit card. Leave `ANTHROPIC_API_KEY` unset: the keyword matcher in `src/lib/resume/analyze.ts` and `src/lib/jobs/scoring.ts` is the real matching path, not a fallback. Stay within Vercel Hobby (crons at most daily, functions ≤ 60 s), Neon free, and Resend free.
+- **Free to run.** Don't add paid services or anything that needs a credit card. AI runs on Gemini's free tier (`GEMINI_API_KEY`, `src/lib/ai/`); leave `ANTHROPIC_API_KEY` unset (paid). Everything must still work with no AI key: the keyword matcher in `src/lib/resume/analyze.ts` and `src/lib/jobs/scoring.ts` ranks every job, and the AI re-scores the top ones. Free-tier Gemini inputs may be used by Google, so resume text goes through `redactPersonalInfo` first. Adzuna is paid: never enable it. Stay within Vercel Hobby (crons at most daily, functions ≤ 60 s), Neon free, and Resend free.
 - **Public repo.** Never commit secrets or personal data (name, email, resume, sheet ID). Config goes in env vars (`.env.local`, git-ignored); user data goes in the database. Every new env var also goes in `.env.example`, the README table, and `src/lib/env.ts`.
 - **Next.js 16.** APIs differ from what you were trained on. Check `node_modules/next/dist/docs/` before using a Next API.
 - **Done means `npm run check` passes** (lint, typecheck, Vitest, build). CI runs the same check on every push and PR.

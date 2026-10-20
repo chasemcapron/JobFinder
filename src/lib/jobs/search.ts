@@ -1,14 +1,16 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
-import { jobMatches, jobs, searchRuns, type Profile, type SourceRunResult, type TargetCompanyRow } from "@/db/schema";
-import { getClaude } from "@/lib/ai/claude";
+import { jobMatches, jobs, searchRuns, type JobSource, type Profile, type SourceRunResult, type TargetCompanyRow } from "@/db/schema";
+import { aiProvider } from "@/lib/ai/provider";
 import { env } from "@/lib/env";
 import { ensureProfile, listEnabledTargetCompanies } from "@/lib/profile";
-import { scoreWithClaude } from "./ai-score";
+import { normalizeForKey } from "@/lib/text";
+import { scoreWithAi, type AiScore } from "./ai-score";
 import { isInTargetCountry } from "./location";
 import { dedupeJobs } from "./normalize";
-import { keywordScore, MIN_KEYWORD_SCORE, profileHasTerms } from "./scoring";
-import { buildSourceTasks, runSourceTasks } from "./sources";
+import { STALE_AFTER_DAYS } from "./results";
+import { isExcludedTitle, keywordScore, profileHasTerms, type ScoredJob } from "./scoring";
+import { buildSourceTasks, mockJobsForced, runSourceTasks } from "./sources";
 import type { SourceTask } from "./types";
 
 export type RunSummary = {
@@ -29,6 +31,8 @@ type Options = {
   /** For tests: replace the real source adapters. */
   buildTasks?: (profile: Profile, targets: TargetCompanyRow[]) => SourceTask[];
   maxAiScores?: number;
+  /** Epoch ms by which AI scoring must finish. Defaults to 42 s after the run starts (Vercel allows 60 s). */
+  deadline?: number;
 };
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -37,10 +41,12 @@ function chunk<T>(items: T[], size: number): T[][] {
   return out;
 }
 
+type JobForScoring = ScoredJob & { company: string; source: JobSource };
+
 /**
  * The one job-search pipeline, shared by the "Refresh jobs" button and the morning cron:
- * fetch all sources in parallel → normalize → dedupe → store → keyword-score → Claude-score
- * the top candidates (capped) → save matches.
+ * fetch all sources in parallel → normalize → dedupe → keep US jobs → store → score (see
+ * scoreAndSaveMatches) → save matches.
  */
 export async function runJobSearch(userId: string, opts: Options): Promise<RunSummary> {
   const started = Date.now();
@@ -76,69 +82,20 @@ export async function runJobSearch(userId: string, opts: Options): Promise<RunSu
     }
     const jobsNew = unique.length - existingCount;
 
-    // 4. Keyword prefilter
-    const ids = unique.map((j) => idByKey.get(j.dedupeKey)!).filter(Boolean);
-    const existingMatches = new Map<string, { aiScored: boolean; scoredAt: Date }>();
-    for (const idChunk of chunk(ids, 500)) {
-      const rows = await db
-        .select({ jobId: jobMatches.jobId, aiScored: jobMatches.aiScored, scoredAt: jobMatches.scoredAt })
-        .from(jobMatches)
-        .where(and(eq(jobMatches.userId, userId), inArray(jobMatches.jobId, idChunk)));
-      for (const r of rows) existingMatches.set(r.jobId, r);
+    // 4. Score what was fetched plus everything already matched, then save.
+    const fetchedById = new Map<string, JobForScoring>();
+    for (const j of unique) {
+      const id = idByKey.get(j.dedupeKey);
+      if (id) fetchedById.set(id, j);
     }
-    const hasTerms = profileHasTerms(profile);
-    const candidates = unique
-      .map((job) => ({ job, id: idByKey.get(job.dedupeKey)!, kw: keywordScore(job, profile) }))
-      .filter((c) => c.id && (!hasTerms || c.kw.score >= MIN_KEYWORD_SCORE));
-
-    // 5. Claude scores only the best candidates that don't already have a fresh AI score.
-    const isFresh = (id: string) => {
-      const m = existingMatches.get(id);
-      return Boolean(m?.aiScored && m.scoredAt >= profile.matchingUpdatedAt);
-    };
-    const cap = opts.maxAiScores ?? env.maxAiScoresPerRun;
-    const toAiScore =
-      hasTerms && getClaude()
-        ? [...candidates].filter((c) => !isFresh(c.id)).sort((a, b) => b.kw.score - a.kw.score).slice(0, cap)
-        : [];
-    const { scores: aiScores, errors: aiErrors } = await scoreWithClaude(
-      profile,
-      new Map(toAiScore.map((c) => [c.id, c.job])),
-    );
-    errors.push(...aiErrors.map((e) => `Claude scoring: ${e}`));
-
-    // 6. Save matches (keep fresh AI scores from earlier runs untouched).
-    const matchRows = candidates
-      .filter((c) => aiScores.has(c.id) || !isFresh(c.id))
-      .map((c) => {
-        const ai = aiScores.get(c.id);
-        return {
-          userId,
-          jobId: c.id,
-          score: ai?.score ?? c.kw.score,
-          keywordScore: c.kw.score,
-          aiScored: Boolean(ai),
-          reasons: ai?.reason ?? c.kw.reason,
-          matchedKeywords: c.kw.matched,
-          scoredAt: now,
-        };
-      });
-    for (const batch of chunk(matchRows, 300)) {
-      await db
-        .insert(jobMatches)
-        .values(batch)
-        .onConflictDoUpdate({
-          target: [jobMatches.userId, jobMatches.jobId],
-          set: {
-            score: sqlExcluded("score"),
-            keywordScore: sqlExcluded("keyword_score"),
-            aiScored: sqlExcluded("ai_scored"),
-            reasons: sqlExcluded("reasons"),
-            matchedKeywords: sqlExcluded("matched_keywords"),
-            scoredAt: sqlExcluded("scored_at"),
-          },
-        });
-    }
+    const scored = await scoreAndSaveMatches(userId, profile, db, {
+      fetched: fetchedById,
+      useAi: true,
+      maxAiScores: opts.maxAiScores,
+      deadline: opts.deadline ?? started + 42_000,
+      now,
+    });
+    errors.push(...scored.errors);
 
     const failed = sources.filter((s) => !s.ok).length;
     const status: RunSummary["status"] =
@@ -149,8 +106,8 @@ export async function runJobSearch(userId: string, opts: Options): Promise<RunSu
       sources,
       jobsFetched: fetched.length,
       jobsNew,
-      matchesScored: matchRows.length,
-      aiScored: aiScores.size,
+      matchesScored: scored.saved,
+      aiScored: scored.aiScored,
       errors,
       durationMs: Date.now() - started,
     };
@@ -176,6 +133,141 @@ export async function runJobSearch(userId: string, opts: Options): Promise<RunSu
       .where(eq(searchRuns.id, run.id));
     throw err;
   }
+}
+
+/**
+ * Re-ranks the user's stored matches against the current profile with the keyword matcher
+ * (no fetching, no AI), so edits to the resume or preferences apply to every job right away.
+ * The next search then AI-scores the top ones again.
+ */
+export async function rescoreStoredMatches(userId: string, db?: Db) {
+  db ??= await getDb();
+  const profile = await ensureProfile(userId, db);
+  return scoreAndSaveMatches(userId, profile, db, { fetched: new Map(), useAi: false, now: new Date() });
+}
+
+/**
+ * Scores `fetched` jobs plus every job the user already has a (non-stale) match for:
+ * 1. drops matches for excluded titles, non-US rows from before the US-only change, and
+ *    sample jobs in production;
+ * 2. keyword-scores the rest. Every job gets a match row, however weak: the list hides weak
+ *    ones, and keeping them lets a profile change re-rank everything recent searches found;
+ * 3. AI-scores the best candidates that lack a fresh AI score (newer than the last profile change);
+ * 4. upserts matches, leaving fresh AI scores untouched.
+ */
+async function scoreAndSaveMatches(
+  userId: string,
+  profile: Profile,
+  db: Db,
+  opts: { fetched: Map<string, JobForScoring>; useAi: boolean; maxAiScores?: number; deadline?: number; now: Date },
+): Promise<{ saved: number; removed: number; aiScored: number; errors: string[] }> {
+  const errors: string[] = [];
+  const staleBefore = new Date(opts.now.getTime() - STALE_AFTER_DAYS * 86_400_000);
+
+  // Stored matches (with their jobs) for this user.
+  const stored = await db
+    .select({
+      id: jobs.id,
+      title: jobs.title,
+      company: jobs.company,
+      source: jobs.source,
+      description: jobs.description,
+      city: jobs.city,
+      state: jobs.state,
+      country: jobs.country,
+      remote: jobs.remote,
+      locationRaw: jobs.locationRaw,
+      experienceLevel: jobs.experienceLevel,
+      aiScored: jobMatches.aiScored,
+      scoredAt: jobMatches.scoredAt,
+    })
+    .from(jobMatches)
+    .innerJoin(jobs, eq(jobs.id, jobMatches.jobId))
+    .where(and(eq(jobMatches.userId, userId), gt(jobs.lastSeenAt, staleBefore)));
+
+  const existing = new Map(stored.map((r) => [r.id, r]));
+  const all = new Map<string, JobForScoring>(stored.map((r) => [r.id, r]));
+  for (const [id, job] of opts.fetched) all.set(id, job);
+
+  const isFresh = (id: string) => {
+    const m = existing.get(id);
+    return Boolean(m?.aiScored && m.scoredAt >= profile.matchingUpdatedAt);
+  };
+  const hideMock = env.isProduction && !mockJobsForced();
+  const hasTerms = profileHasTerms(profile);
+
+  const toRemove: string[] = [];
+  const candidates: { id: string; job: JobForScoring; kw: ReturnType<typeof keywordScore> }[] = [];
+  for (const [id, job] of all) {
+    if (isExcludedTitle(job.title, profile.excludeKeywords) || !isInTargetCountry(job) || (hideMock && job.source === "mock")) {
+      if (existing.has(id)) toRemove.push(id);
+      continue;
+    }
+    candidates.push({ id, job, kw: keywordScore(job, profile) });
+  }
+  for (const ids of chunk(toRemove, 500)) {
+    await db.delete(jobMatches).where(and(eq(jobMatches.userId, userId), inArray(jobMatches.jobId, ids)));
+  }
+
+  // AI scores only the best candidates that don't already have a fresh AI score. Companies
+  // often post one role once per city ("Solutions Engineer" x 11 states), so each company +
+  // title is scored once and the result is shared with its copies, saving free-tier quota.
+  const cap = opts.maxAiScores ?? env.maxAiScoresPerRun;
+  const groups = new Map<string, typeof candidates>();
+  if (opts.useAi && hasTerms && aiProvider()) {
+    for (const c of [...candidates].filter((c) => !isFresh(c.id)).sort((a, b) => b.kw.score - a.kw.score)) {
+      const key = `${normalizeForKey(c.job.company)}|${normalizeForKey(c.job.title)}`;
+      const group = groups.get(key);
+      if (group) group.push(c);
+      else if (groups.size < cap) groups.set(key, [c]);
+    }
+  }
+  const representatives = [...groups.values()].map((g) => g[0]);
+  const { scores: groupScores, errors: aiErrors } = await scoreWithAi(
+    profile,
+    new Map(representatives.map((c) => [c.id, c.job])),
+    { deadline: opts.deadline },
+  );
+  errors.push(...aiErrors.map((e) => `AI scoring: ${e}`));
+  const aiScores = new Map<string, AiScore>();
+  for (const group of groups.values()) {
+    const score = groupScores.get(group[0].id);
+    if (score) for (const c of group) aiScores.set(c.id, score);
+  }
+
+  // Save (keep fresh AI scores from earlier runs untouched).
+  const matchRows = candidates
+    .filter((c) => aiScores.has(c.id) || !isFresh(c.id))
+    .map((c) => {
+      const ai = aiScores.get(c.id);
+      return {
+        userId,
+        jobId: c.id,
+        score: ai?.score ?? c.kw.score,
+        keywordScore: c.kw.score,
+        aiScored: Boolean(ai),
+        reasons: ai?.reason ?? c.kw.reason,
+        matchedKeywords: c.kw.matched,
+        scoredAt: opts.now,
+      };
+    });
+  for (const batch of chunk(matchRows, 300)) {
+    await db
+      .insert(jobMatches)
+      .values(batch)
+      .onConflictDoUpdate({
+        target: [jobMatches.userId, jobMatches.jobId],
+        set: {
+          score: sqlExcluded("score"),
+          keywordScore: sqlExcluded("keyword_score"),
+          aiScored: sqlExcluded("ai_scored"),
+          reasons: sqlExcluded("reasons"),
+          matchedKeywords: sqlExcluded("matched_keywords"),
+          scoredAt: sqlExcluded("scored_at"),
+        },
+      });
+  }
+  return { saved: matchRows.length, removed: toRemove.length, aiScored: aiScores.size, errors };
 }
 
 function sqlExcluded(column: string) {

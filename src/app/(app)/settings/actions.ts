@@ -5,19 +5,26 @@ import { revalidatePath } from "next/cache";
 import type { ActionState } from "@/components/action-form";
 import { getDb } from "@/db";
 import {
+  ATS_TYPES,
   EXPERIENCE_LEVELS,
   REMOTE_PREFERENCES,
   SHEET_FIELDS,
   profiles,
   targetCompanies,
+  type AtsType,
   type ExperienceLevel,
   type RemotePreference,
   type SheetColumnMap,
   type SheetField,
 } from "@/db/schema";
+import { AiRequestError, AiUnavailableError } from "@/lib/ai/gemini";
+import { aiProvider } from "@/lib/ai/provider";
+import { suggestCompanies, type CompanySuggestion } from "@/lib/ai/suggest-companies";
 import { inspectSheet, SHEET_FIELD_LABELS } from "@/lib/google/sheets";
 import { getGoogleAccessToken } from "@/lib/google/tokens";
+import { rescoreStoredMatches } from "@/lib/jobs/search";
 import { parseColumnLetter, parseList, parseSheetId, parseTargetCompany } from "@/lib/parse-input";
+import { ensureProfile, listTargetCompanies } from "@/lib/profile";
 import { currentUserId } from "@/lib/session";
 
 async function userIdOrThrow() {
@@ -52,8 +59,11 @@ export async function savePreferences(_prev: ActionState, formData: FormData): P
         updatedAt: new Date(),
       })
       .where(eq(profiles.userId, userId));
+    // Preferences change scores (levels, remote, locations), so re-rank saved jobs right away.
+    await rescoreStoredMatches(userId, db);
     revalidatePath("/settings");
-    return { ok: true, message: "Preferences saved." };
+    revalidatePath("/jobs");
+    return { ok: true, message: "Preferences saved and your saved jobs re-ranked." };
   } catch (err) {
     return errorState(err);
   }
@@ -143,5 +153,45 @@ export async function testSheetAction(): Promise<SheetCheck> {
     return { ok: true, ...(await inspectSheet({ token, sheetId: profile.sheetId, tab: profile.sheetTab })) };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : "Couldn't reach the sheet." };
+  }
+}
+
+export type SuggestState = { ok: true; suggestions: CompanySuggestion[] } | { ok: false; message: string };
+
+/** Asks the AI for employers that fit the profile and returns only job boards verified live. Nothing is saved. */
+export async function suggestCompaniesAction(): Promise<SuggestState> {
+  try {
+    const userId = await userIdOrThrow();
+    if (!aiProvider()) return { ok: false, message: "AI isn't set up on this deployment (GEMINI_API_KEY)." };
+    const db = await getDb();
+    const profile = await ensureProfile(userId, db);
+    if (profile.titles.length === 0) return { ok: false, message: "Save your target titles on the Resume page first." };
+    const existing = await listTargetCompanies(userId, db);
+    const suggestions = await suggestCompanies({ profile, existing, deadline: Date.now() + 45_000 });
+    if (suggestions.length === 0) return { ok: false, message: "None of the suggested companies had a job board that could be read. Try again." };
+    return { ok: true, suggestions };
+  } catch (err) {
+    if (err instanceof AiUnavailableError || err instanceof AiRequestError) return { ok: false, message: err.message };
+    return errorState(err) as SuggestState;
+  }
+}
+
+/** Adds suggested boards (already verified) to the user's target companies. */
+export async function addSuggestedCompanies(entries: { ats: AtsType; slug: string }[]): Promise<ActionState> {
+  try {
+    const userId = await userIdOrThrow();
+    const valid = entries
+      .filter((e) => (ATS_TYPES as readonly string[]).includes(e.ats) && /^[a-z0-9._-]{1,80}$/i.test(e.slug))
+      .slice(0, 50);
+    if (valid.length === 0) return { ok: false, message: "Nothing to add." };
+    const db = await getDb();
+    await db
+      .insert(targetCompanies)
+      .values(valid.map((e) => ({ ats: e.ats, slug: e.slug.toLowerCase(), userId })))
+      .onConflictDoNothing();
+    revalidatePath("/settings");
+    return { ok: true, message: `Added ${valid.length} compan${valid.length === 1 ? "y" : "ies"}. Refresh jobs to search them.` };
+  } catch (err) {
+    return errorState(err);
   }
 }

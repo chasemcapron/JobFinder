@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { EXPERIENCE_LEVELS, type ExperienceLevel } from "@/db/schema";
-import { claudeJson, getClaude } from "@/lib/ai/claude";
+import { AiUnavailableError } from "@/lib/ai/gemini";
+import { aiJson, aiProvider, type AiProvider } from "@/lib/ai/provider";
+import { redactPersonalInfo } from "@/lib/ai/redact";
 import { inferExperienceLevel } from "@/lib/jobs/experience";
 import { containsTerm, uniqueCaseInsensitive } from "@/lib/text";
 import { KNOWN_SKILLS, TITLE_HINTS } from "./skills-dictionary";
@@ -13,42 +15,79 @@ export type ResumeAnalysis = {
   titles: string[];
   seniority: ExperienceLevel | null;
   keywords: string[];
-  source: "claude" | "heuristic";
+  /** Title words for nearby-but-wrong fields (e.g. "credit" for a security analyst). Jobs with them are skipped. */
+  excludeKeywords: string[];
+  source: AiProvider | "heuristic";
+  /** Set when the AI was configured but couldn't be used, so the built-in extractor ran instead. */
+  notice?: string;
 };
 
 const AnalysisSchema = z.object({
-  skills: z.array(z.string()).describe("Concrete skills, tools, languages, frameworks, and methods"),
-  titles: z.array(z.string()).describe("Job titles this person is a strong fit for, best fit first"),
+  titles: z.array(z.string()).describe("Job titles to search for, exactly as job postings word them, best fit first"),
   seniority: z.enum(EXPERIENCE_LEVELS).describe("The level of role this person should target next"),
-  keywords: z
+  skills: z.array(z.string()).describe("Concrete skills, tools, languages, frameworks, standards and methods"),
+  keywords: z.array(z.string()).describe("Domain and industry terms that help match postings (not repeats of skills)"),
+  avoidTitleTerms: z
     .array(z.string())
-    .describe("Domain and industry keywords useful for searching job boards (not repeats of skills)"),
+    .describe("Words in job titles that signal a different profession sharing vocabulary with this person's field"),
 });
 
-const SYSTEM = `You extract structured job-search data from resumes. Return only what the resume supports.
-- skills: 10-30 concrete, searchable skills (e.g. "TypeScript", "Kubernetes", "Financial modeling"). Use the common canonical spelling. No soft skills like "communication".
-- titles: 3-6 job titles to search for, ordered by fit, phrased the way job postings phrase them (e.g. "Senior Backend Engineer").
-- seniority: one of internship, entry, mid, senior, lead, executive, for the next role this person should apply to. Base it on years of experience and scope of past roles.
-- keywords: 5-15 domain/industry terms (e.g. "payments", "healthcare", "B2B SaaS") that would help match postings.`;
+const SYSTEM = `You turn a resume into job-search settings. Use only what the resume supports.
+- titles: 4-8 job titles to search for, ordered by fit, worded the way US job postings word them. Use real posting titles, never field names: "SOC Analyst", "Security Analyst", "Cybersecurity Analyst", "Information Security Analyst", not "Cybersecurity" or "Information Security". Include common variants of the same role. Match the seniority (an entry-level candidate gets "Security Analyst I", "Junior Penetration Tester", etc., not "Senior" or "Lead" titles).
+- seniority: internship, entry, mid, senior, lead or executive: the level of the next role this person should apply to, based on years of experience and scope. Students graduating within a year, recent graduates and career changers are entry; only use internship when the person is still years from graduating or explicitly seeks an internship.
+- skills: 10-30 concrete, searchable skills, tools, certifications, frameworks and standards (e.g. "Splunk", "NIST CSF", "Wireshark", "Python", "CompTIA Security+"), canonical spelling. No soft skills.
+- keywords: 5-15 domain terms that show up in relevant postings (e.g. "incident response", "vulnerability management", "SIEM", "GRC").
+- avoidTitleTerms: 4-12 single words or short phrases that appear in titles of jobs this person should NOT get, where the job shares tools or vocabulary with their field and would otherwise slip through keyword matching. For a security analyst: "credit", "securities", "physical security", "loan", "underwriter", "sales", "account executive". For a software engineer: "sales engineer", "recruiter". Never include words that also appear in the person's own target titles, and never seniority words (senior, lead, principal, staff, manager, director): seniority is handled separately.`;
 
-export async function analyzeResume(resumeText: string): Promise<ResumeAnalysis> {
+const SENIORITY_WORDS = new Set([
+  "senior", "sr", "sr.", "junior", "jr", "jr.", "lead", "principal", "staff", "manager", "director", "head", "vp",
+  "vice president", "chief", "executive", "intern", "internship", "entry level", "mid level",
+]);
+
+export function todayLabel(now = new Date()): string {
+  return now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "America/Chicago" });
+}
+
+/** Resume text with contact details and the person's name stripped (see redactPersonalInfo). */
+export function resumeForAi(resumeText: string, names: (string | null | undefined)[] = []): string {
+  return redactPersonalInfo(resumeText, { names });
+}
+
+export async function analyzeResume(resumeText: string, opts: { names?: (string | null | undefined)[] } = {}): Promise<ResumeAnalysis> {
   if (resumeText.length > MAX_RESUME_CHARS) {
     throw new Error(`That resume is ${resumeText.length.toLocaleString()} characters; the limit is ${MAX_RESUME_CHARS.toLocaleString()}.`);
   }
-  if (!getClaude()) return analyzeResumeHeuristically(resumeText);
-  const result = await claudeJson({
-    schema: AnalysisSchema,
-    system: SYSTEM,
-    prompt: `<resume>\n${resumeText}\n</resume>`,
-    maxTokens: 4000,
-  });
-  return {
-    skills: uniqueCaseInsensitive(result.skills.map((s) => s.trim())).slice(0, 40),
-    titles: uniqueCaseInsensitive(result.titles.map((s) => s.trim())).slice(0, 8),
-    seniority: result.seniority,
-    keywords: uniqueCaseInsensitive(result.keywords.map((s) => s.trim())).slice(0, 20),
-    source: "claude",
-  };
+  if (!aiProvider()) return analyzeResumeHeuristically(resumeText);
+  try {
+    const { data, provider } = await aiJson({
+      schema: AnalysisSchema,
+      system: SYSTEM,
+      // The model doesn't know today's date, and graduation dates decide entry vs internship.
+      prompt: `Today is ${todayLabel()}.\n<resume>\n${resumeForAi(resumeText, opts.names)}\n</resume>`,
+      tier: "quality",
+      maxTokens: 4_000,
+      timeoutMs: 12_000, // a busy 3.8 Flash can take minutes; Flash-Lite takes over after this
+      deadline: Date.now() + 45_000,
+    });
+    const titles = uniqueCaseInsensitive(data.titles.map((s) => s.trim()).filter(Boolean)).slice(0, 8);
+    return {
+      skills: uniqueCaseInsensitive(data.skills.map((s) => s.trim()).filter(Boolean)).slice(0, 40),
+      titles,
+      seniority: data.seniority,
+      keywords: uniqueCaseInsensitive(data.keywords.map((s) => s.trim()).filter(Boolean)).slice(0, 20),
+      // Guard against the model excluding a word from the person's own titles, or a seniority
+      // word (which would hide most of the market; seniority is handled by scoring).
+      excludeKeywords: uniqueCaseInsensitive(
+        data.avoidTitleTerms
+          .map((s) => s.trim())
+          .filter((t) => t && !SENIORITY_WORDS.has(t.toLowerCase()) && !titles.some((title) => containsTerm(title, t))),
+      ).slice(0, 15),
+      source: provider,
+    };
+  } catch (err) {
+    if (!(err instanceof AiUnavailableError)) throw err;
+    return { ...analyzeResumeHeuristically(resumeText), notice: `${err.message} Used the built-in extractor instead.` };
+  }
 }
 
 const STOPWORDS = new Set(
@@ -57,7 +96,7 @@ const STOPWORDS = new Set(
   ),
 );
 
-/** Offline fallback used when ANTHROPIC_API_KEY is not set. */
+/** Offline extractor: used when no AI key is set, or when the AI is unavailable. */
 export function analyzeResumeHeuristically(text: string): ResumeAnalysis {
   const skills = KNOWN_SKILLS.filter((s) => containsTerm(text, s));
 
@@ -106,6 +145,7 @@ export function analyzeResumeHeuristically(text: string): ResumeAnalysis {
     titles: uniqueCaseInsensitive(titles),
     seniority,
     keywords,
+    excludeKeywords: [],
     source: "heuristic",
   };
 }

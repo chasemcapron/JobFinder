@@ -92,6 +92,8 @@ export const profiles = pgTable("profiles", {
   titles: jsonb("titles").$type<string[]>().notNull().default([]),
   seniority: text("seniority").$type<ExperienceLevel | null>(),
   keywords: jsonb("keywords").$type<string[]>().notNull().default([]),
+  /** Jobs whose title contains any of these are skipped (e.g. "credit" for a security analyst). */
+  excludeKeywords: jsonb("exclude_keywords").$type<string[]>().notNull().default([]),
   // Preferences
   searchKeywords: jsonb("search_keywords").$type<string[]>().notNull().default([]),
   preferredLocations: jsonb("preferred_locations").$type<string[]>().notNull().default([]),
@@ -166,6 +168,38 @@ export const jobMatches = pgTable(
     scoredAt: timestamp("scored_at", { mode: "date" }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("job_matches_user_job_idx").on(t.userId, t.jobId), index("job_matches_user_score_idx").on(t.userId, t.score)],
+);
+
+export const FIT_VERDICTS = ["strong", "good", "stretch", "poor"] as const;
+export type FitVerdict = (typeof FIT_VERDICTS)[number];
+
+/** An AI comparison of the user's resume with one posting ("Check my fit"). */
+export type FitCheckResult = {
+  fitScore: number;
+  verdict: FitVerdict;
+  summary: string;
+  strengths: string[];
+  gaps: string[];
+  /** Terms from the posting the resume doesn't use; worth adding only if they're true. */
+  missingKeywords: string[];
+  resumeTips: string[];
+};
+
+/** Cached fit checks. Stale once the profile changes after `createdAt` (the resume was edited). */
+export const fitChecks = pgTable(
+  "fit_checks",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+    result: jsonb("result").$type<FitCheckResult>().notNull(),
+    model: text("model").notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.jobId] })],
 );
 
 export const APPLICATION_STATUSES = ["applied", "interviewing", "offer", "rejected", "withdrawn"] as const;
