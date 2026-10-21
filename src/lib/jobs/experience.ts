@@ -11,8 +11,11 @@ export const EXPERIENCE_LABELS: Record<ExperienceLevel, string> = {
 
 // Checked in order; first match wins, so more specific patterns come first.
 const TITLE_RULES: [ExperienceLevel, RegExp][] = [
-  ["internship", /\b(intern(ship)?|co-?op|apprentice(ship)?|summer (analyst|associate))\b/i],
+  // "Student Trainee" is the federal Pathways internship title.
+  ["internship", /\b(interns?|internships?|co-?ops?|apprentices?|apprenticeships?|summer (analyst|associate)s?|student trainees?)\b/i],
   ["executive", /\b(chief|cto|ceo|cfo|coo|cio|ciso|vp|vice president|svp|evp|head of|director)\b/i],
+  // Unambiguous junior words outrank "manager", "lead" and "architect": "Early Career, Associate Product Manager".
+  ["entry", /\b(junior|jr\.?|entry[- ]level|new grad|early career|associate (product|project|program) manager)\b/i],
   ["lead", /\b(staff|principal|distinguished|lead|architect|manager|supervisory|supervisor|sme|subject matter expert)\b/i],
   // SOC tiers: Tier 1 triages alerts (entry), Tier 2 investigates, Tier 3 hunts.
   ["senior", /\b(senior|sr\.?|iii|iv|(tier|level)[\s-]?(3|iii)|l3)\b/i],

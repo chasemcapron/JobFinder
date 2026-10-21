@@ -84,6 +84,14 @@ describe("finalizeJob", () => {
     expect(finalizeJob({ ...base, title: "Security Intern", description: "2+ years of coursework experience." }).experienceLevel).toBe("internship");
   });
 
+  it("keeps an internship title an internship whatever level the source gave it", () => {
+    // DFAS posts "INFORMATION TECHNOLOGY INTERN" at GS-4/5, which the USAJobs adapter grades as entry.
+    const usajobs = { ...base, source: "usajobs" as const, description: "", experienceLevel: "entry" as const };
+    expect(finalizeJob({ ...usajobs, title: "INFORMATION TECHNOLOGY INTERN" }).experienceLevel).toBe("internship");
+    expect(finalizeJob({ ...usajobs, title: "Student Trainee (Information Technology)" }).experienceLevel).toBe("internship");
+    expect(finalizeJob({ ...usajobs, title: "IT Specialist (INFOSEC)" }).experienceLevel).toBe("entry");
+  });
+
   it("records the clearance requirement unless the adapter already decided it", () => {
     const description = "Must hold an active Secret clearance.";
     expect(finalizeJob({ ...base, title: "SOC Analyst", description }).clearance).toBe("active");
