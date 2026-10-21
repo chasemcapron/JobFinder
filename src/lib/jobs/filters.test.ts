@@ -7,6 +7,7 @@ import {
   groupByRole,
   summarizeMatches,
   locationFacets,
+  sourceFacets,
   paginate,
   parseFilters,
   searchTerms,
@@ -87,6 +88,12 @@ describe("filterMatches", () => {
     expect(filterMatches(rows, f({ levels: ["senior", "mid"] }), NOW)).toHaveLength(4);
   });
 
+  it("can include postings that state no level", () => {
+    expect(titles(filterMatches(rows, f({ levels: ["unstated"] }), NOW))).toEqual(["Payments Engineer"]);
+    expect(titles(filterMatches(rows, f({ levels: ["mid", "unstated"] }), NOW))).toEqual(["Frontend Engineer", "Payments Engineer"]);
+    expect(parseFilters({ level: ["entry", "unstated", "bogus"] }).levels).toEqual(["entry", "unstated"]);
+  });
+
   it("filters by source", () => {
     expect(titles(filterMatches(rows, f({ sources: ["lever", "adzuna"] }), NOW))).toEqual(["Platform Engineer", "Payments Engineer"]);
   });
@@ -164,6 +171,14 @@ describe("helpers", () => {
     const us = locationFacets(rows, { country: "US", state: "IL" });
     expect(us.states.map((s) => s.value)).toEqual(["IL", "TX"]);
     expect(us.cities).toEqual([{ value: "Chicago", label: "Chicago", count: 2 }]);
+  });
+
+  it("lists only the sources that have postings", () => {
+    const rows = [row({ source: "workday" }), row({ source: "greenhouse" }), row({ source: "workday" })];
+    expect(sourceFacets(rows)).toEqual([
+      { value: "workday", label: "workday", count: 2 },
+      { value: "greenhouse", label: "greenhouse", count: 1 },
+    ]);
   });
 
   it("counts active filters", () => {

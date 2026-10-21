@@ -4,7 +4,7 @@ import { Alert, buttonClass, EmptyState, HIDE_BELOW_SCORE, Icon, linkClass, Page
 import { applicationStats } from "@/lib/applications";
 import { aiProvider } from "@/lib/ai/provider";
 import { formatDateTime } from "@/lib/format";
-import { activeFilterCount, filterMatches, filtersToSearchParams, groupByRole, locationFacets, paginate, parseFilters, summarizeMatches } from "@/lib/jobs/filters";
+import { activeFilterCount, filterMatches, filtersToSearchParams, groupByRole, locationFacets, paginate, parseFilters, sourceFacets, summarizeMatches } from "@/lib/jobs/filters";
 import { listFitChecks } from "@/lib/jobs/fit-checks";
 import { lastSearchRun, listMatches } from "@/lib/jobs/results";
 import { requireUser } from "@/lib/session";
@@ -27,7 +27,7 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
   // Before a resume exists every score is 0, so the "hide weak matches" default would hide everything.
   const filtered = groupByRole(filterMatches(all, hasProfile ? filters : { ...filters, minScore: 0 }));
   const { items, page, pages, total } = paginate(filtered, filters.page);
-  const facets = locationFacets(all, filters);
+  const facets = { ...locationFacets(all, filters), sources: sourceFacets(all) };
   const activeCount = activeFilterCount(filters);
   const weakHidden =
     hasProfile && filters.minScore === HIDE_BELOW_SCORE ? groupByRole(filterMatches(all, { ...filters, minScore: 0 })).length - filtered.length : 0;

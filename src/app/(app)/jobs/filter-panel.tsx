@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useTransition, type FormEvent } from "react";
 import { Button, HIDE_BELOW_SCORE, inputClass, Label, selectClass } from "@/components/ui";
 import { EXPERIENCE_LEVELS } from "@/db/schema";
-import { EXPERIENCE_LABELS } from "@/lib/jobs/experience";
+import { EXPERIENCE_LABELS, LEVEL_UNSTATED } from "@/lib/jobs/experience";
 import type { FacetOption, JobFilters } from "@/lib/jobs/filters";
 
 const SOURCE_OPTIONS = [
@@ -43,13 +43,15 @@ export function FilterPanel({
   activeCount,
 }: {
   filters: JobFilters;
-  facets: { countries: FacetOption[]; states: FacetOption[]; cities: FacetOption[] };
+  facets: { countries: FacetOption[]; states: FacetOption[]; cities: FacetOption[]; sources: FacetOption[] };
   activeCount: number;
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Boards with postings, plus any still selected so they can be cleared.
+  const sourceOptions = SOURCE_OPTIONS.filter(([v]) => filters.sources.includes(v) || facets.sources.some((s) => s.value === v));
 
   useEffect(() => () => void (debounce.current && clearTimeout(debounce.current)), []);
 
@@ -168,20 +170,26 @@ export function FilterPanel({
               {EXPERIENCE_LABELS[l]}
             </label>
           ))}
+          <label className="flex min-h-7 cursor-pointer items-center gap-2 text-sm text-muted">
+            <input type="checkbox" name="level" value={LEVEL_UNSTATED} defaultChecked={filters.levels.includes(LEVEL_UNSTATED)} className="size-4 accent-accent" />
+            Not stated
+          </label>
         </div>
       </fieldset>
 
-      <fieldset key={`src-${filters.sources.join()}`}>
-        <legend className="mb-1.5 text-sm font-medium">Source</legend>
-        <div className="grid grid-cols-2 gap-1 lg:grid-cols-1">
-          {SOURCE_OPTIONS.map(([v, l]) => (
-            <label key={v} className="flex min-h-7 cursor-pointer items-center gap-2 text-sm">
-              <input type="checkbox" name="source" value={v} defaultChecked={filters.sources.includes(v)} className="size-4 accent-accent" />
-              {l}
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      {sourceOptions.length > 1 ? (
+        <fieldset key={`src-${filters.sources.join()}`}>
+          <legend className="mb-1.5 text-sm font-medium">Source</legend>
+          <div className="grid grid-cols-2 gap-1 lg:grid-cols-1">
+            {sourceOptions.map(([v, l]) => (
+              <label key={v} className="flex min-h-7 cursor-pointer items-center gap-2 text-sm">
+                <input type="checkbox" name="source" value={v} defaultChecked={filters.sources.includes(v)} className="size-4 accent-accent" />
+                {l}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-1">
         <div>

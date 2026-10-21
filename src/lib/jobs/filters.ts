@@ -1,11 +1,13 @@
 import { HIDE_BELOW_SCORE } from "@/components/ui";
-import { EXPERIENCE_LEVELS, JOB_SOURCES, type ExperienceLevel, type JobSource } from "@/db/schema";
+import { EXPERIENCE_LEVELS, JOB_SOURCES, type JobSource } from "@/db/schema";
 import { normalizeForKey } from "@/lib/text";
+import { LEVEL_UNSTATED, type LevelFilter } from "./experience";
 import { countryName } from "./location";
 import type { MatchResult } from "./results";
 
 export const POSTED_WITHIN = ["any", "1", "3", "7", "14", "30"] as const;
 export type PostedWithin = (typeof POSTED_WITHIN)[number];
+const LEVEL_FILTERS: readonly string[] = [...EXPERIENCE_LEVELS, LEVEL_UNSTATED];
 
 export type JobFilters = {
   q: string;
@@ -13,7 +15,7 @@ export type JobFilters = {
   state: string | null;
   city: string | null;
   remote: "any" | "remote" | "onsite";
-  levels: ExperienceLevel[];
+  levels: LevelFilter[];
   sources: JobSource[];
   posted: PostedWithin;
   applied: "dim" | "hide" | "only";
@@ -70,7 +72,7 @@ export function parseFilters(params: Params): JobFilters {
     state: one(params.state) || null,
     city: one(params.city) || null,
     remote: pick(one(params.remote), ["any", "remote", "onsite"] as const, "any"),
-    levels: many(params.level).filter((l): l is ExperienceLevel => (EXPERIENCE_LEVELS as readonly string[]).includes(l)),
+    levels: many(params.level).filter((l): l is LevelFilter => LEVEL_FILTERS.includes(l)),
     sources: many(params.source).filter((s): s is JobSource => (JOB_SOURCES as readonly string[]).includes(s)),
     posted: pick(one(params.posted), POSTED_WITHIN, "any"),
     applied: pick(one(params.applied), ["dim", "hide", "only"] as const, "dim"),
@@ -130,7 +132,7 @@ export function filterMatches(rows: MatchResult[], f: JobFilters, now = new Date
     if (f.city && !eqi(j.city, f.city)) return false;
     if (f.remote === "remote" && !j.remote) return false;
     if (f.remote === "onsite" && j.remote) return false;
-    if (f.levels.length && (!j.experienceLevel || !f.levels.includes(j.experienceLevel))) return false;
+    if (f.levels.length && !f.levels.includes(j.experienceLevel ?? LEVEL_UNSTATED)) return false;
     if (f.sources.length && !f.sources.includes(j.source)) return false;
     if (postedCutoff != null && postedDate(m).getTime() < postedCutoff) return false;
     if (terms.length) {
@@ -214,6 +216,11 @@ export function locationFacets(rows: MatchResult[], f: Pick<JobFilters, "country
     states: countBy(inCountry, (m) => m.job.state),
     cities: countBy(inState, (m) => m.job.city),
   };
+}
+
+/** Sources that have postings, so the Source filter only offers boards that were actually searched. */
+export function sourceFacets(rows: MatchResult[]): FacetOption[] {
+  return countBy(rows, (m) => m.job.source);
 }
 
 export function activeFilterCount(f: JobFilters): number {
