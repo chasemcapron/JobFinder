@@ -252,13 +252,14 @@ export function ResumeEditor({ saved, aiLabel }: { saved: Draft & { savedAt: str
             <span className="text-xs text-muted">Nothing is saved until step 3.</span>
           </div>
           {analyzeState?.ok === false ? <Alert tone="error">{analyzeState.message}</Alert> : null}
-          {analyzeState?.ok === true ? (
+          {/* Discard clears `source`, so a discarded extraction stops claiming it matches the saved profile. */}
+          {analyzeState?.ok === true && source ? (
             <Alert tone="success">
               Extracted{analyzeState.fileName ? ` from ${analyzeState.fileName}` : ""}.{" "}
               {dirty ? "Review below, then save." : "It matches your saved profile."}
             </Alert>
           ) : null}
-          {analyzeState?.ok === true && analyzeState.analysis.notice ? <Alert tone="warning">{analyzeState.analysis.notice}</Alert> : null}
+          {analyzeState?.ok === true && source && analyzeState.analysis.notice ? <Alert tone="warning">{analyzeState.analysis.notice}</Alert> : null}
         </form>
       </Card>
 
