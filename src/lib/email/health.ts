@@ -22,8 +22,8 @@ export type MorningRunInput = {
 /**
  * Whether this morning's cron run happened. The cron routes can't record anything when Vercel never
  * calls them or the call is rejected (no CRON_SECRET, or a wrong one), so a missing run is the signal.
- * The search runs early, the email at 7 AM (Vercel fires somewhere within that hour), and 8 AM retries
- * a run that didn't finish, so by 9 AM Chicago an unfinished day is a missed one.
+ * The search runs early, the email is built in the 6 AM hour and delivered at 7:00, and 7 and 8 AM
+ * retry a run that didn't finish, so by 9 AM Chicago an unfinished day is a missed one.
  */
 export function morningRunStatus({ now, emailEnabled, lastDigestDate, lastRun: run, lastEmail }: MorningRunInput): {
   state: MorningRunState;
@@ -52,17 +52,20 @@ export function morningRunStatus({ now, emailEnabled, lastDigestDate, lastRun: r
     } else {
       parts.push("Today's digest is done");
     }
+    const matches = lastEmail ? `${lastEmail.jobs} match${lastEmail.jobs === 1 ? "" : "es"}` : "";
     parts.push(
       lastEmail && localDate(lastEmail.sentAt) === today
-        ? `emailed ${lastEmail.jobs} match${lastEmail.jobs === 1 ? "" : "es"}`
+        ? lastEmail.sentAt > now
+          ? `emailing ${matches} at 7:00 AM`
+          : `emailed ${matches}`
         : "no new matches to email",
     );
     return { state: "ran", note: `${parts.join(", ")}.` };
   }
 
   const hour = localHour(now);
-  if (hour <= DIGEST_HOUR) return { state: "scheduled", note: `Searches early, emails at 7 AM Central (${lastRunText}).` };
-  if (hour === DIGEST_RETRY_HOUR) return { state: "scheduled", note: `Not sent yet; retries before 9 AM Central (${lastRunText}).` };
+  if (hour < DIGEST_HOUR) return { state: "scheduled", note: `Searches early, emails at 7:00 AM Central (${lastRunText}).` };
+  if (hour <= DIGEST_RETRY_HOUR) return { state: "scheduled", note: `Not sent yet; retries before 9 AM Central (${lastRunText}).` };
   if (ranToday && lastRun.error) return { state: "missed", note: `This morning's run failed: ${lastRun.error} (${lastRunText}).` };
   return { state: "missed", note: `This morning's run didn't happen (${lastRunText}).` };
 }

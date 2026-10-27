@@ -10,18 +10,24 @@ import { formatLocation } from "@/lib/jobs/location";
 import { inTargetCountry } from "@/lib/jobs/results";
 import { runJobSearch, type RunSummary } from "@/lib/jobs/search";
 import { adzunaHomepage } from "@/lib/jobs/sources/adzuna";
-import { APP_TIME_ZONE, localDate, localHour } from "@/lib/time";
+import { APP_TIME_ZONE, atLocalHour, localDate, localHour } from "@/lib/time";
 import { sendEmail, type SendResult } from "./send";
 
+/** The digest arrives at 7:00 AM Chicago time. */
 export const DIGEST_HOUR = 7;
-/** 8 AM is the retry slot for a 7 AM run that failed or was cut off. */
+/**
+ * Vercel Hobby fires a cron anywhere within its hour (it was landing at 7:31), so the digest is built
+ * the hour before and handed to Resend to deliver at 7:00 sharp.
+ */
+export const DIGEST_PREPARE_HOUR = DIGEST_HOUR - 1;
+/** 7 and 8 AM retry a 6 AM run that failed or was cut off, sending right away. */
 export const DIGEST_RETRY_HOUR = DIGEST_HOUR + 1;
 export const DIGEST_MAX_JOBS = 10;
 /** A claim older than this belongs to a run that died: Vercel stops a function after 60 s. */
 export const DIGEST_LEASE_MS = 5 * 60_000;
-/** A search this recent (normally the 5 AM search cron) counts as this morning's; the email doesn't search again. */
+/** A search this recent (normally the early search cron) counts as this morning's; the email doesn't search again. */
 export const FRESH_SEARCH_MS = 6 * 3_600_000;
-/** An inline search (the 5 AM one didn't happen) stops scoring by then, leaving room to render and send. */
+/** An inline search (the early one didn't happen) stops scoring by then, leaving room to render and send. */
 const INLINE_SEARCH_BUDGET_MS = 35_000;
 /** Matches below this aren't worth an email. */
 export const DIGEST_MIN_SCORE = 50;
@@ -38,25 +44,34 @@ export type DigestOutcome =
       followUps: number;
       channel: SendResult["channel"];
       search: RunSummary["status"] | "skipped";
+      /** When Resend delivers it; null when it went out right away. */
+      scheduledFor: string | null;
     }
   | { userId: string; status: "skipped"; reason: string }
   | { userId: string; status: "error"; error: string };
 
 /**
- * Vercel Cron runs in UTC with no DST; 12:00, 13:00 and 14:00 UTC all fire. The one that's 7 AM in
- * Chicago sends, and the one that's 8 AM retries if the 7 AM run didn't finish.
+ * Vercel Cron runs in UTC with no DST; 11:00 to 14:00 UTC all fire. The one that's 6 AM in Chicago
+ * schedules the digest for 7:00, and the ones that are 7 and 8 AM retry if that run didn't finish.
  */
 export function shouldSendNow(now: Date, lastDigestDate: string | null, force = false): { send: boolean; reason: string } {
   const today = localDate(now);
   if (lastDigestDate === today) return { send: false, reason: `Already sent today (${today})` };
   if (force) return { send: true, reason: "forced" };
   const hour = localHour(now);
-  if (hour === DIGEST_HOUR) return { send: true, reason: "7 AM in Chicago" };
+  if (hour === DIGEST_PREPARE_HOUR) return { send: true, reason: "6 AM in Chicago: scheduled for 7:00" };
+  if (hour === DIGEST_HOUR) return { send: true, reason: "7 AM retry" };
   if (hour === DIGEST_RETRY_HOUR) return { send: true, reason: "8 AM retry" };
-  return { send: false, reason: `It's ${hour}:00 in ${APP_TIME_ZONE}; the digest goes out at ${DIGEST_HOUR}:00 (retry at ${DIGEST_RETRY_HOUR}:00)` };
+  return { send: false, reason: `It's ${hour}:00 in ${APP_TIME_ZONE}; the digest arrives at ${DIGEST_HOUR}:00 (retries until ${DIGEST_RETRY_HOUR + 1}:00)` };
 }
 
-/** True when a search finished recently enough to email from (normally the 5 AM search cron). */
+/** Today's 7:00 AM Chicago while that's still ahead, so Resend holds the email until then; null once it's past (send now). */
+export function digestDeliveryTime(now: Date): Date | null {
+  const at = atLocalHour(localDate(now), DIGEST_HOUR);
+  return at > now ? at : null;
+}
+
+/** True when a search finished recently enough to email from (normally the early search cron). */
 async function searchedRecently(userId: string, db: Db, now: Date): Promise<boolean> {
   const since = new Date(now.getTime() - FRESH_SEARCH_MS);
   const recent = await db.query.searchRuns.findFirst({
@@ -133,7 +148,7 @@ export async function renderDigest(digestJobs: DigestJob[], now: Date, followUps
 type DigestOptions = {
   db?: Db;
   now?: Date;
-  /** Skip the 7 AM check (still only once per day). */
+  /** Skip the hour check (still only once per day). */
   force?: boolean;
   /** Set false to email from existing matches without searching first. Otherwise it searches unless one ran recently. */
   search?: boolean;
@@ -142,11 +157,11 @@ type DigestOptions = {
 };
 
 /**
- * One user's morning run: claim today, search unless the 5 AM search already ran, pick new top
+ * One user's morning run: claim today, search unless the early search already ran, pick new top
  * matches and due follow-ups, email them, record what was sent, then mark today done.
  *
  * The claim is a lease: a run Vercel cuts off at 60 s leaves `digestClaimedAt` set without
- * finishing the day, and once that's older than DIGEST_LEASE_MS the 8 AM retry takes over. The
+ * finishing the day, and once that's older than DIGEST_LEASE_MS the 7 or 8 AM retry takes over. The
  * retry skips the search (the likely thing that ran out of time) and sends what's already matched.
  */
 export async function runDigestForUser(userId: string, opts: DigestOptions = {}): Promise<DigestOutcome> {
@@ -219,26 +234,42 @@ export async function runDigestForUser(userId: string, opts: DigestOptions = {})
       now,
       followUps.map((f) => toDigestFollowUp(f, now)),
     );
+    const deliverAt = digestDeliveryTime(now);
     let result: SendResult;
     try {
       // Same key all day: if a run is cut off after Resend accepted the email, the retry can't send it twice.
-      result = await (opts.send ?? sendEmail)({ to: row.email, ...message, idempotencyKey: `morning-digest/${userId}/${today}` });
+      result = await (opts.send ?? sendEmail)({
+        to: row.email,
+        ...message,
+        idempotencyKey: `morning-digest/${userId}/${today}`,
+        ...(deliverAt ? { scheduledAt: deliverAt } : {}),
+      });
     } catch (err) {
-      // Release the claim so the 8 AM invocation can try again.
+      // Release the claim so the next invocation (7 or 8 AM) can try again.
       await db.update(profiles).set({ digestClaimedAt: null }).where(eq(profiles.userId, userId));
       throw err;
     }
     await finishDay();
+    // Logged as sent when it arrives, which is what Settings reports.
+    const sentAt = deliverAt ?? now;
     if (picked.length) {
       await db
         .insert(emailLog)
-        .values(picked.map(({ job }) => ({ userId, jobId: job.id, channel: result.channel, sentAt: now })))
+        .values(picked.map(({ job }) => ({ userId, jobId: job.id, channel: result.channel, sentAt })))
         .onConflictDoNothing();
     }
     if (followUps.length) {
-      await db.update(applications).set({ followUpSentAt: now }).where(inArray(applications.id, followUps.map((f) => f.id)));
+      await db.update(applications).set({ followUpSentAt: sentAt }).where(inArray(applications.id, followUps.map((f) => f.id)));
     }
-    return { userId, status: "sent", jobs: picked.length, followUps: followUps.length, channel: result.channel, search: searchStatus };
+    return {
+      userId,
+      status: "sent",
+      jobs: picked.length,
+      followUps: followUps.length,
+      channel: result.channel,
+      search: searchStatus,
+      scheduledFor: deliverAt?.toISOString() ?? null,
+    };
   } catch (err) {
     console.error("Digest failed", err);
     return { userId, status: "error", error: err instanceof Error ? err.message : String(err) };

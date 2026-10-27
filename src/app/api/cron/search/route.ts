@@ -11,9 +11,9 @@ export const maxDuration = 60;
 const START_BUDGET_MS = 15_000;
 
 /**
- * Scheduled at 10:00 UTC (5 AM Central in summer, 4 AM in winter): the slow, Gemini-using part of the
- * morning, done well before the 7 AM email so a slow search can't make the email miss its window.
- * Also prunes old jobs and search runs once a day.
+ * Scheduled at 09:00 UTC (4 AM Central in summer, 3 AM in winter): the slow, Gemini-using part of the
+ * morning, done at least an hour before the 6 AM run that builds the email, so a slow search can't make
+ * the email miss its window. Also prunes old jobs and search runs once a day.
  */
 export async function GET(req: NextRequest) {
   const denied = rejectUnlessCron(req);
