@@ -126,7 +126,7 @@ To find a company's slug, open its careers page and follow an "Apply" link; the 
 
 Workday sites are different: there's no feed of every posting, and big employers list thousands. Each search looks up your top 3 target titles on the site (US only where the site offers that filter), ranks what it finds by title, and loads the full posting for the best 25, so a Workday company adds at most 25 jobs per search. Up to 12 Workday companies are searched per run; with more, they take turns day by day, which keeps a run inside Vercel's 60 s limit.
 
-Workday URLs can't be guessed, so Settings → Target companies has a **Workday employers** list: 56 US career sites (mostly security, defense and IT) that were found and checked live, each added with one click (`src/lib/jobs/sources/workday-employers.ts`). Listed employers get their proper names; for any other Workday site the name is guessed from the site name, so some read as acronyms.
+Workday URLs can't be guessed, so Settings → Target companies has a **Workday employers** list: 70 US career sites in security, defense, tech, finance, health and education (including employers hiring entry-level data, IT and systems analysts) that were found and checked live, each added with one click (`src/lib/jobs/sources/workday-employers.ts`). Listed employers get their proper names; for any other Workday site the name is guessed from the site name, so some read as acronyms.
 
 ---
 

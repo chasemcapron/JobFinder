@@ -9,6 +9,7 @@ import {
   normalizeWorkdayJob,
   parsePostedOn,
   parseWorkdaySlug,
+  RATE_LIMIT_PAUSE_MS,
   rankForDetails,
   workdayCompanyName,
   workdayLocation,
@@ -41,6 +42,9 @@ describe("parseWorkdaySlug / workdayCompanyName", () => {
     ["BAH.wd1/bah_jobs", "Booz Allen Hamilton"],
     ["ghr.wd1/Lateral-US", "Bank of America"],
     ["crowdstrike.wd5/crowdstrikecareers", "CrowdStrike"],
+    ["kemper.wd5/Kemper_Careers", "Kemper"],
+    ["uchicago.wd5/External", "University of Chicago"],
+    ["zebra.wd501/Zebra_careers", "Zebra Technologies"],
   ])("uses the checked employer's name for %s", (slug, name) => expect(workdayCompanyName(parseWorkdaySlug(slug))).toBe(name));
 
   // Unlisted sites (the tenants here are made up, so the list doesn't match).
@@ -145,8 +149,11 @@ describe("rankForDetails", () => {
 describe("fetchWorkday", () => {
   type Call = { url: string; body?: { appliedFacets: Record<string, string[]>; limit: number; offset: number; searchText: string } };
 
-  /** A fake Workday site. `countryFilter: false` rejects the country filter like Booz Allen's site does. */
-  function site(opts: { countryFilter?: boolean; status?: number; postings?: typeof listing.jobPostings } = {}) {
+  /**
+   * A fake Workday site. `countryFilter: false` rejects the country filter like Booz Allen's site does;
+   * `rateLimited` answers that many of the first requests with 429, like Cloudflare under a burst.
+   */
+  function site(opts: { countryFilter?: boolean; status?: number; postings?: typeof listing.jobPostings; rateLimited?: number } = {}) {
     const postings = opts.postings ?? listing.jobPostings;
     const calls: Call[] = [];
     const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -156,6 +163,7 @@ describe("fetchWorkday", () => {
         const call: Call = { url: String(url), body: init.body ? JSON.parse(String(init.body)) : undefined };
         calls.push(call);
         if (opts.status) return reply({}, opts.status);
+        if (calls.length <= (opts.rateLimited ?? 0)) return reply({}, 429);
         if (call.url.endsWith("/jobs")) {
           if (call.body!.appliedFacets.locationCountry && !opts.countryFilter) return reply({ errorCode: "HTTP_400" }, 400);
           const first = call.body!.searchText === "Security Analyst" && call.body!.offset === 0;
@@ -207,6 +215,20 @@ describe("fetchWorkday", () => {
     const jobs = await fetchWorkday(SLUG, search(["Security Analyst"]), signal());
     expect(detailCalls(calls)).toHaveLength(25);
     expect(jobs).toHaveLength(25);
+  });
+
+  it("waits and retries once when rate limited, instead of losing the site", async () => {
+    const calls = site({ countryFilter: true, rateLimited: 1 });
+    const started = Date.now();
+    const jobs = await fetchWorkday(SLUG, search(["Security Analyst"]), signal());
+    expect(Date.now() - started).toBeGreaterThanOrEqual(RATE_LIMIT_PAUSE_MS - 50);
+    expect(listCalls(calls)[0].body).toEqual(listCalls(calls)[1].body); // the same first page, asked again
+    expect(jobs.length).toBeGreaterThan(0);
+  });
+
+  it("gives up on a site that stays rate limited", async () => {
+    site({ rateLimited: Infinity });
+    await expect(fetchWorkday(SLUG, search(["Security Analyst"]), signal())).rejects.toThrow("Rate limited (429)");
   });
 
   it.each([404, 422])("explains a wrong careers URL (%s)", async (status) => {

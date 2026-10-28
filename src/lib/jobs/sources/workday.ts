@@ -40,6 +40,11 @@ const DETAIL_CONCURRENCY = 5;
 const BUDGET_MS = 9_000;
 /** Workday's id for the United States: the same on every site that has a country filter. */
 const US_COUNTRY_ID = "bc33aa3152ec42d4995f4791a106ed09";
+/**
+ * Workday's Cloudflare front answers bursts with 429 (seen 2026-10-27 after ~1,000 requests in a minute
+ * from one IP, across tenants); a request that gets one is retried once after this pause.
+ */
+export const RATE_LIMIT_PAUSE_MS = 1_500;
 
 export type WorkdayBoard = { tenant: string; dataCenter: string; site: string };
 
@@ -198,11 +203,21 @@ export async function fetchWorkday(slug: string, search: WorkdaySearch, signal: 
   const notFoundMessage = `No Workday career site at ${workdaySiteUrl(board)}`;
   const queries = search.queries.length ? search.queries.slice(0, WORKDAY_MAX_QUERIES) : [""];
   const pagesPerQuery = Math.max(1, Math.floor(LISTING_PAGES / queries.length));
+  // Rate limited: one retry after a pause, if the budget still has room for it.
+  const getJson: typeof fetchJson = async (url, schema, opts) => {
+    try {
+      return await fetchJson(url, schema, opts);
+    } catch (err) {
+      if (!(err instanceof SourceError && err.status === 429) || Date.now() - started > BUDGET_MS - RATE_LIMIT_PAUSE_MS) throw err;
+      await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_PAUSE_MS));
+      return fetchJson(url, schema, opts);
+    }
+  };
 
   let appliedFacets: Record<string, string[]> = { locationCountry: [US_COUNTRY_ID] };
   const listPage = async (searchText: string, offset: number) => {
     try {
-      const data = await fetchJson(`${api}/jobs`, Listing, {
+      const data = await getJson(`${api}/jobs`, Listing, {
         signal: stop,
         notFoundMessage,
         body: { appliedFacets, limit: PAGE_SIZE, offset, searchText },
@@ -257,7 +272,7 @@ export async function fetchWorkday(slug: string, search: WorkdaySearch, signal: 
     while (next < picked.length && inBudget() && !stop.aborted) {
       const posting = picked[next++];
       try {
-        const data = await fetchJson(`${api}${posting.externalPath}`, Detail, { signal: stop });
+        const data = await getJson(`${api}${posting.externalPath}`, Detail, { signal: stop });
         jobs.push(normalizeWorkdayJob(data.jobPostingInfo, board, posting.externalPath));
       } catch (err) {
         lastError = err;
