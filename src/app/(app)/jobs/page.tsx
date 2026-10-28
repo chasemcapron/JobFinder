@@ -114,7 +114,8 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
         </EmptyState>
       ) : (
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-          <aside className="lg:sticky lg:top-4 lg:w-64 lg:shrink-0">
+          {/* Taller than most screens, so it scrolls on its own while it sticks below the header. */}
+          <aside className="lg:sticky lg:top-[calc(var(--header-h)+1rem)] lg:max-h-[calc(100dvh-var(--header-h)-2rem)] lg:w-64 lg:shrink-0 lg:overflow-y-auto lg:overscroll-contain lg:rounded-card lg:[scrollbar-width:thin]">
             <FiltersToggle activeCount={activeCount}>
               <FilterPanel filters={filters} facets={facets} activeCount={activeCount} />
             </FiltersToggle>

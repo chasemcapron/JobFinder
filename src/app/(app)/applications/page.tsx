@@ -112,7 +112,7 @@ export default async function ApplicationsPage() {
         <>
           <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatTile hue="orange" label="Applications" value={stats.total} hint={`${stats.thisWeek} this week`} />
-            <StatTile hue="pink" label="Interviewing" value={stats.interviewing} hint="Keep notes on who you spoke to" />
+            <StatTile hue="pink" label="Interviewing" value={stats.interviewing} hint={stats.interviewing ? "In conversation now" : "Change a card's status when they reply"} />
             <StatTile hue="green" label="Offers" value={stats.offers} hint={stats.offers ? "Nice work" : "Keep going"} />
             <StatTile hue="blue" label="Response rate" value={rate} hint={`${stats.answered} of ${stats.considered} heard back`} />
           </div>

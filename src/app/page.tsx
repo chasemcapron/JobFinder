@@ -10,7 +10,7 @@ const FEATURES: { icon: IconName; title: string; body: string; tile: string }[] 
     icon: "target",
     tile: "bg-blue text-white",
     title: "Matched to your resume",
-    body: "Postings from Greenhouse, Lever, Ashby, Adzuna, and USAJobs, ranked by fit.",
+    body: "Company career sites (Greenhouse, Lever, Ashby, Workday) and USAJobs, ranked by fit for your level.",
   },
   { icon: "sheet", tile: "bg-green text-ink", title: "Tracked in your Google Sheet", body: "Mark a job applied and it's logged as a new row." },
   { icon: "mail", tile: "bg-orange text-ink", title: "A morning digest", body: "The top new matches in your inbox every day." },
@@ -72,7 +72,9 @@ export default async function Home({ searchParams }: PageProps<"/">) {
             ))}
           </div>
           <h1 className="font-display mt-5 text-4xl font-bold tracking-tight">Job Finder</h1>
-          <p className="mt-2 text-balance text-muted">Find jobs that fit your resume, then keep track of where you applied. Time to get hired.</p>
+          <p className="mt-3 text-xl leading-snug font-light text-balance sm:text-2xl">
+            <span className="text-muted">Jobs matched to your resume,</span> tracked until you&apos;re hired.
+          </p>
         </div>
 
         <div className="rounded-card border border-border bg-surface p-6 shadow-raised sm:p-8">
