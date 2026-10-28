@@ -5,7 +5,7 @@ A personal web app that finds job postings matching your resume, lets you filter
 - **Sources (JSON only, no HTML scraping):** Greenhouse, Lever, and Ashby public job board APIs and Workday career sites (per target company), plus Adzuna and USAJobs search (with API keys). Workday has no public API; the app calls the same JSON endpoints the career site's own page uses.
 - **Matching:** your resume is parsed into skills, titles, seniority, and keywords (Claude, or a built-in extractor without a key). A cheap keyword score ranks every posting; Claude re-scores only the top candidates each run and writes a one-line reason.
 - **Tracking:** "Mark applied" saves the application and writes a row to your Google Sheet using a column mapping you control.
-- **Morning email:** an early Vercel Cron job searches every source; at 7:00 AM Central another emails up to 10 new matches (8 AM retries if that run didn't finish).
+- **Morning email:** an early Vercel Cron job searches every source; at 6 AM Central another builds an email of up to 10 new matches and schedules it to arrive at 7:00 AM sharp (7 and 8 AM retry if that run didn't finish).
 
 Stack: Next.js 16 (App Router) + TypeScript, Tailwind CSS v4, Drizzle ORM on Postgres (Neon or Supabase), Auth.js v5 with Google, Anthropic SDK, Resend + React Email, Vitest.
 
@@ -141,18 +141,18 @@ Workday URLs can't be guessed, so Settings → Target companies has a **Workday 
 
 ### Morning email cron
 
-`vercel.json` registers four daily cron jobs (Hobby allows any number of once-a-day jobs, each firing somewhere within its hour):
+`vercel.json` registers five daily cron jobs (Hobby allows any number of once-a-day jobs, each firing somewhere within its hour):
 
 | UTC | Route | What it does |
 | --- | --- | --- |
-| 10:00 | `/api/cron/search` | Searches every source and scores matches (the slow, Gemini-using part), then prunes jobs unseen for 60 days and search runs older than 90. That's 5 AM Central in summer, 4 AM in winter. |
-| 12:00, 13:00, 14:00 | `/api/cron/morning` | Sends from the invocation that's 7 AM in America/Chicago; the one that's 8 AM retries a run that didn't finish. Vercel Cron has no daylight saving, so which UTC hour that is changes twice a year. |
+| 09:00 | `/api/cron/search` | Searches every source and scores matches (the slow, Gemini-using part), then prunes jobs unseen for 60 days and search runs older than 90. That's 4 AM Central in summer, 3 AM in winter. |
+| 11:00, 12:00, 13:00, 14:00 | `/api/cron/morning` | The invocation that's 6 AM in America/Chicago builds the email and schedules it with Resend for **7:00 AM sharp**; the ones that are 7 and 8 AM retry a run that didn't finish, sending right away. Vercel Cron has no daylight saving, so which UTC hours those are changes twice a year (the fourth cron covers both seasons). |
 
-The email only searches itself when the early search didn't succeed. A run that Vercel cuts off at 60 s is retried at 8 AM, and Resend's idempotency key keeps a retry from sending the same email twice.
+Why schedule instead of sending at 7: a Hobby cron fires at some minute within its hour (it was 7:31), and Resend's scheduled sending (free) delivers on the minute. The email only searches itself when the early search didn't succeed. A run that Vercel cuts off at 60 s is retried at 7 or 8 AM, and Resend's idempotency key keeps a retry from sending the same email twice.
 
 Vercel automatically sends `Authorization: Bearer $CRON_SECRET` to cron routes when the `CRON_SECRET` env var is set. Without it, both routes refuse every request.
 
-Test them manually (`force=1` skips the 7 AM check but still sends at most once per day):
+Test them manually (`force=1` skips the hour check but still sends at most once per day; before 7 AM it's scheduled for 7:00, later it goes out right away):
 
 ```bash
 curl -H "Authorization: Bearer $CRON_SECRET" "https://<your-domain>/api/cron/search"

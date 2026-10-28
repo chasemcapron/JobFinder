@@ -36,12 +36,26 @@ describe("morningRunStatus", () => {
     expect(s.note).toMatch(/^This morning's run failed: Stopped before finishing/);
   });
 
-  it("waits through the 7 AM hour and the 8 AM retry", () => {
-    expect(morningRunStatus({ ...base, now: at("11:30:00") }).state).toBe("scheduled"); // 6:30 AM
+  it("waits through the 6 AM build and the 7 and 8 AM retries", () => {
+    const early = morningRunStatus({ ...base, now: at("11:30:00") }); // 6:30 AM
+    expect(early).toMatchObject({ state: "scheduled" });
+    expect(early.note).toMatch(/^Searches early, emails at 7:00 AM Central/);
     expect(morningRunStatus({ ...base, now: at("12:59:00") }).state).toBe("scheduled"); // 7:59 AM
     const retry = morningRunStatus({ ...base, now: at("13:30:00") }); // 8:30 AM
     expect(retry).toMatchObject({ state: "scheduled" });
     expect(retry.note).toMatch(/^Not sent yet; retries before 9 AM/);
+  });
+
+  it("says a digest waiting for 7:00 is on its way", () => {
+    const s = morningRunStatus({
+      ...base,
+      now: at("11:40:00"), // 6:40 AM
+      lastDigestDate: "2026-07-01",
+      lastRun: run("09:40:00"),
+      lastEmail: { sentAt: at("12:00:00"), jobs: 1 },
+    });
+    expect(s.state).toBe("ran");
+    expect(s.note).toMatch(/searched 1,145 postings, emailing 1 match at 7:00 AM\.$/);
   });
 
   it("flags a missed morning from 9 AM, naming the last automatic run", () => {

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPglite, schema, type Db } from "@/db";
 import { GET as cronGET } from "@/app/api/cron/morning/route";
 import { GET as searchCronGET } from "@/app/api/cron/search/route";
-import { pickDigestJobs, renderDigest, runDigestForUser, shouldSendNow } from "@/lib/email/digest";
+import { digestDeliveryTime, pickDigestJobs, renderDigest, runDigestForUser, shouldSendNow } from "@/lib/email/digest";
 import { loadMorningRunStatus } from "@/lib/email/health";
 import type { EmailMessage } from "@/lib/email/send";
 import { ABANDONED_RUN_ERROR, closeAbandonedRuns } from "@/lib/jobs/search";
@@ -12,23 +12,35 @@ import { pruneOldData } from "@/lib/maintenance";
 import { ensureProfile } from "@/lib/profile";
 
 // 12:00 UTC on a summer day = 7 AM CDT; 13:00 UTC on a winter day = 7 AM CST.
+const SUMMER_6AM = new Date("2026-07-01T11:00:00Z");
 const SUMMER_7AM = new Date("2026-07-01T12:00:00Z");
 const SUMMER_8AM = new Date("2026-07-01T13:00:00Z");
 const SUMMER_9AM = new Date("2026-07-01T14:00:00Z");
+const WINTER_5AM = new Date("2026-12-01T11:00:00Z");
 const WINTER_6AM = new Date("2026-12-01T12:00:00Z");
 const WINTER_7AM = new Date("2026-12-01T13:00:00Z");
 const WINTER_8AM = new Date("2026-12-01T14:00:00Z");
 
 describe("shouldSendNow", () => {
-  it("sends at 7 AM Chicago time with an 8 AM retry, across daylight saving", () => {
-    expect(shouldSendNow(SUMMER_7AM, null).send).toBe(true);
+  it("builds at 6 AM Chicago time with 7 and 8 AM retries, across daylight saving", () => {
+    expect(shouldSendNow(SUMMER_6AM, null)).toEqual({ send: true, reason: "6 AM in Chicago: scheduled for 7:00" });
+    expect(shouldSendNow(SUMMER_7AM, null)).toEqual({ send: true, reason: "7 AM retry" });
     expect(shouldSendNow(SUMMER_8AM, null)).toEqual({ send: true, reason: "8 AM retry" });
     expect(shouldSendNow(SUMMER_9AM, null).send).toBe(false);
-    expect(shouldSendNow(WINTER_6AM, null).send).toBe(false);
+    // The 11:00 UTC cron is 5 AM in winter: too early.
+    expect(shouldSendNow(WINTER_5AM, null).send).toBe(false);
+    expect(shouldSendNow(WINTER_6AM, null).send).toBe(true);
     expect(shouldSendNow(WINTER_7AM, null).send).toBe(true);
     expect(shouldSendNow(WINTER_8AM, null).send).toBe(true);
     // Vercel Hobby crons can fire late within the hour
-    expect(shouldSendNow(new Date("2026-07-01T12:59:00Z"), null).send).toBe(true);
+    expect(shouldSendNow(new Date("2026-07-01T11:59:00Z"), null).send).toBe(true);
+  });
+
+  it("delivers at 7:00 sharp when built before then, and right away after", () => {
+    expect(digestDeliveryTime(new Date("2026-07-01T11:31:00Z"))).toEqual(new Date("2026-07-01T12:00:00Z"));
+    expect(digestDeliveryTime(new Date("2026-12-01T12:31:00Z"))).toEqual(new Date("2026-12-01T13:00:00Z"));
+    expect(digestDeliveryTime(SUMMER_7AM)).toBeNull();
+    expect(digestDeliveryTime(new Date("2026-07-01T13:31:00Z"))).toBeNull();
   });
 
   it("never sends twice on the same Chicago day, even when forced", () => {
@@ -100,6 +112,23 @@ describe("runDigestForUser", () => {
     expect(logged).toHaveLength(10);
     const profile = await db.query.profiles.findFirst({ where: eq(schema.profiles.userId, userId) });
     expect(profile).toMatchObject({ lastDigestDate: "2026-07-01", digestClaimedAt: null });
+    // 7 AM is a retry: past 7:00, so it goes out right away.
+    expect(sent[0].scheduledAt).toBeUndefined();
+    expect(outcome).toMatchObject({ scheduledFor: null });
+  });
+
+  it("at 6 AM, schedules the email for 7:00 sharp and logs it as sent then, in both seasons", async () => {
+    const sent: EmailMessage[] = [];
+    const send = async (m: EmailMessage) => (sent.push(m), { channel: "resend" as const, id: "re_1" });
+    const summer = await runDigestForUser(userId, { db, now: new Date("2026-07-01T11:31:00Z"), runSearch: noSearch, send });
+    expect(summer).toMatchObject({ status: "sent", jobs: 10, scheduledFor: "2026-07-01T12:00:00.000Z" });
+    expect(sent[0].scheduledAt).toEqual(new Date("2026-07-01T12:00:00Z"));
+    const logged = await db.select().from(schema.emailLog).where(eq(schema.emailLog.userId, userId));
+    expect(new Set(logged.map((l) => l.sentAt.toISOString()))).toEqual(new Set(["2026-07-01T12:00:00.000Z"]));
+
+    const winter = await runDigestForUser(userId, { db, now: new Date("2026-12-01T12:31:00Z"), runSearch: noSearch, send });
+    expect(winter).toMatchObject({ status: "sent", scheduledFor: "2026-12-01T13:00:00.000Z" });
+    expect(sent[1].scheduledAt).toEqual(new Date("2026-12-01T13:00:00Z"));
   });
 
   it("retries a run that was cut off, at 8 AM, without searching again", async () => {
@@ -289,14 +318,14 @@ describe("cron route auth", () => {
     expect((await cronGET(wrong)).status).toBe(401);
   });
 
-  it("accepts the right token and exits early outside the 7-8 AM Chicago window", async () => {
+  it("accepts the right token and exits early outside the 6-8 AM Chicago window", async () => {
     vi.stubEnv("CRON_SECRET", "s3cret-value");
     vi.useFakeTimers({ now: SUMMER_9AM, toFake: ["Date"] });
     try {
       const ok = new NextRequest("http://localhost/api/cron/morning", { headers: { authorization: "Bearer s3cret-value" } });
       const res = await cronGET(ok);
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ ok: true, skipped: "It's 9:00 in America/Chicago; the digest goes out at 7:00 (retry at 8:00)" });
+      expect(await res.json()).toEqual({ ok: true, skipped: "It's 9:00 in America/Chicago; the digest arrives at 7:00 (retries until 9:00)" });
     } finally {
       vi.useRealTimers();
     }
@@ -352,6 +381,16 @@ describe("loadMorningRunStatus", () => {
     const status = await loadMorningRunStatus(userId, db, SUMMER_8AM);
     expect(status.state).toBe("ran");
     expect(status.note).toMatch(/searched 1,145 postings, emailed 10 matches/); // the manual search isn't counted
+  });
+
+  it("says when a digest built at 6 AM will arrive", async () => {
+    await db.insert(schema.searchRuns).values({ userId, trigger: "cron", startedAt: new Date("2026-07-01T09:40:00Z"), status: "ok", jobsFetched: 900 });
+    const built = new Date("2026-07-01T11:31:00Z");
+    await runDigestForUser(userId, { db, now: built, runSearch: noSearch, send: async () => ({ channel: "resend", id: "re_1" }) });
+
+    const before = await loadMorningRunStatus(userId, db, new Date("2026-07-01T11:45:00Z"));
+    expect(before.note).toMatch(/searched 900 postings, emailing 10 matches at 7:00 AM\.$/);
+    expect((await loadMorningRunStatus(userId, db, SUMMER_8AM)).note).toMatch(/emailed 10 matches\.$/);
   });
 
   it("flags a morning with no run", async () => {
