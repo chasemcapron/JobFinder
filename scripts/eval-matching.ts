@@ -4,7 +4,8 @@
  *
  *   npx tsx --env-file-if-exists=.env.local scripts/eval-matching.ts sample [--email you@x.com] [--seed 7]
  *     Freezes the profile, every current match (the "pool") and ~45 sampled roles (the "fixture").
- *   ... show                       Prints the fixture as a numbered list to label.
+ *   ... extend --source workday --n 15   Adds a source the sample didn't have, and roles from it to label.
+ *   ... show [--from 41]           Prints the fixture as a numbered list to label.
  *   ... label "1g 2b 3m 4-6 b"     Saves labels (g good, m maybe, b bad) by the shown numbers.
  *   ... run --mode baseline|keyword|pipeline [--tag name] [--cap 40] [--score holistic] [--explain]
  *     baseline: the scores stored when sampled. keyword: today's keyword matcher.
@@ -66,7 +67,7 @@ type PoolJob = JobForScoring & {
   applied: boolean;
 };
 type Snapshot = { sampledAt: string; userName: string | null; profile: Profile };
-type FixtureItem = { key: string; jobId: string; bucket: "top20" | "mid" | "dropped" | "applied"; baselineRank: number };
+type FixtureItem = { key: string; jobId: string; bucket: "top20" | "mid" | "dropped" | "applied" | "extra"; baselineRank: number };
 type RunFile = {
   tag: string;
   mode: string;
@@ -116,27 +117,8 @@ function shuffle<T>(items: T[], rand: () => number): T[] {
 
 // ---------------------------------------------------------------- sample
 
-async function sample() {
-  const db = await getDb();
-  const email = arg("email");
-  const seed = Number(arg("seed") ?? 7);
-  const rand = rng(seed);
-
-  // The user: by email, else the one with a resume and the most matches.
-  const candidates = await db
-    .select({ id: users.id, name: users.name, email: users.email, matches: count(jobMatches.id) })
-    .from(users)
-    .innerJoin(profiles, eq(profiles.userId, users.id))
-    .leftJoin(jobMatches, eq(jobMatches.userId, users.id))
-    .where(isNotNull(profiles.resumeText))
-    .groupBy(users.id, users.name, users.email);
-  const user = email
-    ? candidates.find((u) => u.email?.toLowerCase() === email.toLowerCase())
-    : candidates.sort((a, b) => b.matches - a.matches)[0];
-  if (!user) throw new Error(email ? `No user ${email} with a saved resume.` : "No user with a saved resume found.");
-  const profile = await db.query.profiles.findFirst({ where: eq(profiles.userId, user.id) });
-  if (!profile?.resumeText) throw new Error("That user has no saved resume.");
-
+/** Every current match of the user, with its job, as frozen pool entries. */
+async function loadPool(db: Awaited<ReturnType<typeof getDb>>, userId: string): Promise<PoolJob[]> {
   const staleBefore = new Date(Date.now() - STALE_AFTER_DAYS * 86_400_000);
   const rows = await db
     .select({
@@ -164,10 +146,9 @@ async function sample() {
     })
     .from(jobMatches)
     .innerJoin(jobs, eq(jobs.id, jobMatches.jobId))
-    .leftJoin(applications, and(eq(applications.jobId, jobs.id), eq(applications.userId, user.id)))
-    .where(and(eq(jobMatches.userId, user.id), gt(jobs.lastSeenAt, staleBefore)));
-
-  const pool: PoolJob[] = rows.filter(isInTargetCountry).map((r) => ({
+    .leftJoin(applications, and(eq(applications.jobId, jobs.id), eq(applications.userId, userId)))
+    .where(and(eq(jobMatches.userId, userId), gt(jobs.lastSeenAt, staleBefore)));
+  return rows.filter(isInTargetCountry).map((r) => ({
     id: r.id,
     key: roleKey(r),
     dedupeKey: r.dedupeKey,
@@ -188,6 +169,30 @@ async function sample() {
     stored: { score: r.score, keywordScore: r.keywordScore, aiScored: r.aiScored, reasons: r.reasons },
     applied: Boolean(r.applicationId),
   }));
+}
+
+async function sample() {
+  const db = await getDb();
+  const email = arg("email");
+  const seed = Number(arg("seed") ?? 7);
+  const rand = rng(seed);
+
+  // The user: by email, else the one with a resume and the most matches.
+  const candidates = await db
+    .select({ id: users.id, name: users.name, email: users.email, matches: count(jobMatches.id) })
+    .from(users)
+    .innerJoin(profiles, eq(profiles.userId, users.id))
+    .leftJoin(jobMatches, eq(jobMatches.userId, users.id))
+    .where(isNotNull(profiles.resumeText))
+    .groupBy(users.id, users.name, users.email);
+  const user = email
+    ? candidates.find((u) => u.email?.toLowerCase() === email.toLowerCase())
+    : candidates.sort((a, b) => b.matches - a.matches)[0];
+  if (!user) throw new Error(email ? `No user ${email} with a saved resume.` : "No user with a saved resume found.");
+  const profile = await db.query.profiles.findFirst({ where: eq(profiles.userId, user.id) });
+  if (!profile?.resumeText) throw new Error("That user has no saved resume.");
+
+  const pool = await loadPool(db, user.id);
 
   // Roles in the order the Jobs page shows them (score, then newest; Postgres puts a missing
   // date first when sorting descending), one card per role.
@@ -246,6 +251,43 @@ async function sample() {
   process.exit(0);
 }
 
+/**
+ * Adds a source the original sample didn't have (Workday, after the crawler), so the eval measures
+ * it too: its current matches join the frozen pool, and --n roles (half the best by today's score,
+ * the rest at random) join the fixture to be labeled.
+ */
+async function extend() {
+  const source = arg("source") ?? "workday";
+  const want = Number(arg("n") ?? 15);
+  const rand = rng(Number(arg("seed") ?? 11));
+  const db = await getDb();
+  const { profile } = await readJson<Snapshot>(FILES.profile);
+  const pool = await readJson<PoolJob[]>(FILES.pool);
+  const fixture = await readJson<FixtureItem[]>(FILES.fixture);
+  const order = await readJson<string[]>(FILES.order);
+  const inPool = new Set(pool.map((j) => j.id));
+  const added = (await loadPool(db, profile.userId)).filter((j) => j.source === source && !inPool.has(j.id));
+  pool.push(...added);
+  const roles: PoolJob[] = [];
+  const seen = new Set(fixture.map((f) => f.key));
+  for (const j of [...added].sort((a, b) => b.stored.score - a.stored.score)) {
+    if (seen.has(j.key)) continue;
+    seen.add(j.key);
+    roles.push(j);
+  }
+  const top = roles.slice(0, Math.ceil(want / 2));
+  const rest = shuffle(roles.slice(top.length), rand).slice(0, want - top.length);
+  const picked = shuffle([...top, ...rest], rand);
+  for (const r of picked) fixture.push({ key: r.key, jobId: r.id, bucket: "extra", baselineRank: 0 });
+  const from = order.length + 1;
+  order.push(...picked.map((r) => r.key));
+  await writeJson(FILES.pool, pool);
+  await writeJson(FILES.fixture, fixture);
+  await writeJson(FILES.order, order);
+  console.log(`Added ${added.length} ${source} postings (${roles.length} roles) to the pool and ${picked.length} roles to label: show --from ${from}`);
+  process.exit(0);
+}
+
 // ---------------------------------------------------------------- show / label
 
 /** One line on what the job is: the first sentence that describes the role, not the company. */
@@ -268,7 +310,9 @@ async function show() {
   const labels = await readLabels();
   const byKey = new Map<string, PoolJob>();
   for (const j of pool) if (!byKey.has(j.key)) byKey.set(j.key, j);
+  const from = Number(arg("from") ?? 1);
   order.forEach((key, i) => {
+    if (i + 1 < from) return;
     const j = byKey.get(key)!;
     const facts = [
       formatLocation(j, j.locationRaw),
@@ -470,7 +514,7 @@ async function report() {
   process.exit(0);
 }
 
-const commands: Record<string, () => Promise<void>> = { sample, show, label, run, report };
+const commands: Record<string, () => Promise<void>> = { sample, extend, show, label, run, report };
 const command = commands[process.argv[2] ?? ""];
 if (!command) {
   console.error(`Usage: eval-matching.ts ${Object.keys(commands).join("|")}`);
