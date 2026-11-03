@@ -25,6 +25,8 @@ export type NormalizedJob = {
   salaryMin: number | null;
   salaryMax: number | null;
   salaryCurrency: string | null;
+  /** Workday only: "{tenant}/{site}{externalPath}" (see jobs.listing_key). */
+  listingKey?: string | null;
 };
 
 export type SearchQuery = {

@@ -39,7 +39,7 @@ const DETAIL_CONCURRENCY = 5;
 /** No request starts after this, and none runs past it by more than 2 s: runSourceTasks gives up at 12 s. */
 const BUDGET_MS = 9_000;
 /** Workday's id for the United States: the same on every site that has a country filter. */
-const US_COUNTRY_ID = "bc33aa3152ec42d4995f4791a106ed09";
+export const US_COUNTRY_ID = "bc33aa3152ec42d4995f4791a106ed09";
 /**
  * Workday's Cloudflare front answers bursts with 429 (seen 2026-10-27 after ~1,000 requests in a minute
  * from one IP, across tenants); a request that gets one is retried once after this pause.
@@ -57,6 +57,16 @@ export function parseWorkdaySlug(slug: string): WorkdayBoard {
 
 export function workdaySiteUrl(b: WorkdayBoard): string {
   return `https://${b.tenant}.${b.dataCenter}.myworkdayjobs.com/${b.site}`;
+}
+
+/** The JSON API behind a career site: `${api}/jobs` lists, `${api}${externalPath}` is one posting. */
+export function workdayApi(b: WorkdayBoard): string {
+  return `https://${b.tenant}.${b.dataCenter}.myworkdayjobs.com/wday/cxs/${b.tenant}/${b.site}`;
+}
+
+/** What identifies a posting in a search listing, which has no posting id (jobs.listing_key). */
+export function workdayListingKey(b: WorkdayBoard, externalPath: string): string {
+  return `${b.tenant}/${b.site}${externalPath}`;
 }
 
 // Words that describe the site rather than the company ("External_Careers", "CorporateCareers").
@@ -117,9 +127,9 @@ function remoteFromType(type: string | null | undefined): boolean | undefined {
   return /remote|virtual|telework/i.test(type) ? true : undefined;
 }
 
-const Listing = z.object({ total: z.number().nullish(), jobPostings: z.array(z.unknown()).nullish() });
-const ListingPosting = z.object({ title: z.string(), externalPath: z.string(), locationsText: z.string().nullish() });
-type ListingPosting = z.infer<typeof ListingPosting>;
+export const Listing = z.object({ total: z.number().nullish(), jobPostings: z.array(z.unknown()).nullish() });
+export const ListingPosting = z.object({ title: z.string(), externalPath: z.string(), locationsText: z.string().nullish() });
+export type ListingPosting = z.infer<typeof ListingPosting>;
 
 const PostingInfo = z.object({
   id: z.string(),
@@ -134,7 +144,7 @@ const PostingInfo = z.object({
   country: z.object({ descriptor: z.string().nullish() }).nullish(),
   jobRequisitionLocation: z.object({ country: z.object({ alpha2Code: z.string().nullish() }).nullish() }).nullish(),
 });
-const Detail = z.object({ jobPostingInfo: PostingInfo });
+export const Detail = z.object({ jobPostingInfo: PostingInfo });
 
 export function normalizeWorkdayJob(
   info: z.infer<typeof PostingInfo>,
@@ -159,6 +169,7 @@ export function normalizeWorkdayJob(
     description: htmlToText((info.jobDescription ?? "").replace(/&amp;(#x?[0-9a-f]+;)/gi, "&$1")),
     applyUrl: info.externalUrl ?? `${workdaySiteUrl(board)}${externalPath}`,
     postedAt: parseDate(info.startDate) ?? parsePostedOn(info.postedOn, now),
+    listingKey: workdayListingKey(board, externalPath),
   });
 }
 
@@ -181,10 +192,48 @@ export function rankForDetails<T extends { title: string }>(postings: T[], profi
     .map((x) => x.p);
 }
 
-function isAbroad(locationsText: string | null | undefined): boolean {
+export function isAbroad(locationsText: string | null | undefined): boolean {
   if (!locationsText) return false;
   const { country } = parseLocation(workdayLocation(locationsText));
   return country !== null && country !== TARGET_COUNTRY;
+}
+
+export type WorkdayProbe =
+  | { ok: true; total: number; usFilter: boolean; sampleTitles: string[] }
+  | { ok: false; status: number | null; message: string };
+
+/**
+ * One live listing request to check a career site works: Settings' "Test" and the employer-list
+ * check (scripts/check-workday-employers.ts). A wrong site name answers 404, a wrong tenant or wdN 422.
+ */
+export async function probeWorkdaySite(slug: string, searchText: string, signal: AbortSignal): Promise<WorkdayProbe> {
+  const board = parseWorkdaySlug(slug);
+  const ask = (appliedFacets: Record<string, string[]>) =>
+    fetchJson(`${workdayApi(board)}/jobs`, Listing, { signal, body: { appliedFacets, limit: 3, offset: 0, searchText } });
+  try {
+    let usFilter = true;
+    let data;
+    try {
+      data = await ask({ locationCountry: [US_COUNTRY_ID] });
+    } catch (err) {
+      if (!(err instanceof SourceError && err.status === 400)) throw err;
+      usFilter = false;
+      data = await ask({});
+    }
+    const titles = parseItems(data.jobPostings ?? [], ListingPosting).map((p) => p.title);
+    return { ok: true, total: data.total ?? 0, usFilter, sampleTitles: titles };
+  } catch (err) {
+    const status = err instanceof SourceError ? (err.status ?? null) : null;
+    const message =
+      status === 404 || status === 422
+        ? `No Workday career site at ${workdaySiteUrl(board)} (${status === 404 ? "wrong site name" : "wrong tenant or wdN"})`
+        : status === 429
+          ? "Workday is rate limiting right now. Try again in a minute."
+          : err instanceof Error
+            ? err.message
+            : String(err);
+    return { ok: false, status, message };
+  }
 }
 
 export type WorkdaySearch = {
@@ -199,7 +248,7 @@ export async function fetchWorkday(slug: string, search: WorkdaySearch, signal: 
   const started = Date.now();
   const inBudget = () => Date.now() - started < BUDGET_MS;
   const stop = AbortSignal.any([signal, AbortSignal.timeout(BUDGET_MS + 2_000)]);
-  const api = `https://${board.tenant}.${board.dataCenter}.myworkdayjobs.com/wday/cxs/${board.tenant}/${board.site}`;
+  const api = workdayApi(board);
   const notFoundMessage = `No Workday career site at ${workdaySiteUrl(board)}`;
   const queries = search.queries.length ? search.queries.slice(0, WORKDAY_MAX_QUERIES) : [""];
   const pagesPerQuery = Math.max(1, Math.floor(LISTING_PAGES / queries.length));

@@ -1,16 +1,17 @@
-import { and, eq, gt, inArray, lt, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lt, notInArray, or, sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
-import { jobMatches, jobs, searchRuns, type Profile, type SourceRunResult, type TargetCompanyRow } from "@/db/schema";
+import { jobMatches, jobs, searchRuns, workdayCrawlState, type Profile, type SourceRunResult, type TargetCompanyRow } from "@/db/schema";
 import { env } from "@/lib/env";
 import { redactPersonalInfo } from "@/lib/ai/redact";
 import { ensureProfile, getUser, listEnabledTargetCompanies } from "@/lib/profile";
 import { isCurrentEvaluation } from "./evaluation";
 import { isInTargetCountry } from "./location";
-import { dedupeJobs } from "./normalize";
+import { dedupeJobs, dedupeKey } from "./normalize";
 import { finalMatch, rankCandidates, type JobForScoring } from "./rank";
 import { STALE_AFTER_DAYS } from "./results";
 import { buildSourceTasks, mockJobsForced, runSourceTasks } from "./sources";
-import type { SourceTask } from "./types";
+import { CRAWLED_RECENTLY_MS } from "./sources/workday-crawl";
+import type { NormalizedJob, SourceTask } from "./types";
 
 export type RunSummary = {
   runId: string;
@@ -66,6 +67,91 @@ export async function closeAbandonedRuns(userId: string, db: Db, now: Date) {
     );
 }
 
+/** Workday sites the nightly crawler covered recently; the Vercel search leaves them to it. */
+async function recentlyCrawled(userId: string, db: Db, now: Date): Promise<Set<string>> {
+  const rows = await db
+    .select({ slug: workdayCrawlState.slug })
+    .from(workdayCrawlState)
+    .where(
+      and(
+        eq(workdayCrawlState.userId, userId),
+        gt(workdayCrawlState.lastCrawledAt, new Date(now.getTime() - CRAWLED_RECENTLY_MS)),
+        or(eq(workdayCrawlState.status, "ok"), eq(workdayCrawlState.status, "partial")),
+      ),
+    );
+  return new Set(rows.map((r) => r.slug));
+}
+
+type StorableJob = NormalizedJob & { dedupeKey: string };
+
+/**
+ * Inserts new postings and refreshes stored ones (last seen, derived fields, reopened if they had
+ * been marked closed). Shared by the search and the Workday crawler. Returns each posting's id by
+ * dedupe key and how many were new.
+ */
+export async function storeJobs(db: Db, unique: StorableJob[], now: Date) {
+  const idByKey = new Map<string, string>();
+  for (const keys of chunk(unique.map((j) => j.dedupeKey), 500)) {
+    const rows = await db.select({ id: jobs.id, dedupeKey: jobs.dedupeKey }).from(jobs).where(inArray(jobs.dedupeKey, keys));
+    for (const r of rows) idByKey.set(r.dedupeKey, r.id);
+  }
+  const existingCount = idByKey.size;
+  for (const batch of chunk(unique, 200)) {
+    const rows = await db
+      .insert(jobs)
+      .values(batch.map((j) => ({ ...j, firstSeenAt: now, lastSeenAt: now })))
+      // Derived fields are refreshed too, so better parsing reaches postings already stored.
+      .onConflictDoUpdate({
+        target: jobs.dedupeKey,
+        set: {
+          lastSeenAt: now,
+          closedAt: null,
+          experienceLevel: sqlExcluded("experience_level"),
+          minYears: sqlExcluded("min_years"),
+          clearance: sqlExcluded("clearance"),
+          listingKey: sql.raw("coalesce(excluded.listing_key, jobs.listing_key)"),
+        },
+      })
+      .returning({ id: jobs.id, dedupeKey: jobs.dedupeKey });
+    for (const r of rows) idByKey.set(r.dedupeKey, r.id);
+  }
+  return { idByKey, jobsNew: unique.length - existingCount };
+}
+
+/** Marks Workday postings seen by a crawl (by listing key) as seen now, and open. */
+export async function markListingsSeen(db: Db, listingKeys: string[], now: Date) {
+  for (const keys of chunk(listingKeys, 500)) {
+    await db.update(jobs).set({ lastSeenAt: now, closedAt: null }).where(inArray(jobs.listingKey, keys));
+  }
+}
+
+/**
+ * Greenhouse, Lever and Ashby return a company's whole board in one request, so a posting stored
+ * from that board but missing from a fresh fetch has closed. Only boards that answered with
+ * postings count (an empty answer could be a hiccup). The idea follows career-ops' liveness checks
+ * (github.com/career-ops-hq/career-ops, MIT); Workday is checked per posting instead (liveness.ts).
+ */
+export async function closeMissingPostings(db: Db, fetched: StorableJob[], now: Date): Promise<number> {
+  const boards = new Map<string, { source: NormalizedJob["source"]; company: string; keys: string[] }>();
+  for (const j of fetched) {
+    if (j.source !== "greenhouse" && j.source !== "lever" && j.source !== "ashby") continue;
+    const id = `${j.source}|${j.company}`;
+    const b = boards.get(id) ?? { source: j.source, company: j.company, keys: [] };
+    b.keys.push(j.dedupeKey);
+    boards.set(id, b);
+  }
+  let closed = 0;
+  for (const b of boards.values()) {
+    const rows = await db
+      .update(jobs)
+      .set({ closedAt: now })
+      .where(and(eq(jobs.source, b.source), eq(jobs.company, b.company), isNull(jobs.closedAt), notInArray(jobs.dedupeKey, b.keys)))
+      .returning({ id: jobs.id });
+    closed += rows.length;
+  }
+  return closed;
+}
+
 /**
  * The one job-search pipeline, shared by the "Refresh jobs" button and the morning cron:
  * fetch all sources in parallel → normalize → dedupe → keep US jobs → store → score (see
@@ -75,7 +161,9 @@ export async function runJobSearch(userId: string, opts: Options): Promise<RunSu
   const started = Date.now();
   const db = opts.db ?? (await getDb());
   const profile = await ensureProfile(userId, db);
-  const targets = await listEnabledTargetCompanies(userId, db);
+  // Workday sites the nightly crawler covered are left to it; the rest (or all, if it stopped) are searched here.
+  const crawled = await recentlyCrawled(userId, db, new Date(started));
+  const targets = (await listEnabledTargetCompanies(userId, db)).filter((t) => !(t.ats === "workday" && crawled.has(t.slug)));
   await closeAbandonedRuns(userId, db, new Date(started));
   const [run] = await db.insert(searchRuns).values({ userId, trigger: opts.trigger }).returning({ id: searchRuns.id });
   const errors: string[] = [];
@@ -89,31 +177,10 @@ export async function runJobSearch(userId: string, opts: Options): Promise<RunSu
     const unique = dedupeJobs(fetched).filter(isInTargetCountry);
     const now = new Date();
 
-    // 3. Store (insert new, touch existing)
-    const idByKey = new Map<string, string>();
-    for (const keys of chunk(unique.map((j) => j.dedupeKey), 500)) {
-      const rows = await db.select({ id: jobs.id, dedupeKey: jobs.dedupeKey }).from(jobs).where(inArray(jobs.dedupeKey, keys));
-      for (const r of rows) idByKey.set(r.dedupeKey, r.id);
-    }
-    const existingCount = idByKey.size;
-    for (const batch of chunk(unique, 200)) {
-      const rows = await db
-        .insert(jobs)
-        .values(batch.map((j) => ({ ...j, firstSeenAt: now, lastSeenAt: now })))
-        // Derived fields are refreshed too, so better parsing reaches postings already stored.
-        .onConflictDoUpdate({
-          target: jobs.dedupeKey,
-          set: {
-            lastSeenAt: now,
-            experienceLevel: sqlExcluded("experience_level"),
-            minYears: sqlExcluded("min_years"),
-            clearance: sqlExcluded("clearance"),
-          },
-        })
-        .returning({ id: jobs.id, dedupeKey: jobs.dedupeKey });
-      for (const r of rows) idByKey.set(r.dedupeKey, r.id);
-    }
-    const jobsNew = unique.length - existingCount;
+    // 3. Store (insert new, touch existing), and close hosted-board postings that disappeared.
+    const { idByKey, jobsNew } = await storeJobs(db, unique, now);
+    // Each board's own postings, before dedupe: a role also on another board is still on this one.
+    await closeMissingPostings(db, fetched.map((j) => ({ ...j, dedupeKey: dedupeKey(j) })), now);
 
     // 4. Score what was fetched plus everything already matched, then save.
     const fetchedById = new Map<string, JobForScoring>();
@@ -221,7 +288,7 @@ async function redactedResume(userId: string, profile: Profile, db: Db): Promise
  * 3. AI-scores the best candidates that lack a fresh AI score (newer than the last profile change);
  * 4. upserts matches, leaving fresh AI scores untouched.
  */
-async function scoreAndSaveMatches(
+export async function scoreAndSaveMatches(
   userId: string,
   profile: Profile,
   db: Db,
@@ -252,7 +319,7 @@ async function scoreAndSaveMatches(
     })
     .from(jobMatches)
     .innerJoin(jobs, eq(jobs.id, jobMatches.jobId))
-    .where(and(eq(jobMatches.userId, userId), gt(jobs.lastSeenAt, staleBefore)));
+    .where(and(eq(jobMatches.userId, userId), gt(jobs.lastSeenAt, staleBefore), isNull(jobs.closedAt)));
 
   const existing = new Map(stored.map((r) => [r.id, r]));
   const all = new Map<string, JobForScoring>(stored.map((r) => [r.id, r]));

@@ -124,7 +124,15 @@ Greenhouse, Lever, Ashby, and Workday are queried per company. In Settings → T
 
 To find a company's slug, open its careers page and follow an "Apply" link; the URL shows the ATS and slug. After a search, each company shows how many postings it returned, or why it failed (e.g. "No Lever board named …").
 
-Workday sites are different: there's no feed of every posting, and big employers list thousands. Each search looks up your top 3 target titles on the site (US only where the site offers that filter), ranks what it finds by title, and loads the full posting for the best 25, so a Workday company adds at most 25 jobs per search. Up to 12 Workday companies are searched per run; with more, they take turns day by day, which keeps a run inside Vercel's 60 s limit.
+Workday sites are different: there's no feed of every posting, and big employers list thousands. They're crawled every night by a GitHub Actions job (below), which searches each site for all your target titles and a few synonyms (US only where the site offers that filter), pages deep while results stay relevant, and loads only postings it doesn't have yet. If the crawler hasn't covered a site in the last 30 hours, the Vercel search falls back to a shallow search of it: your top 3 titles, one page each, the best 25 postings, up to 12 sites per run.
+
+To check a Workday URL before adding it, use **Test a Workday site** in Settings: it makes one live search and shows what the site returns. Each Workday company then shows its last nightly crawl, or why it failed.
+
+### Nightly Workday crawl (GitHub Actions)
+
+`.github/workflows/crawl-workday.yml` runs `scripts/crawl-workday.ts` at 07:00 UTC (and on demand from the Actions tab), with no 60-second limit. It writes to the same database, so add two **repository secrets** (Settings → Secrets and variables → Actions): `DATABASE_URL` (the Neon connection string) and `GEMINI_API_KEY`. Actions minutes are free on a public repository. The workflow never runs for pull requests, so forks can't read the secrets, and it prints counts only because logs on a public repo are public. GitHub pauses scheduled workflows after 60 days without repository activity; re-enable it from the Actions tab.
+
+Run it locally the same way: `npx tsx --env-file-if-exists=.env.local scripts/crawl-workday.ts [--sites acme.wd5/Careers] [--dry-run]`.
 
 Workday URLs can't be guessed, so Settings → Target companies has a **Workday employers** list: 70 US career sites in security, defense, tech, finance, health and education (including employers hiring entry-level data, IT and systems analysts) that were found and checked live, each added with one click (`src/lib/jobs/sources/workday-employers.ts`). Listed employers get their proper names; for any other Workday site the name is guessed from the site name, so some read as acronyms.
 
@@ -146,6 +154,7 @@ Workday URLs can't be guessed, so Settings → Target companies has a **Workday 
 | UTC | Route | What it does |
 | --- | --- | --- |
 | 09:00 | `/api/cron/search` | Searches every source and scores matches (the slow, Gemini-using part), then prunes jobs unseen for 60 days and search runs older than 90. That's 4 AM Central in summer, 3 AM in winter. |
+| 07:00 (GitHub Actions) | `scripts/crawl-workday.ts` | The nightly Workday crawl (see below); not a Vercel cron. |
 | 10:00 | `/api/cron/score` | Has the AI evaluate up to 80 stored matches that lack a current evaluation (after a profile change, or ones the search's cap didn't reach), with no fetching. Skips a user whose search is still running. Does nothing without `GEMINI_API_KEY`. |
 | 11:00, 12:00, 13:00, 14:00 | `/api/cron/morning` | The invocation that's 6 AM in America/Chicago builds the email and schedules it with Resend for **7:00 AM sharp**; the ones that are 7 and 8 AM retry a run that didn't finish, sending right away. Vercel Cron has no daylight saving, so which UTC hours those are changes twice a year (the fourth cron covers both seasons). |
 
@@ -189,6 +198,10 @@ The email also reminds you, once, about applications still marked **Applied** 7 
 | `npm run db:generate` | New migration from `src/db/schema.ts` |
 | `npm run db:migrate` | Apply migrations to `DATABASE_URL` |
 | `npx tsx scripts/try-sources.ts greenhouse:stripe lever:spotify` | Fetch real boards and print a parsing summary (Workday: paste the URL and add `--q "security analyst"`) |
+| `npx tsx --env-file-if-exists=.env.local scripts/crawl-workday.ts` | The nightly Workday crawl (`--dry-run` writes nothing; `--sites` limits it) |
+| `npx tsx scripts/check-workday-employers.ts` | One live search per built-in Workday employer; lists broken ones |
+| `npx tsx --env-file-if-exists=.env.local scripts/workday-coverage.ts` | Workday's own totals for your titles vs what's stored |
+| `npx tsx --env-file-if-exists=.env.local scripts/eval-matching.ts …` | The matching eval: sample, label, run, report (data stays in git-ignored `eval-data/`) |
 
 ## Troubleshooting
 

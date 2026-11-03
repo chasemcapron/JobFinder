@@ -23,6 +23,7 @@ import { suggestCompanies, type CompanySuggestion } from "@/lib/ai/suggest-compa
 import { inspectSheet, SHEET_FIELD_LABELS } from "@/lib/google/sheets";
 import { getGoogleAccessToken } from "@/lib/google/tokens";
 import { rescoreStoredMatches } from "@/lib/jobs/search";
+import { parseWorkdaySlug, probeWorkdaySite, workdayCompanyName, workdaySiteUrl } from "@/lib/jobs/sources/workday";
 import { findWorkdayEmployer } from "@/lib/jobs/sources/workday-employers";
 import { parseColumnLetter, parseList, parseSheetId, parseTargetCompany } from "@/lib/parse-input";
 import { ensureProfile, listTargetCompanies } from "@/lib/profile";
@@ -199,7 +200,61 @@ export async function addSuggestedCompanies(entries: { ats: AtsType; slug: strin
   }
 }
 
-/** Adds employers from the checked Workday list. Only listed slugs are accepted. */
+export type WorkdayTestResult =
+  | { ok: true; slug: string; name: string; url: string; searchedFor: string; total: number; usFilter: boolean; sampleTitles: string[]; added: boolean }
+  | { ok: false; message: string };
+
+/**
+ * "Test" for a pasted Workday careers URL: parses tenant, wdN and site, then makes one live
+ * search for the user's top title so they can see it works before adding it.
+ */
+export async function testWorkdaySite(input: string): Promise<WorkdayTestResult> {
+  try {
+    const userId = await userIdOrThrow();
+    const parsed = parseTargetCompany(input.trim());
+    if (parsed.ats !== "workday") return { ok: false, message: "That isn't a Workday careers URL (….myworkdayjobs.com/…)." };
+    const db = await getDb();
+    const profile = await ensureProfile(userId, db);
+    const searchedFor = profile.titles[0] ?? profile.searchKeywords[0] ?? "";
+    const probe = await probeWorkdaySite(parsed.slug, searchedFor, AbortSignal.timeout(10_000));
+    if (!probe.ok) return { ok: false, message: probe.message };
+    const [existing] = await db
+      .select({ id: targetCompanies.id })
+      .from(targetCompanies)
+      .where(and(eq(targetCompanies.userId, userId), eq(targetCompanies.ats, "workday"), eq(targetCompanies.slug, parsed.slug)))
+      .limit(1);
+    const board = parseWorkdaySlug(parsed.slug);
+    return {
+      ok: true,
+      slug: parsed.slug,
+      name: workdayCompanyName(board),
+      url: workdaySiteUrl(board),
+      searchedFor,
+      total: probe.total,
+      usFilter: probe.usFilter,
+      sampleTitles: probe.sampleTitles,
+      added: Boolean(existing),
+    };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Couldn't test that site." };
+  }
+}
+
+/** Adds one Workday site that just passed testWorkdaySite. */
+export async function addTestedWorkdaySite(slug: string): Promise<ActionState> {
+  try {
+    const userId = await userIdOrThrow();
+    const parsed = parseTargetCompany(`workday:${slug}`);
+    const db = await getDb();
+    await db.insert(targetCompanies).values({ userId, ats: "workday", slug: parsed.slug }).onConflictDoNothing();
+    revalidatePath("/settings");
+    return { ok: true, message: `Added ${workdayCompanyName(parseWorkdaySlug(parsed.slug))}.` };
+  } catch (err) {
+    return errorState(err);
+  }
+}
+
+/** Adds employers from the checked Workday list (workday-employers.ts); anything else is ignored. */
 export async function addWorkdayEmployers(slugs: string[]): Promise<ActionState> {
   try {
     const userId = await userIdOrThrow();

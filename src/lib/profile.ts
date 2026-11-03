@@ -1,6 +1,7 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, gt } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
-import { profiles, targetCompanies, users, type AtsType, type Profile } from "@/db/schema";
+import { profiles, targetCompanies, users, workdayCrawlState, type AtsType, type Profile } from "@/db/schema";
+import { CRAWLED_RECENTLY_MS } from "@/lib/jobs/sources/workday-crawl";
 
 /** Example target companies (all verified to have live public job boards). Users can edit the list. */
 export const SEED_TARGET_COMPANIES: { ats: AtsType; slug: string }[] = [
@@ -52,4 +53,22 @@ export async function listEnabledTargetCompanies(userId: string, db?: Db) {
     .where(and(eq(targetCompanies.userId, userId), eq(targetCompanies.enabled, true)))
     // A fixed order keeps the daily Workday rotation (takeTurns) stable.
     .orderBy(asc(targetCompanies.ats), asc(targetCompanies.slug));
+}
+
+/**
+ * The nightly crawler's recent visits to the user's Workday sites. An older crawl means the
+ * crawler stopped, and the Vercel search covers the site again, so it isn't listed.
+ */
+export async function listWorkdayCrawls(userId: string, db?: Db) {
+  db ??= await getDb();
+  return db
+    .select({
+      slug: workdayCrawlState.slug,
+      status: workdayCrawlState.status,
+      lastCrawledAt: workdayCrawlState.lastCrawledAt,
+      listingsSeen: workdayCrawlState.listingsSeen,
+      error: workdayCrawlState.error,
+    })
+    .from(workdayCrawlState)
+    .where(and(eq(workdayCrawlState.userId, userId), gt(workdayCrawlState.lastCrawledAt, new Date(Date.now() - CRAWLED_RECENTLY_MS))));
 }

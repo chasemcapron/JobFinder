@@ -155,11 +155,45 @@ export const jobs = pgTable(
     salaryCurrency: text("salary_currency"),
     firstSeenAt: timestamp("first_seen_at", { mode: "date" }).notNull().defaultNow(),
     lastSeenAt: timestamp("last_seen_at", { mode: "date" }).notNull().defaultNow(),
+    /**
+     * Workday only: "{tenant}/{site}{externalPath}", the key a search listing carries (listings have
+     * no posting id), so a crawl can tell which postings it already has and mark them seen.
+     */
+    listingKey: text("listing_key"),
+    /** Set when the posting is confirmed gone (liveness check, or missing from a full board); cleared when seen again. */
+    closedAt: timestamp("closed_at", { mode: "date" }),
   },
   (t) => [
     uniqueIndex("jobs_dedupe_key_idx").on(t.dedupeKey),
     index("jobs_source_external_idx").on(t.source, t.externalId),
+    index("jobs_listing_key_idx").on(t.listingKey),
   ],
+);
+
+export const CRAWL_STATUSES = ["ok", "partial", "not_found", "rate_limited", "error"] as const;
+export type CrawlStatus = (typeof CRAWL_STATUSES)[number];
+
+/**
+ * The last crawl of each Workday site a user follows (scripts/crawl-workday.ts, run nightly by
+ * GitHub Actions). The Vercel search skips sites crawled recently and falls back to its own
+ * shallow search when the crawler hasn't run.
+ */
+export const workdayCrawlState = pgTable(
+  "workday_crawl_state",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    slug: text("slug").notNull(),
+    lastCrawledAt: timestamp("last_crawled_at", { mode: "date" }).notNull(),
+    status: text("status").$type<CrawlStatus>().notNull(),
+    listingsSeen: integer("listings_seen").notNull().default(0),
+    detailsFetched: integer("details_fetched").notNull().default(0),
+    /** Workday's own total per search term, US filter. */
+    totals: jsonb("totals").$type<Record<string, number>>().notNull().default({}),
+    error: text("error"),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.slug] })],
 );
 
 export const MATCH_VERDICTS = ["apply", "maybe", "skip"] as const;

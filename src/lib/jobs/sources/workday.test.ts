@@ -9,6 +9,7 @@ import {
   normalizeWorkdayJob,
   parsePostedOn,
   parseWorkdaySlug,
+  probeWorkdaySite,
   RATE_LIMIT_PAUSE_MS,
   rankForDetails,
   workdayCompanyName,
@@ -273,5 +274,27 @@ describe("WORKDAY_EMPLOYERS", () => {
       expect(parseTargetCompany(workdaySiteUrl(parseWorkdaySlug(e.slug)))).toEqual({ ats: "workday", slug: e.slug });
       expect(findWorkdayEmployer(e.slug.toUpperCase())).toBe(e);
     }
+  });
+});
+
+describe("probeWorkdaySite", () => {
+  const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+  const page = { total: 42, jobPostings: [{ title: "Data Analyst", externalPath: "/job/a/Data-Analyst_R1", locationsText: "Austin, TX" }] };
+
+  it("reports the US total and sample titles, falling back when a site has no country filter", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => reply(page)));
+    expect(await probeWorkdaySite(SLUG, "Data Analyst", signal())).toEqual({ ok: true, total: 42, usFilter: true, sampleTitles: ["Data Analyst"] });
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => (JSON.parse(String(init.body)).appliedFacets.locationCountry ? reply({}, 400) : reply(page)));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await probeWorkdaySite(SLUG, "Data Analyst", signal())).toMatchObject({ ok: true, usFilter: false });
+  });
+
+  it("explains a wrong site name, a wrong tenant or wdN, and rate limiting", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => reply({}, 404)));
+    expect(await probeWorkdaySite(SLUG, "x", signal())).toMatchObject({ ok: false, status: 404, message: expect.stringContaining("wrong site name") });
+    vi.stubGlobal("fetch", vi.fn(async () => reply({}, 422)));
+    expect(await probeWorkdaySite(SLUG, "x", signal())).toMatchObject({ ok: false, status: 422, message: expect.stringContaining("wrong tenant") });
+    vi.stubGlobal("fetch", vi.fn(async () => reply({}, 429)));
+    expect(await probeWorkdaySite(SLUG, "x", signal())).toMatchObject({ ok: false, status: 429 });
   });
 });

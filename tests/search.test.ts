@@ -111,6 +111,42 @@ describe("runJobSearch", () => {
     expect(listed.some((m) => m.job.locationRaw === "Chicago, IL")).toBe(true);
   });
 
+  it("closes hosted-board postings missing from a full fetch, and reopens them when they return", async () => {
+    const [base] = mockJobs();
+    const board = (n: number) => ({
+      label: "greenhouse:acme",
+      source: "greenhouse" as const,
+      run: async () =>
+        Array.from({ length: n }, (_, i) => ({ ...base, source: "greenhouse" as const, company: "Acme", externalId: `gh-${i}`, title: `Backend Engineer ${i}`, dedupeKey: `acme-${i}` })),
+    });
+    const closedAt = async () =>
+      Object.fromEntries((await db.select({ t: schema.jobs.title, c: schema.jobs.closedAt }).from(schema.jobs)).map((r) => [r.t, r.c]));
+    await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [board(2)] });
+    await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [board(1)] });
+    expect(await closedAt()).toMatchObject({ "Backend Engineer 0": null, "Backend Engineer 1": expect.any(Date) });
+    expect((await listMatches(userId, db)).some((m) => m.job.title === "Backend Engineer 1")).toBe(false);
+    await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [board(2)] });
+    expect(await closedAt()).toMatchObject({ "Backend Engineer 0": null, "Backend Engineer 1": null });
+  });
+
+  it("leaves Workday sites the nightly crawler covered recently to it", async () => {
+    await db.insert(schema.targetCompanies).values([
+      { userId, ats: "workday", slug: "acme.wd5/Careers" },
+      { userId, ats: "workday", slug: "other.wd1/Jobs" },
+    ]);
+    await db.insert(schema.workdayCrawlState).values({ userId, slug: "acme.wd5/Careers", lastCrawledAt: new Date(), status: "ok" });
+    let searched: string[] = [];
+    await runJobSearch(userId, {
+      trigger: "manual",
+      db,
+      buildTasks: (_p, targets) => {
+        searched = targets.filter((t) => t.ats === "workday").map((t) => t.slug);
+        return [];
+      },
+    });
+    expect(searched).toEqual(["other.wd1/Jobs"]);
+  });
+
   it("reports total failure as an error status", async () => {
     const summary = await runJobSearch(userId, { trigger: "cron", db, buildTasks: () => [brokenTask] });
     expect(summary.status).toBe("error");

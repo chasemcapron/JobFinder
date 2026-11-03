@@ -193,6 +193,19 @@ describe("runDigestForUser", () => {
     expect(picked[0].job.title).toBe("Engineer 2");
   });
 
+  it("checks picked postings are still open, leaves closed ones out and marks them closed", async () => {
+    const send = vi.fn(async () => ({ channel: "console" as const, id: null }));
+    const closedId = jobIds[0];
+    const checkLive = vi.fn(async (postings: { id: string }[]) => new Map(postings.map((p) => [p.id, p.id === closedId ? ("closed" as const) : ("live" as const)])));
+    const r = await runDigestForUser(userId, { db, now: SUMMER_7AM, runSearch: noSearch, send, checkLive });
+    // Up to 15 candidates are checked (10 + 5 spares; 14 qualify here); the closed one is replaced, so 10 still go out.
+    expect(checkLive.mock.calls[0][0]).toHaveLength(14);
+    expect(r).toMatchObject({ status: "sent", jobs: 10 });
+    const [closed] = await db.select({ closedAt: schema.jobs.closedAt }).from(schema.jobs).where(eq(schema.jobs.id, closedId));
+    expect(closed.closedAt).toBeInstanceOf(Date);
+    expect((await pickDigestJobs(userId, db)).map((p) => p.job.id)).not.toContain(closedId);
+  });
+
   it("excludes jobs marked do not apply, whatever their score", async () => {
     await db.update(schema.jobMatches).set({ verdict: "skip" }).where(eq(schema.jobMatches.jobId, jobIds[0]));
     await db.update(schema.jobMatches).set({ verdict: "apply" }).where(eq(schema.jobMatches.jobId, jobIds[1]));

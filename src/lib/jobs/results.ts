@@ -94,7 +94,7 @@ export async function listMatches(userId: string, db?: Db): Promise<MatchResult[
     .from(jobMatches)
     .innerJoin(jobs, eq(jobs.id, jobMatches.jobId))
     .leftJoin(applications, and(eq(applications.jobId, jobs.id), eq(applications.userId, userId)))
-    .where(and(eq(jobMatches.userId, userId), gt(jobs.lastSeenAt, staleBefore), inTargetCountry))
+    .where(and(eq(jobMatches.userId, userId), gt(jobs.lastSeenAt, staleBefore), inTargetCountry, isNull(jobs.closedAt)))
     .orderBy(desc(jobMatches.score), desc(jobs.postedAt))
     .limit(MAX_RESULTS);
 
