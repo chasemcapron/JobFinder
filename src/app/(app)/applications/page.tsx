@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { SyncStatus } from "@/components/sync-status";
-import { Badge, BarHeading, buttonClass, cx, EmptyState, Icon, PageHeader, StatTile, type Hue } from "@/components/ui";
+import { Badge, BarHeading, buttonClass, cx, EmptyState, Icon, linkClass, PageHeader, StatTile, type Hue } from "@/components/ui";
 import type { ApplicationStatus } from "@/db/schema";
 import { daysWithoutReply, listApplications, summarizeApplications } from "@/lib/applications";
 import { formatRelativeDate } from "@/lib/format";
@@ -53,6 +53,9 @@ function ApplicationCard({ row: { app, job }, index }: { row: Row; index: number
           <p className="mt-0.5 text-xs text-muted" title={app.appliedAt.toISOString()}>
             Applied {dateFormat.format(app.appliedAt)} · {formatRelativeDate(app.appliedAt)}
           </p>
+          <Link href={`/jobs/${job.id}/tailor`} className={cx(linkClass, "mt-0.5 inline-block text-xs")}>
+            Tailored resume and cover letter
+          </Link>
         </div>
         {waiting || app.sheetSyncStatus !== "not_configured" ? (
           <div className="flex flex-wrap items-center gap-1.5">

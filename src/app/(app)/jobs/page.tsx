@@ -180,7 +180,17 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
                     ranked={hasProfile}
                     hasClearance={profile.hasClearance}
                     actions={<ApplyActions jobId={m.job.id} application={m.application} />}
-                    fit={canCheckFit ? <FitCheck jobId={m.job.id} initial={fitChecks.get(m.job.id) ?? null} /> : null}
+                    fit={
+                      canCheckFit ? (
+                        <>
+                          <FitCheck jobId={m.job.id} initial={fitChecks.get(m.job.id) ?? null} />
+                          <Link href={`/jobs/${m.job.id}/tailor`} className={buttonClass("secondary", "sm")}>
+                            <Icon name="file" className="size-3.5" />
+                            Tailor resume
+                          </Link>
+                        </>
+                      ) : null
+                    }
                   />
                 ))}
               </ul>

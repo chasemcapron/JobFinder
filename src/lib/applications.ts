@@ -1,9 +1,11 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
-import { applications, jobMatches, jobs, profiles, type ApplicationStatus, type SheetSyncStatus } from "@/db/schema";
+import { applications, jobMatches, jobs, profiles, tailoredDocuments, type ApplicationStatus, type SheetSyncStatus } from "@/db/schema";
+import { env } from "@/lib/env";
 import { appendMappedRow, DEFAULT_COLUMN_MAP } from "@/lib/google/sheets";
 import { getGoogleAccessToken, GoogleNotConnectedError } from "@/lib/google/tokens";
 import { formatLocation } from "@/lib/jobs/location";
+import { linkNewestToApplication } from "@/lib/tailor/service";
 import { localDate } from "@/lib/time";
 
 export type SyncResult = { status: SheetSyncStatus; message: string };
@@ -39,8 +41,16 @@ export async function markApplied(userId: string, jobId: string, deps: Deps = {}
     where: and(eq(applications.userId, userId), eq(applications.jobId, jobId)),
   });
   if (!app) throw new Error("Couldn't save the application.");
+  // The newest tailored resume and cover letter for the job is the one sent with it.
+  // Never lets tailoring get in the way of saving and syncing the application.
+  await linkNewestToApplication(userId, jobId, app.id, db).catch((err) => console.error("Linking the tailored resume failed", err));
   const sync = await syncApplicationToSheet(userId, app.id, { ...deps, db });
   return { applicationId: app.id, sync };
+}
+
+/** The page with a tailored resume and cover letter version (opened signed in; it shows only the owner's). */
+export function tailoredUrl(jobId: string, version: number): string {
+  return `${env.appUrl}/jobs/${jobId}/tailor?v=${version}`;
 }
 
 export async function syncApplicationToSheet(userId: string, applicationId: string, deps: Deps = {}): Promise<SyncResult> {
@@ -56,6 +66,16 @@ export async function syncApplicationToSheet(userId: string, applicationId: stri
   if (row.app.sheetSyncStatus === "synced") return { status: "synced", message: "Already in your sheet." };
 
   const profile = await db.query.profiles.findFirst({ where: eq(profiles.userId, userId) });
+  const [tailored] = await db
+    .select({ version: tailoredDocuments.version })
+    .from(tailoredDocuments)
+    .where(and(eq(tailoredDocuments.userId, userId), eq(tailoredDocuments.applicationId, applicationId)))
+    .orderBy(desc(tailoredDocuments.version))
+    .limit(1)
+    .catch((err) => {
+      console.error("Reading the tailored resume failed", err);
+      return [];
+    });
   const save = async (status: SheetSyncStatus, message: string | null) => {
     await db
       .update(applications)
@@ -82,6 +102,7 @@ export async function syncApplicationToSheet(userId: string, applicationId: stri
         status: STATUS_LABELS[row.app.status],
         source: row.job.source,
         ...(row.score != null ? { score: row.score } : {}),
+        ...(tailored ? { tailored: tailoredUrl(row.job.id, tailored.version) } : {}),
       },
       fetchImpl: deps.fetchImpl,
     });

@@ -189,6 +189,14 @@ Limits: US jobs only. Everyone shares the one free Gemini key's daily quota. The
 
 ---
 
+## Tailored resume and cover letter
+
+Each job card has **Tailor resume** (`/jobs/[jobId]/tailor`). One click reads your resume into sections (once per resume), tailors it to the posting and writes a 250-350 word cover letter: three AI calls, each its own step, so a slow or failed one can be retried alone.
+
+- **Truthful by construction.** Tailoring only reorders, rephrases or leaves out what your resume says. Employers, titles, dates and schools are copied from your resume, never written by the AI, and a fact check puts back your own wording for any bullet (or drops any letter sentence) that adds a number, skill, name, degree or certification your resume doesn't have. What it changed is listed on the page.
+- **Edit, compare, download.** Edit any bullet, skill or paragraph; **Changes from your resume** shows every bullet kept, moved, rephrased or left out, word by word. Download the resume and the letter as PDF or Word, built in your browser from what's on screen. ATS-friendly: one column, real text, standard headings.
+- **Versions.** Each generation is a numbered version, kept with its own copy of the resume it came from. Marking the job applied links the newest version to the application, and Settings → Google Sheet can map a **Tailored resume** column to its link.
+
 ## How it works
 
 - `runJobSearch(userId)` in `src/lib/jobs/search.ts` is the single pipeline used by both the **Refresh jobs** button (`POST /api/jobs/refresh`) and the cron: fetch every source in parallel (12 s timeout each, a failing source never fails the run) → normalize to one `Job` shape → dedupe across sources (same company + title + location; direct ATS postings win over aggregator copies) → store → keyword prefilter (also re-ranks matches already stored, so a profile change applies everywhere) → the AI (Gemini, free) scores the top `MAX_AI_SCORES_PER_RUN` that don't already have a fresh AI score → save matches with a reason.

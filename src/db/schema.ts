@@ -81,7 +81,7 @@ export type ClearanceRequirement = (typeof CLEARANCE_REQUIREMENTS)[number];
 
 /** Maps a sheet field to a column letter, e.g. { company: "A", title: "B" }. */
 export type SheetColumnMap = Partial<Record<SheetField, string>>;
-export const SHEET_FIELDS = ["company", "title", "dateApplied", "link", "location", "status", "source", "score"] as const;
+export const SHEET_FIELDS = ["company", "title", "dateApplied", "link", "location", "status", "source", "score", "tailored"] as const;
 export type SheetField = (typeof SHEET_FIELDS)[number];
 
 export const profiles = pgTable("profiles", {
@@ -299,6 +299,44 @@ export const fitChecks = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.jobId] })],
 );
 
+/** A resume as sections, entries and bullets (src/lib/tailor/structure.ts), with stable ids like "s2.e1.b3". */
+export const RESUME_SECTION_KINDS = ["experience", "education", "projects", "skills", "certifications", "other"] as const;
+export type ResumeSectionKind = (typeof RESUME_SECTION_KINDS)[number];
+export type ResumeBullet = { id: string; text: string };
+export type ResumeEntry = { id: string; title?: string; org?: string; location?: string; dates?: string; bullets: ResumeBullet[] };
+export type ResumeSection = { id: string; heading: string; kind: ResumeSectionKind; entries: ResumeEntry[]; items: string[] };
+export type ResumeStructure = {
+  summary: string | null;
+  sections: ResumeSection[];
+  /** What the parse couldn't confirm against the resume text (and so left out). */
+  warnings: string[];
+  /** The redacted resume text it was parsed from: the fact check's source for summaries and letters. */
+  source?: string;
+};
+
+/**
+ * A resume tailored to one posting. It only points at the base resume (sections, entries,
+ * bullets by id): employers, titles, dates and schools are always the base's, never the AI's.
+ */
+export type TailoredBullet = { sourceId: string; text: string };
+export type TailoredResume = {
+  summary: string | null;
+  sections: { id: string; entries: { id: string; bullets: TailoredBullet[] }[]; items: string[] }[];
+};
+export type CoverLetter = { paragraphs: string[] };
+export type FactCheckReport = { warnings: string[] };
+
+/** The parsed base resume, redone when the resume text changes (`sourceHash`). */
+export const resumeStructures = pgTable("resume_structures", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  sourceHash: text("source_hash").notNull(),
+  data: jsonb("data").$type<ResumeStructure>().notNull(),
+  model: text("model").notNull(),
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+});
+
 export const APPLICATION_STATUSES = ["applied", "interviewing", "offer", "rejected", "withdrawn"] as const;
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
 export const SHEET_SYNC_STATUSES = ["pending", "synced", "failed", "not_configured"] as const;
@@ -323,6 +361,35 @@ export const applications = pgTable(
     followUpSentAt: timestamp("follow_up_sent_at", { mode: "date" }),
   },
   (t) => [uniqueIndex("applications_user_job_idx").on(t.userId, t.jobId)],
+);
+
+/** Each tailored resume and cover letter for a job, numbered per job; edits update a version in place. */
+export const tailoredDocuments = pgTable(
+  "tailored_documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    /** Set when the job is marked applied: the version sent. */
+    applicationId: uuid("application_id").references(() => applications.id, { onDelete: "set null" }),
+    /** The resume_structures source hash it was made from. */
+    baseHash: text("base_hash").notNull(),
+    /** That base itself, so a version stays readable (and editable) after the resume changes. */
+    base: jsonb("base").$type<ResumeStructure>().notNull(),
+    resume: jsonb("resume").$type<TailoredResume>().notNull(),
+    coverLetter: jsonb("cover_letter").$type<CoverLetter>(),
+    factCheck: jsonb("fact_check").$type<FactCheckReport>().notNull().default({ warnings: [] }),
+    model: text("model").notNull(),
+    edited: boolean("edited").notNull().default(false),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("tailored_documents_user_job_version_idx").on(t.userId, t.jobId, t.version)],
 );
 
 export const ATS_TYPES = ["greenhouse", "lever", "ashby", "workday"] as const;

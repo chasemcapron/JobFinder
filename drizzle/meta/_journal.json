@@ -64,6 +64,13 @@
       "when": 1793732663962,
       "tag": "0008_workday_crawl",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793742697363,
+      "tag": "0009_tailoring",
+      "breakpoints": true
     }
   ]
 }
