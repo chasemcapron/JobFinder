@@ -12,7 +12,7 @@ import { ensureProfile } from "@/lib/profile";
 import { extractContact } from "@/lib/tailor/contact";
 import { diffTailored, wordDiff } from "@/lib/tailor/diff";
 import { coverLetterDocx, resumeDocx } from "@/lib/tailor/export-docx";
-import { renderTailored } from "@/lib/tailor/render";
+import { entryLines, renderTailored, splitLabel } from "@/lib/tailor/render";
 import { addCoverLetter, createTailoredResume, ensureStructure, saveEdits, TailorError } from "@/lib/tailor/service";
 import { confirmStructure } from "@/lib/tailor/structure";
 import { parsed } from "./fixtures/fake-resume-parsed";
@@ -34,7 +34,8 @@ describe("diffTailored", () => {
     expect(changes.counts).toEqual({ kept: 2, moved: 1, rephrased: 1, dropped: 1 });
     const bullets = changes.sections[0].entries[0].bullets;
     expect(bullets.map((b) => b.status)).toEqual(["moved", "rephrased", "dropped"]);
-    expect(changes.sections[2].items).toMatchObject({ dropped: ["PostgreSQL", "Excel", "Python", "ServiceNow", "Data Visualization"], reordered: true });
+    // A list of single skills is compared as the one line it prints as.
+    expect(changes.sections[2].items).toEqual([{ status: "rephrased", text: "Tableau, SQL", ops: expect.any(Array) }]);
     expect(changes.summary.status).toBe("kept");
   });
 
@@ -73,15 +74,32 @@ describe("contact header and exports", () => {
     expect(extractContact("Jordan Example\nAustin, TX 78701  •  jordan@example.com").location).toBe("Austin, TX");
   });
 
-  it("builds an ATS-friendly Word resume: one column, real text, no tables or images", async () => {
+  it("builds the Word resume in the copied layout: Times, ruled headings, right-aligned places and dates, no tables", async () => {
     const zip = await JSZip.loadAsync(await Packer.toBuffer(resumeDocx(renderTailored(base, fromBase(), contact))));
     const xml = await zip.file("word/document.xml")!.async("string");
+    const styles = await zip.file("word/styles.xml")!.async("string");
     const words = xml.replace(/<[^>]+>/g, " ");
-    for (const t of ["Jordan Example", "EXPERIENCE", "Data Analyst Intern, Prairie Logistics Co.", "May 2024 - Aug 2024", base.sections[0].entries[0].bullets[0].text, "SQL, PostgreSQL, Tableau"]) {
+    for (const t of ["Jordan Example", "EXPERIENCE", "Prairie Logistics Co.", "Data Analyst Intern", "May 2024 - Aug 2024", base.sections[0].entries[0].bullets[0].text, "SQL, PostgreSQL, Tableau"]) {
       expect(words).toContain(t);
     }
+    expect(styles + xml).toContain('w:ascii="Times New Roman"');
+    expect(xml).toMatch(/<w:pBdr>\s*<w:bottom /); // the rule under each heading
+    expect(xml).toMatch(/<w:tab w:val="right"/); // places and dates on the right
     expect(xml).not.toMatch(/<w:tbl\b|<w:drawing\b|<w:cols w:num="[2-9]"/);
-    expect(xml).toContain("<w:numPr>"); // real bullets, not typed symbols
+    expect(xml).toContain("<w:numPr>"); // real list bullets, not typed symbols
+  });
+
+  it("lays out entry headers like the owner's resume", () => {
+    expect(entryLines({ org: "Prairie Logistics Co.", location: "Springfield, IL", title: "Data Analyst Intern", dates: "May 2024 - Aug 2024" })).toEqual([
+      { left: "Prairie Logistics Co.", right: "Springfield, IL", leftStyle: "bold", rightStyle: "bold" },
+      { left: "Data Analyst Intern", right: "May 2024 - Aug 2024", leftStyle: "italic", rightStyle: "regular" },
+    ]);
+    // A project: its name and dates on one bold line.
+    expect(entryLines({ title: "Aethermart Database", dates: "Aug 2025 - Dec 2025" })).toEqual([
+      { left: "Aethermart Database", right: "Aug 2025 - Dec 2025", leftStyle: "bold", rightStyle: "bold" },
+    ]);
+    expect(splitLabel("Technical Skills: SQL, Python")).toEqual({ label: "Technical Skills:", text: "SQL, Python" });
+    expect(splitLabel("SQL, Python")).toEqual({ label: "", text: "SQL, Python" });
   });
 
   it("builds the cover letter with the greeting, the body and the sign-off", async () => {
@@ -104,7 +122,8 @@ describe("tailoring service", () => {
     if (opts.system.startsWith("You tailor")) {
       const doc = fromBase();
       doc.sections[0].entries[0].bullets.reverse();
-      return { data: doc, provider: "gemini", model: "fake" };
+      const data = { sections: doc.sections.map((s) => ({ ...s, items: s.items.map((text, k) => ({ id: `${s.id}#${k}`, text })) })) };
+      return { data, provider: "gemini", model: "fake" };
     }
     return { data: { paragraphs: ["I'm applying for the Operations Data Analyst role at Acme Freight."] }, provider: "gemini", model: "fake" };
   }) as unknown as AiJsonFn;
@@ -152,6 +171,16 @@ describe("tailoring service", () => {
     expect(cleared.coverLetter).toBeNull();
   });
 
+  it("won't edit a version made before tailoring kept the resume's shape", async () => {
+    await ensureStructure(userId, { db, ai });
+    const v = await createTailoredResume(userId, jobId, { db, ai });
+    const old = fromBase();
+    old.sections[0].entries[0].bullets.reverse(); // the old rules could reorder
+    old.summary = "An AI summary from the old rules.";
+    await db.update(schema.tailoredDocuments).set({ resume: old }).where(eq(schema.tailoredDocuments.id, v.id));
+    await expect(saveEdits(userId, jobId, v.version, { resume: fromBase(), paragraphs: null }, db)).rejects.toThrow(/before tailoring kept/);
+  });
+
   it("only works on the user's own jobs", async () => {
     const [other] = await db.insert(schema.users).values({ email: "o@example.com" }).returning();
     await ensureProfile(other.id, db);
@@ -164,7 +193,7 @@ describe("tailoring service", () => {
     await expect(saveEdits(other.id, jobId, 1, { resume: fromBase(), paragraphs: null }, db)).rejects.toThrow(TailorError);
   });
 
-  it("saves the user's edits in the base's shape: an emptied bullet is removed, unknown ids are ignored", async () => {
+  it("saves the user's edits in the base's shape: an emptied bullet keeps its wording, unknown ids are ignored", async () => {
     await ensureStructure(userId, { db, ai });
     await createTailoredResume(userId, jobId, { db, ai });
     const edited = fromBase();
@@ -173,7 +202,8 @@ describe("tailoring service", () => {
     edited.sections[0].entries[0].bullets.push({ sourceId: "nope", text: "Injected" });
     const row = await saveEdits(userId, jobId, 1, { resume: edited, paragraphs: ["My letter."] }, db);
     expect(row.edited).toBe(true);
-    expect(row.resume.sections[0].entries[0].bullets.map((b) => b.text)).toEqual(["My own wording, 6 dashboards.", base.sections[0].entries[0].bullets[2].text]);
+    const bullets = base.sections[0].entries[0].bullets;
+    expect(row.resume.sections[0].entries[0].bullets.map((b) => b.text)).toEqual(["My own wording, 6 dashboards.", bullets[1].text, bullets[2].text]);
     expect(row.coverLetter).toEqual({ paragraphs: ["My letter."] });
   });
 

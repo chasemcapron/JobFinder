@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { TailoredResume } from "@/db/schema";
 import type { AiJsonFn } from "@/lib/jobs/ai-score";
-import { findUnsupported, gateCoverLetter, gateTailoredResume, resumeFacts } from "@/lib/tailor/fact-check";
+import { findUnsupported, gateCoverLetter, gateTailoredResume, LINE_CHARS, resumeFacts, tooLong } from "@/lib/tailor/fact-check";
 import { tailorResume, writeCoverLetter } from "@/lib/tailor/generate";
 import { confirmStructure } from "@/lib/tailor/structure";
 import { parsed } from "./fixtures/fake-resume-parsed";
@@ -41,6 +41,25 @@ describe("findUnsupported", () => {
     expect(found.map((v) => v.term.toLowerCase())).toContain(term.toLowerCase());
   });
 
+  it("accepts 'degree' for one the resume names, not when it names none", () => {
+    expect(findUnsupported("I am pursuing this degree full time", ["Master of Science in Information Systems"])).toEqual([]);
+    expect(findUnsupported("I am pursuing this degree full time", ["B.S. in Information Systems"])).toEqual([]);
+    for (const looksLikeOne of ["Data Analyst Intern", "IT Support Associate", "Scrum Master", "MS Excel", "Boston, MA", "latency under 200 ms"]) {
+      expect(findUnsupported("I am pursuing a degree full time", [looksLikeOne]).map((v) => v.term)).toEqual(["degree"]);
+    }
+  });
+
+  it("reads amounts like $1M+ as numbers, not names", () => {
+    expect(findUnsupported("Reconciled $1M+ in monthly transfers", ["Reconciled over $1M+ of transfers each month"])).toEqual([]);
+    expect(findUnsupported("Reconciled $2M+ in monthly transfers", ["Reconciled over $1M+ of transfers each month"]).map((v) => v.term)).toEqual(["2"]);
+  });
+
+  it("lets a rewrite grow as long as it doesn't wrap to another line", () => {
+    const short = "Built 6 Tableau dashboards"; // one line, room to spare
+    expect(tooLong("Built 6 Tableau dashboards tracking on-time delivery for regional operations teams", short)).toBe(false);
+    expect(tooLong(`${short} ${"x".repeat(LINE_CHARS)}`, short)).toBe(true);
+  });
+
   it("checks the posting's own tools too, so a requirement the resume lacks can't be claimed", () => {
     expect(findUnsupported("Wrote SQL queries and Snowpark jobs", [intern.bullets[1].text], { terms: ["Snowpark"] }).map((v) => v.term)).toContain("Snowpark");
   });
@@ -62,62 +81,121 @@ const tailored = (over: (d: TailoredResume) => void = () => {}): TailoredResume 
 };
 
 describe("gateTailoredResume", () => {
-  it("keeps truthful rewording and the AI's bullet order", () => {
-    const doc = tailored((d) => {
-      const b = d.sections[0].entries[0].bullets;
-      d.sections[0].entries[0].bullets = [{ ...b[1], text: "Cut weekly report preparation from 5 hours to 1 hour with PostgreSQL queries" }, b[0]];
-    });
+  const texts = (d: TailoredResume, s = 0, e = 0) => d.sections[s].entries[e].bullets.map((b) => b.text);
+
+  it("takes truthful rewording, bullet by bullet, in place", () => {
+    const doc = tailored((d) => (d.sections[0].entries[0].bullets[1].text = "Cut weekly report preparation from 5 hours to 1 hour with PostgreSQL queries"));
     const { value, warnings } = gateTailoredResume(base, doc);
     expect(warnings).toEqual([]);
-    expect(value.sections[0].entries[0].bullets.map((b) => b.text)).toEqual([
-      "Cut weekly report preparation from 5 hours to 1 hour with PostgreSQL queries",
-      intern.bullets[0].text,
-    ]);
+    expect(texts(value)).toEqual([intern.bullets[0].text, "Cut weekly report preparation from 5 hours to 1 hour with PostgreSQL queries", intern.bullets[2].text]);
   });
 
-  it("puts back the original wording of a bullet that invents something, and the base summary for an invented one", () => {
+  it("keeps the resume's exact shape: same sections, jobs and bullets, in the same order", () => {
     const doc = tailored((d) => {
-      d.summary = "AWS Certified data analyst with 5 years of experience at Deloitte.";
-      d.sections[0].entries[0].bullets[0].text = "Built 12 Tableau dashboards that saved $2M across 3 regional warehouses";
-    });
-    const { value, warnings } = gateTailoredResume(base, doc);
-    expect(value.summary).toBe(base.summary);
-    expect(value.sections[0].entries[0].bullets[0].text).toBe(intern.bullets[0].text);
-    expect(warnings).toHaveLength(2);
-    expect(JSON.stringify(value)).not.toMatch(/Deloitte|AWS|\$2M|12 Tableau/);
-  });
-
-  it("drops skills, bullets and sections the base doesn't have, and keeps every job and section", () => {
-    const doc = tailored((d) => {
-      d.sections[2].items = ["Tableau", "Kubernetes", "SQL"];
-      d.sections[0].entries[0].bullets.push({ sourceId: "s1.e1.b99", text: "Led a team of 12 engineers at Google" });
+      d.sections[0].entries[0].bullets.reverse(); // reordered
+      d.sections[0].entries[0].bullets.pop(); // one dropped
+      d.sections[0].entries[0].bullets.push({ sourceId: "s1.e1.b99", text: "Led a team of 12 engineers at Google" }); // unknown id
       d.sections[0].entries = [d.sections[0].entries[0]]; // the help desk job left out
-      d.sections.splice(1, 1); // education left out
-      d.sections.push({ id: "s9", items: ["Top Secret clearance"], entries: [] });
+      d.sections.reverse(); // sections moved
     });
-    const { value, warnings } = gateTailoredResume(base, doc);
-    expect(value.sections.find((s) => s.id === "s3")!.items).toEqual(["Tableau", "SQL"]);
-    expect(warnings.join(" ")).toContain("Kubernetes");
-    expect(JSON.stringify(value)).not.toMatch(/Google|Kubernetes|Top Secret/);
-    // Leaving out a whole job or the education section would hide a date gap: both come back.
-    expect(value.sections.map((s) => s.id).sort()).toEqual(["s1", "s2", "s3"]);
+    const { value } = gateTailoredResume(base, doc);
+    expect(value.sections.map((s) => s.id)).toEqual(["s1", "s2", "s3"]);
     expect(value.sections[0].entries.map((e) => e.id)).toEqual(["s1.e1", "s1.e2"]);
+    expect(value.sections[0].entries[0].bullets.map((b) => b.sourceId)).toEqual(["s1.e1.b1", "s1.e1.b2", "s1.e1.b3"]);
+    expect(JSON.stringify(value)).not.toContain("Google");
   });
 
-  it("accepts skills taken from a skills sentence, not ones the sentence lacks", () => {
-    const sentence = structuredClone(base);
-    sentence.sections[2].items = ["Technical Skills: Proficient with SQL, Tableau and Python; skilled in Excel"];
-    const doc = tailored((d) => (d.sections[2].items = ["SQL", "Python.", "Snowflake"]));
-    const { value, warnings } = gateTailoredResume(sentence, doc);
-    expect(value.sections[2].items).toEqual(["SQL", "Python"]);
+  it("leaves Education, other sections and the summary exactly as written", () => {
+    const withSchoolBullet = structuredClone(base);
+    withSchoolBullet.sections[1].entries[0].bullets = [{ id: "s2.e1.b1", text: "Dean's list" }];
+    const doc = tailored((d) => {
+      d.summary = "Rewritten summary.";
+      d.sections[1].entries[0].bullets = [{ sourceId: "s2.e1.b1", text: "Dean's list every semester" }];
+    });
+    const { value } = gateTailoredResume(withSchoolBullet, doc);
+    expect(value.summary).toBe(base.summary);
+    expect(texts(value, 1)).toEqual(["Dean's list"]);
+  });
+
+  it("puts back the original wording of a bullet that invents something", () => {
+    const doc = tailored((d) => (d.sections[0].entries[0].bullets[0].text = "Built 12 Tableau dashboards that saved $2M across 3 regional warehouses"));
+    const { value, warnings } = gateTailoredResume(base, doc);
+    expect(texts(value)[0]).toBe(intern.bullets[0].text);
+    expect(warnings).toEqual([expect.stringContaining("\"12\"")]);
+  });
+
+  it("puts back a rewrite that drops one of the original's results", () => {
+    const doc = tailored((d) => (d.sections[0].entries[0].bullets[1].text = "Wrote SQL queries in PostgreSQL to speed up weekly report preparation"));
+    const { value, warnings } = gateTailoredResume(base, doc);
+    expect(texts(value)[1]).toBe(intern.bullets[1].text);
+    expect(warnings).toEqual([expect.stringContaining("left out")]);
+  });
+
+  it("puts back a rewrite that cuts most of the bullet, and ignores lines sent for a section without any", () => {
+    const doc = tailored((d) => {
+      d.sections[0].entries[0].bullets[2].text = "Cleaned shipment data in Excel";
+      d.sections[0].items = ["Data Analyst Intern | Prairie Logistics Co. | May 2024 - Aug 2024"];
+    });
+    const { value, warnings } = gateTailoredResume(base, doc);
+    expect(texts(value)[2]).toBe(intern.bullets[2].text);
+    expect(value.sections[0].items).toEqual([]);
+    expect(warnings).toEqual([expect.stringContaining("cut too much")]);
+  });
+
+  it("puts back a rewrite long enough to push the layout", () => {
+    const longer = `${intern.bullets[2].text}, then presented the results to operations leaders in a monthly review meeting`;
+    expect(findUnsupported(longer, [intern.bullets[2].text, intern.title, intern.org])).toEqual([]); // truthful, just long
+    const { value, warnings } = gateTailoredResume(base, tailored((d) => (d.sections[0].entries[0].bullets[2].text = longer)));
+    expect(texts(value)[2]).toBe(intern.bullets[2].text);
+    expect(warnings).toEqual([expect.stringContaining("layout")]);
+  });
+
+  it("lets a skills line reorder or drop its skills and keep its label, never gain one", () => {
+    const labeled = structuredClone(base);
+    labeled.sections[2].items = ["Technical Skills: SQL, PostgreSQL, Tableau, Excel, Python", "Tools: ServiceNow, Jira"];
+    const doc = tailored((d) => (d.sections[2].items = ["Technical Skills: Tableau, SQL, Python, Excel", "Tools: ServiceNow, Jira, Snowflake"]));
+    const { value, warnings } = gateTailoredResume(labeled, doc);
+    expect(value.sections[2].items).toEqual(["Technical Skills: Tableau, SQL, Python, Excel", "Tools: ServiceNow, Jira"]);
+    expect(warnings).toEqual([expect.stringContaining("Snowflake")]);
+    // A line with another label stays as written; a missing line stays as written.
+    const relabeled = gateTailoredResume(labeled, tailored((d) => (d.sections[2].items = ["Data: Tableau, SQL"]))).value;
+    expect(relabeled.sections[2].items).toEqual(labeled.sections[2].items);
+  });
+
+  it("lets a list of single skills be reordered and trimmed as a whole, never gain one", () => {
+    // The fixture's skills are single items: they print as one comma-separated line.
+    const doc = tailored((d) => (d.sections[2].items = ["Tableau", "SQL", "Python", "Snowflake"]));
+    const { value, warnings } = gateTailoredResume(base, doc);
+    expect(value.sections[2].items).toEqual(["Tableau", "SQL", "Python"]);
     expect(warnings).toEqual([expect.stringContaining("Snowflake")]);
   });
 
-  it("checks a summary against the whole resume text, lines the parse didn't place included", () => {
-    const withCoursework = { ...base, source: `${text}\nRelevant coursework: Database Management, Business Statistics` };
-    const doc = tailored((d) => (d.summary = "Information Systems graduate with coursework in Database Management."));
-    expect(gateTailoredResume(withCoursework, doc).value.summary).toBe("Information Systems graduate with coursework in Database Management.");
-    expect(gateTailoredResume({ ...base, source: undefined }, doc).value.summary).toBe(base.summary);
+  it("notes a skills line whose label changed, and doesn't ask a skills line to keep its numbers", () => {
+    const labeled = structuredClone(base);
+    labeled.sections[2].items = ["Technical Skills: SQL, Tableau, Microsoft Office 365", "Tools: ServiceNow, Jira"];
+    const doc = tailored((d) => (d.sections[2].items = ["Skills: SQL, Tableau", "Tools: Jira, ServiceNow"]));
+    const { value, warnings } = gateTailoredResume(labeled, doc);
+    expect(value.sections[2].items).toEqual(["Technical Skills: SQL, Tableau, Microsoft Office 365", "Tools: Jira, ServiceNow"]);
+    expect(warnings).toEqual([expect.stringContaining("label")]);
+    // A line returned without its label gets the label back.
+    const bare = gateTailoredResume(labeled, tailored((d) => (d.sections[2].items = ["Tableau, SQL", "Tools: ServiceNow, Jira"])));
+    expect(bare.value.sections[2].items[0]).toBe("Technical Skills: Tableau, SQL");
+    // Dropping "Office 365" (and its number) from a skills line is fine.
+    const trimmed = gateTailoredResume(labeled, tailored((d) => (d.sections[2].items = ["Technical Skills: Tableau, SQL", "Tools: ServiceNow, Jira"])));
+    expect(trimmed.value.sections[2].items[0]).toBe("Technical Skills: Tableau, SQL");
+    // The user's own label fix is kept.
+    const fixed = gateTailoredResume(labeled, tailored((d) => (d.sections[2].items = ["Tech Skills: SQL", "Tools: ServiceNow, Jira"])), { trusted: true });
+    expect(fixed.value.sections[2].items[0]).toBe("Tech Skills: SQL");
+  });
+
+  it("takes the user's own edits as written (trusted), still in the resume's shape", () => {
+    const doc = tailored((d) => {
+      d.sections[0].entries[0].bullets[0].text = "My own words about 9 dashboards and Looker";
+      d.sections[0].entries[0].bullets[1].text = "   ";
+      d.sections[0].entries[0].bullets.reverse();
+    });
+    const { value } = gateTailoredResume(base, doc, { trusted: true });
+    expect(texts(value)).toEqual(["My own words about 9 dashboards and Looker", intern.bullets[1].text, intern.bullets[2].text]);
   });
 
   it("never lets the AI write employers, titles or dates: the tailored resume only has ids and bullet text", () => {
@@ -143,11 +221,18 @@ describe("gateCoverLetter", () => {
 });
 
 /** A fake model that answers each call with the next canned answer. */
+/** A tailored resume in the tailoring step's answer shape (skills lines by id); other answers as they are. */
+function asAnswer(data: unknown): unknown {
+  const doc = data as Partial<TailoredResume>;
+  if (!doc.sections) return data;
+  return { sections: doc.sections.map((s) => ({ ...s, items: s.items.map((text, k) => ({ id: `${s.id}#${k}`, text })) })) };
+}
+
 function fakeAi(answers: unknown[]): { ai: AiJsonFn; calls: string[] } {
   const calls: string[] = [];
   const ai = (async (opts: { prompt: string }) => {
     calls.push(opts.prompt);
-    return { data: answers[Math.min(calls.length - 1, answers.length - 1)], provider: "gemini", model: "fake" };
+    return { data: asAnswer(answers[Math.min(calls.length - 1, answers.length - 1)]), provider: "gemini", model: "fake" };
   }) as unknown as AiJsonFn;
   return { ai, calls };
 }
@@ -184,8 +269,26 @@ describe("end to end with a model that fabricates", () => {
     expect(r.value.join(" ")).toContain("Denver");
   });
 
+  it("asks again when most bullets come back unchanged, and keeps the best of both answers", async () => {
+    const lazy = tailored(); // everything copied back as written
+    const second = tailored((d) => {
+      d.sections[0].entries[0].bullets[0].text = "Built 6 Tableau dashboards tracking on-time delivery across 3 regional warehouses";
+      d.sections[0].entries[0].bullets[1].text = "Wrote PostgreSQL SQL queries that cut weekly report preparation from 5 hours to 1 hour";
+      d.sections[0].entries[1].bullets[0].text = "Resolved about 40 tickets a week in ServiceNow for 300 students"; // invented number: stays as written
+    });
+    const { ai, calls } = fakeAi([lazy, second]);
+    const r = await tailorResume({ base, job, focus, ai, deadline: Date.now() + 60_000 });
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toContain("came back unchanged");
+    const bullets = r.value.sections[0].entries.flatMap((e) => e.bullets.map((b) => b.text));
+    expect(bullets[0]).toContain("across 3 regional warehouses");
+    expect(bullets[1]).toContain("Wrote PostgreSQL SQL queries");
+    expect(bullets.join(" ")).not.toContain("300");
+    expect(r.warnings).toEqual([expect.stringContaining("\"300\"")]);
+  });
+
   it("doesn't retry without time for it", async () => {
-    const { ai, calls } = fakeAi([tailored((d) => (d.summary = "Snowflake expert."))]);
+    const { ai, calls } = fakeAi([tailored((d) => (d.sections[0].entries[0].bullets[0].text = "Built 6 Snowflake dashboards for 3 regional warehouses"))]);
     await tailorResume({ base, job, focus, ai, deadline: Date.now() + 5_000 });
     expect(calls).toHaveLength(1);
   });

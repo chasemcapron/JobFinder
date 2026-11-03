@@ -6,8 +6,7 @@ import { useMemo, useState, useTransition } from "react";
 import { Alert, Badge, Button, buttonClass, Card, cx, Icon, inputClass } from "@/components/ui";
 import type { TailoredResume } from "@/db/schema";
 import { diffTailored, type WordOp } from "@/lib/tailor/diff";
-import { COVER_GREETING, COVER_LETTER_WORDS as WORDS, COVER_SIGN_OFF, fileName, renderTailored, wordCount as countWords, type Contact } from "@/lib/tailor/render";
-import { containsTerm } from "@/lib/text";
+import { COVER_GREETING, COVER_LETTER_WORDS as WORDS, COVER_SIGN_OFF, EDITABLE_KINDS, entryLines, fileName, keepsShape, renderTailored, wordCount as countWords, type Contact } from "@/lib/tailor/render";
 import { coverLetterAction, prepareResumeAction, saveEditsAction, tailorResumeAction } from "./actions";
 import type { VersionView } from "./view";
 
@@ -120,6 +119,8 @@ export function TailorWorkspace({
   }
 
   const base = current.base;
+  // Made before tailoring kept the resume's shape: viewable and downloadable, not editable.
+  const legacy = !keepsShape(base, current.resume);
   const letterWords = countWords((paragraphs ?? []).join(" "));
 
   return (
@@ -145,6 +146,9 @@ export function TailorWorkspace({
       </div>
 
       {status ? <Alert tone="info">{status}</Alert> : null}
+      {legacy ? (
+        <Alert tone="info">This version was made before tailoring kept your resume&apos;s exact layout. It can be downloaded but not edited: make a new version to edit.</Alert>
+      ) : null}
       {!paragraphs && !status ? (
         <Alert tone="warning" title="No cover letter yet">
           Writing it failed or hasn&apos;t run yet.{" "}
@@ -198,7 +202,7 @@ export function TailorWorkspace({
       </div>
 
       {tab === "resume" ? (
-        <ResumeEditor base={base} resume={resume} edit={edit} />
+        <ResumeEditor base={base} resume={resume} edit={edit} readOnly={legacy} />
       ) : tab === "letter" ? (
         <Card className="flex flex-col gap-3">
           {paragraphs ? (
@@ -299,93 +303,77 @@ function ResumeEditor({
   base,
   resume,
   edit,
+  readOnly,
 }: {
   base: VersionView["base"];
   resume: TailoredResume;
   edit: (fn: (r: TailoredResume) => TailoredResume) => void;
+  /** Older versions (made before tailoring kept the resume's shape) can't be edited. */
+  readOnly: boolean;
 }) {
+  // Laid out like the download (two-line headers, places and dates on the right). Only the sentences of
+  // Experience, Projects and Skills can be edited; every other section is shown as your resume has it.
   return (
     <Card className="flex flex-col gap-5">
-      <section className="flex flex-col gap-1.5">
-        <h2 className="text-xs font-bold tracking-wide text-muted uppercase">Summary</h2>
-        <textarea
-          aria-label="Summary"
-          className={cx(inputClass, "field-sizing-content min-h-16 py-2")}
-          value={resume.summary ?? ""}
-          placeholder="No summary"
-          onChange={(e) => edit((r) => ({ ...r, summary: e.target.value }))}
-        />
-      </section>
+      {resume.summary ? (
+        <section className="flex flex-col gap-1.5">
+          <h2 className="border-b border-border pb-1 text-xs font-bold tracking-wide text-muted uppercase">Summary</h2>
+          <p className="text-sm">{resume.summary}</p>
+        </section>
+      ) : null}
       {resume.sections.map((s, si) => {
         const bs = base.sections.find((x) => x.id === s.id);
         if (!bs) return null;
-        // A base item counts as used when it, or a skill taken from it, is listed (as in the Changes view).
-        const droppedItems = bs.items.filter((i) => !s.items.some((k) => k === i || containsTerm(i, k)));
+        const editable = !readOnly && EDITABLE_KINDS.has(bs.kind);
         return (
           <section key={s.id} className="flex flex-col gap-2">
-            <h2 className="border-b border-border pb-1 text-xs font-bold tracking-wide text-muted uppercase">{bs.heading}</h2>
-            {bs.items.length ? (
-              <div className="flex flex-wrap gap-1.5">
-                {s.items.map((item) => (
-                  <button
-                    key={item}
-                    className="rounded-pill border border-border px-2.5 py-0.5 text-sm hover:border-danger"
-                    title="Leave out"
-                    onClick={() => edit((r) => (r.sections[si].items = r.sections[si].items.filter((x) => x !== item), r))}
-                  >
-                    {item} <span aria-hidden>×</span>
-                    <span className="sr-only">(leave out)</span>
-                  </button>
-                ))}
-                {droppedItems.map((item) => (
-                  <button
-                    key={item}
-                    className="rounded-pill border border-dashed border-border px-2.5 py-0.5 text-sm text-muted"
-                    title="Add back"
-                    onClick={() => edit((r) => (r.sections[si].items.push(item), r))}
-                  >
-                    + {item}
-                  </button>
-                ))}
-              </div>
-            ) : null}
+            <h2 className="border-b border-border pb-1 text-xs font-bold tracking-wide text-muted uppercase">
+              {bs.heading}
+              {editable ? "" : " · as in your resume"}
+            </h2>
+            {s.items.map((item, k) =>
+              editable ? (
+                <textarea
+                  key={k}
+                  aria-label={`${bs.heading} line ${k + 1}`}
+                  className={cx(inputClass, "field-sizing-content min-h-9 py-1.5")}
+                  value={item}
+                  onChange={(ev) => edit((r) => ((r.sections[si].items[k] = ev.target.value), r))}
+                />
+              ) : (
+                <p key={k} className="text-sm">
+                  {item}
+                </p>
+              ),
+            )}
             {s.entries.map((e, ei) => {
               const be = bs.entries.find((x) => x.id === e.id);
               if (!be) return null;
-              const dropped = be.bullets.filter((b) => !e.bullets.some((x) => x.sourceId === b.id));
               return (
                 <div key={e.id} className="flex flex-col gap-1.5">
-                  <p className="flex flex-wrap justify-between gap-x-3 text-sm">
-                    <span className="font-semibold">{[be.title, be.org].filter(Boolean).join(", ")}</span>
-                    <span className="text-muted">{[be.location, be.dates].filter(Boolean).join(" · ")}</span>
-                  </p>
-                  {e.bullets.map((b, bi) => (
-                    <div key={b.sourceId} className="flex items-start gap-2">
+                  <div>
+                    {entryLines(be).map((line, k) => (
+                      <p key={k} className="flex flex-wrap justify-between gap-x-3 text-sm">
+                        <span className={line.leftStyle === "bold" ? "font-semibold" : "italic"}>{line.left}</span>
+                        {line.right ? <span className={line.rightStyle === "bold" ? "font-semibold" : line.rightStyle === "italic" ? "italic" : ""}>{line.right}</span> : null}
+                      </p>
+                    ))}
+                  </div>
+                  {e.bullets.map((b, bi) =>
+                    editable ? (
                       <textarea
+                        key={b.sourceId}
                         aria-label="Bullet"
-                        className={cx(inputClass, "field-sizing-content min-h-9 flex-1 py-1.5")}
+                        className={cx(inputClass, "field-sizing-content min-h-9 py-1.5")}
                         value={b.text}
                         onChange={(ev) => edit((r) => ((r.sections[si].entries[ei].bullets[bi].text = ev.target.value), r))}
                       />
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label="Leave this bullet out"
-                        onClick={() => edit((r) => (r.sections[si].entries[ei].bullets.splice(bi, 1), r))}
-                      >
-                        <Icon name="x" className="size-4" />
-                      </Button>
-                    </div>
-                  ))}
-                  {dropped.map((b) => (
-                    <button
-                      key={b.id}
-                      className="rounded-control border border-dashed border-border px-2 py-1 text-left text-sm text-muted hover:text-foreground"
-                      onClick={() => edit((r) => (r.sections[si].entries[ei].bullets.push({ sourceId: b.id, text: b.text }), r))}
-                    >
-                      + Add back: {b.text}
-                    </button>
-                  ))}
+                    ) : (
+                      <p key={b.sourceId} className="pl-4 text-sm -indent-3">
+                        • {b.text}
+                      </p>
+                    ),
+                  )}
                 </div>
               );
             })}
@@ -444,11 +432,17 @@ function Changes({ base, resume }: { base: VersionView["base"]; resume: Tailored
             {s.heading}
             {s.moved ? " · moved" : ""}
           </h2>
-          {s.items.dropped.length || s.items.reordered ? (
-            <p className="text-sm">
-              {s.items.reordered ? "Reordered for this posting. " : ""}
-              {s.items.dropped.length ? `Left out: ${s.items.dropped.join(", ")}` : ""}
-            </p>
+          {s.items.length ? (
+            <ul className="flex flex-col gap-1.5">
+              {s.items.map((b, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm">
+                  <Badge tone={STATUS_TONE[b.status]}>{STATUS_LABEL[b.status]}</Badge>
+                  <span className={cx("leading-relaxed", b.status === "dropped" && "text-muted line-through")}>
+                    {b.status === "rephrased" ? <Ops ops={b.ops} /> : b.text}
+                  </span>
+                </li>
+              ))}
+            </ul>
           ) : null}
           {s.entries.map((e) => (
             <div key={e.id} className="flex flex-col gap-1">

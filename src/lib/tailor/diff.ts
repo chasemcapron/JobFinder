@@ -1,5 +1,5 @@
 import type { ResumeStructure, TailoredResume } from "@/db/schema";
-import { containsTerm } from "@/lib/text";
+import { isShortList } from "./render";
 
 /** One word-level edit: kept, added or removed. */
 export type WordOp = { op: "same" | "add" | "del"; text: string };
@@ -47,7 +47,8 @@ export type SectionChanges = {
   /** Position in the tailored resume, then in the base. */
   moved: boolean;
   entries: EntryChanges[];
-  items: { kept: string[]; dropped: string[]; reordered: boolean };
+  /** Each skills line (or the one list of single skills), kept, rephrased in place, or gone (older versions). */
+  items: BulletChange[];
 };
 export type ResumeChanges = {
   summary: { status: "kept" | "rewritten" | "added" | "removed"; before: string | null; after: string | null; ops: WordOp[] };
@@ -91,21 +92,17 @@ export function diffTailored(base: ResumeStructure, doc: TailoredResume): Resume
       }
       return { id: be.id, label: [be.title, be.org].filter(Boolean).join(", ") || bs.heading, bullets };
     });
-    const kept = s.items;
-    return [
-      {
-        id: s.id,
-        heading: bs.heading,
-        moved: base.sections.indexOf(bs) !== si,
-        entries,
-        items: {
-          kept,
-          // A base item counts as kept when it, or a skill taken from it, is ("SQL" from "Proficient with SQL and AWS").
-          dropped: bs.items.filter((i) => !kept.some((k) => k === i || containsTerm(i, k))),
-          reordered: kept.join("\n") !== bs.items.filter((i) => kept.includes(i)).join("\n"),
-        },
-      },
-    ];
+    // Skills lines are rewritten in place, so each is compared with its own original; a list of single
+    // skills ("SQL", "Tableau") is compared as the one line it prints as.
+    const pairs: [string, string | undefined][] = isShortList(bs.items)
+      ? bs.items.length
+        ? [[bs.items.join(", "), s.items.length ? s.items.join(", ") : undefined]]
+        : []
+      : bs.items.map((line, k) => [line, s.items[k]]);
+    const items: BulletChange[] = pairs.map(([original, now]) =>
+      now === undefined ? { status: "dropped", text: original } : now === original ? { status: "kept", text: now } : { status: "rephrased", text: now, ops: wordDiff(original, now) },
+    );
+    return [{ id: s.id, heading: bs.heading, moved: base.sections.indexOf(bs) !== si, entries, items }];
   });
   return { summary, sections, counts };
 }

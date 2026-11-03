@@ -15,6 +15,7 @@ import { redactPersonalInfo } from "@/lib/ai/redact";
 import type { AiJsonFn } from "@/lib/jobs/ai-score";
 import { ensureProfile, getUser } from "@/lib/profile";
 import { gateTailoredResume } from "./fact-check";
+import { keepsShape } from "./render";
 import { tailorResume, writeCoverLetter, type TailorFocus } from "./generate";
 import { parseResumeStructure, resumeHash } from "./structure";
 
@@ -161,19 +162,14 @@ export async function addCoverLetter(userId: string, jobId: string, version: num
 
 /**
  * Saves the user's own edits to a version. They're the user's words, so they aren't fact-checked,
- * but they can still only point at the base resume's sections, entries and bullets.
+ * but the resume keeps the base's shape: same sections, bullets and lines, in the same order.
  */
 export async function saveEdits(userId: string, jobId: string, version: number, edits: { resume: TailoredResume; paragraphs: string[] | null }, db: Db) {
   const row = await versionRow(userId, jobId, version, db);
-  // A bullet emptied in the editor is a bullet removed.
-  const trimmed: TailoredResume = {
-    summary: edits.resume.summary?.trim() || null,
-    sections: edits.resume.sections.map((s) => ({
-      ...s,
-      entries: s.entries.map((e) => ({ ...e, bullets: e.bullets.map((b) => ({ ...b, text: b.text.trim() })).filter((b) => b.text) })),
-    })),
-  };
-  const resume = keepShape(row.base, trimmed);
+  // Versions made before tailoring kept the resume's shape could reorder and leave pieces out: edits map by position, so they'd land in the wrong place.
+  if (!keepsShape(row.base, row.resume)) throw new TailorError("This version was made before tailoring kept your resume's layout. Make a new version to edit it.");
+  // Same bullets and lines in the same order; a bullet emptied in the editor keeps its original wording.
+  const resume = gateTailoredResume(row.base, edits.resume, { trusted: true }).value;
   const paragraphs = edits.paragraphs?.map((p) => p.trim()).filter(Boolean) ?? null;
   const [updated] = await db
     .update(tailoredDocuments)
@@ -182,26 +178,6 @@ export async function saveEdits(userId: string, jobId: string, version: number, 
     .where(eq(tailoredDocuments.id, row.id))
     .returning();
   return updated;
-}
-
-/** The gate's shape rules (ids, order, completeness) without its wording check. */
-function keepShape(base: ResumeStructure, doc: TailoredResume): TailoredResume {
-  // Every edited bullet is its own source here, so the wording check passes and only the shape is enforced.
-  const own: ResumeStructure = {
-    ...base,
-    summary: doc.summary,
-    sections: base.sections.map((s) => ({
-      ...s,
-      entries: s.entries.map((e) => ({
-        ...e,
-        bullets: e.bullets.map((b) => {
-          const edited = doc.sections.find((x) => x.id === s.id)?.entries.find((x) => x.id === e.id)?.bullets.find((x) => x.sourceId === b.id);
-          return edited ? { ...b, text: edited.text } : b;
-        }),
-      })),
-    })),
-  };
-  return gateTailoredResume(own, doc).value;
 }
 
 /** When the job is marked applied: the newest version is the one sent. */

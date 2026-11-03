@@ -1,7 +1,8 @@
 import type { ResumeStructure, TailoredResume } from "@/db/schema";
 import { mentionsSkill } from "@/lib/jobs/scoring";
 import { KNOWN_SKILLS } from "@/lib/resume/skills-dictionary";
-import { containsTerm } from "@/lib/text";
+import { containsTerm, uniqueCaseInsensitive } from "@/lib/text";
+import { EDITABLE_KINDS, isShortList, splitLabel } from "./render";
 export { wordCount } from "./render";
 
 /**
@@ -23,6 +24,9 @@ export type Violation = { kind: "number" | "skill" | "name" | "credential"; term
 
 const NUMBER = /\$?\d[\d,]*(?:\.\d+)?%?/g;
 const CREDENTIAL = /\b(?:certifi\w*|licen[sc]\w*|clearance|bachelor\w*|master'?s|ph\.?\s?d\.?|doctorate|associate'?s degree|mba|degree)\b/gi;
+// A degree named in full ("Master of Science", "B.S. in"), not words that only look like one ("Scrum Master", "MS Excel", "Boston, MA").
+const DEGREE_NAME =
+  /\b(?:bachelor(?:'s)?\b|master(?:'s)? (?:of|in|degree)\b|associate(?:'s)? (?:of|in|degree)\b|doctor(?:ate|al)? (?:of|in|degree)\b|doctorate\b|ph\.?\s?d\b|m\.?b\.?a\b|b\.?b\.?a\b|[bm]\.[as]\.? (?:in|of)\b|[bm][as] (?:in|of)\b)/i;
 // Words a letter or resume uses capitalized for their own sake, not as names.
 const PLAIN_CAPITALIZED = new Set([
   "i", "i'm", "i've", "i'd", "i'll", "dear", "hiring", "manager", "team", "sincerely", "regards", "best", "thank",
@@ -47,7 +51,8 @@ function sentenceStarts(text: string): Set<number> {
 function namesIn(text: string): string[] {
   const starts = sentenceStarts(text);
   const out: string[] = [];
-  for (const m of text.matchAll(/[A-Za-z][A-Za-z0-9&'+#./-]*/g)) {
+  // A word starts at a word boundary: the "M+" of "$1M+" is part of a number, not a name.
+  for (const m of text.matchAll(/(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9&'+#./-]*/g)) {
     const word = m[0].replace(/[.'-]+$/, "");
     const acronym = /^[A-Z0-9&+#./-]{2,}$/.test(word) && /[A-Z]/.test(word);
     const capitalized = /^[A-Z]/.test(word) && !starts.has(m.index);
@@ -91,7 +96,9 @@ export function findUnsupported(
   }
 
   for (const m of text.matchAll(CREDENTIAL)) {
-    if (!containsTerm(source, m[0])) add({ kind: "credential", term: m[0] });
+    // "degree" on its own refers to one the resume names ("pursuing this degree" for "Master of Science").
+    const namesADegree = /^degree$/i.test(m[0]) && DEGREE_NAME.test(source);
+    if (!containsTerm(source, m[0]) && !namesADegree) add({ kind: "credential", term: m[0] });
   }
   return out;
 }
@@ -100,7 +107,7 @@ export function describeViolations(v: Violation[]): string {
   return v.map((x) => `"${x.term}"`).join(", ");
 }
 
-export type GateResult<T> = { value: T; warnings: string[]; violations: Violation[] };
+export type GateResult<T> = { value: T; warnings: string[]; violations: Violation[]; notes?: Record<string, string> };
 
 /**
  * Everything the resume says, for the summary's and cover letter's source: the (redacted) resume
@@ -118,83 +125,177 @@ export function resumeFacts(base: ResumeStructure): string {
 }
 
 /**
- * Checks a tailored resume against its base and returns a truthful, complete one:
- * - only sections, entries and bullets the base has (by id), each once. Sections and bullets take
- *   the AI's order; entries (jobs, schools) keep the base's, so dates stay in order. Every base
- *   section and entry is kept (a section the AI skipped comes back as in the base, an entry left
- *   with no bullets gets its first one back): leaving out a whole job would hide a date gap;
- * - skills only from the base section's own list (all of them if the AI listed none);
- * - a bullet whose new wording claims something its base bullet (and entry header) doesn't say
- *   goes back to the base wording; a summary that claims something the resume doesn't, to the base
- *   summary (or none).
+ * Characters on one bullet line of the resume layout (10.5pt Times across 6.5 in less the 18pt
+ * indent holds ~98; measured on the owner's PDF: 100). A little under, so a rewrite never wraps
+ * where the original didn't.
  */
-export function gateTailoredResume(base: ResumeStructure, doc: TailoredResume, opts: { terms?: string[] } = {}): GateResult<TailoredResume> {
-  const warnings: string[] = [];
-  const violations: Violation[] = [];
-  const facts = resumeFacts(base);
+export const LINE_CHARS = 95;
 
-  let summary = doc.summary?.trim() || null;
-  if (summary) {
-    const v = findUnsupported(summary, [facts], opts);
+/** A rewrite that wraps to more lines than its original would push the rest of the page down. */
+export function tooLong(rewrite: string, original: string): boolean {
+  const lines = (s: string) => Math.max(1, Math.ceil(s.length / LINE_CHARS));
+  return lines(rewrite) > lines(original);
+}
+
+/**
+ * Rebuilds a tailored resume from its base, so it has the base's exact shape (every section,
+ * entry, bullet and skills line, in the base's order: the user's layout stays as it was) and takes
+ * from the AI only new wording for the bullets and skills lines of Experience, Projects and Skills:
+ * - a rewrite that claims something its own original (and entry header) doesn't say goes back to
+ *   the original wording, as does a bullet rewrite that drops one of its numbers (its results) or
+ *   wraps onto more lines than the original;
+ * - a skills line may reorder, emphasize or drop the skills it lists, never add one, and keeps its
+ *   "Label:"; a list of single skills ("SQL", "Tableau") may be reordered or trimmed as a whole;
+ * - the summary, Education and every other section stay exactly as in the resume.
+ * `trusted` (the user's own edits): wording is taken as given, only the shape is enforced.
+ */
+export function gateTailoredResume(
+  base: ResumeStructure,
+  doc: TailoredResume,
+  opts: { terms?: string[]; trusted?: boolean } = {},
+): GateResult<TailoredResume> {
+  const violations: Violation[] = [];
+  // Why a piece kept its original wording, by piece key (see `pieces`).
+  const notes: Record<string, string> = {};
+  // Returns the rewrite when it may replace the original, else the original (with the reason noted).
+  const accept = (key: string, rewrite: string | undefined, original: string, sources: (string | undefined)[], where: string, bullet: boolean): string => {
+    const text = rewrite?.trim();
+    if (!text || text === original) return original;
+    if (opts.trusted) return text;
+    const v = findUnsupported(text, sources, opts);
     if (v.length) {
       violations.push(...v);
-      warnings.push(`Summary kept as in your resume: the rewrite added ${describeViolations(v)}.`);
-      summary = base.summary;
+      notes[key] = `Kept your original wording for ${where}: the rewrite added ${describeViolations(v)}.`;
+      return original;
     }
-  }
-
-  const sections: TailoredResume["sections"] = [];
-  const usedSections = new Set<string>();
-  for (const s of doc.sections) {
-    const bs = base.sections.find((x) => x.id === s.id);
-    if (!bs || usedSections.has(s.id)) continue;
-    usedSections.add(s.id);
-    // An item is the base's when it's one of its items or part of one: resumes often list skills
-    // in a sentence ("Proficient with SQL, AWS and C#"), which the model splits into "SQL", "AWS".
-    const baseItems = bs.items.join("\n");
-    const items: string[] = [];
-    for (const raw of s.items) {
-      const item = raw.trim().replace(/[.;,]+$/, "");
-      if (!item) continue;
-      const known = bs.items.find((i) => i.toLowerCase() === item.toLowerCase()) ?? (containsTerm(baseItems, item) ? item : null);
-      if (known && !items.some((i) => i.toLowerCase() === known.toLowerCase())) items.push(known);
-      else if (!known) warnings.push(`Left out "${item}": it isn't in your resume's ${bs.heading}.`);
+    if (bullet && text.length < original.length * 0.6) {
+      // Rewording, not cutting: a rewrite this much shorter has left out what the bullet said.
+      notes[key] = `Kept your original wording for ${where}: the rewrite cut too much of it.`;
+      return original;
     }
-    const entries: TailoredResume["sections"][number]["entries"] = [];
-    for (const be of bs.entries) {
-      const e = s.entries.find((x) => x.id === be.id) ?? { id: be.id, bullets: be.bullets.map((b) => ({ sourceId: b.id, text: b.text })) };
-      const bullets: TailoredResume["sections"][number]["entries"][number]["bullets"] = [];
-      const usedBullets = new Set<string>();
-      for (const b of e.bullets) {
-        const bb = be.bullets.find((x) => x.id === b.sourceId);
-        if (!bb || usedBullets.has(b.sourceId)) continue;
-        usedBullets.add(b.sourceId);
-        const text = b.text.trim();
-        const v = text ? findUnsupported(text, [bb.text, be.title, be.org], opts) : [];
-        if (!text || v.length) {
-          if (v.length) {
-            violations.push(...v);
-            warnings.push(`Kept your original wording for a ${be.org ?? be.title ?? bs.heading} bullet: the rewrite added ${describeViolations(v)}.`);
-          }
-          bullets.push({ sourceId: bb.id, text: bb.text });
-        } else {
-          bullets.push({ sourceId: bb.id, text });
-        }
+    if (bullet) {
+      // Rewording keeps the results: a bullet that drops one of its numbers loses what it achieved.
+      const kept = numbersIn(text);
+      const lost = [...numbersIn(original)].filter((n) => !kept.has(n));
+      if (lost.length) {
+        notes[key] = `Kept your original wording for ${where}: the rewrite left out ${lost.map((n) => `"${n}"`).join(", ")}.`;
+        return original;
       }
-      if (bullets.length === 0 && be.bullets.length) bullets.push({ sourceId: be.bullets[0].id, text: be.bullets[0].text });
-      entries.push({ id: be.id, bullets });
     }
-    sections.push({ id: bs.id, entries, items: items.length ? items : [...bs.items] });
-  }
-  for (const bs of base.sections) {
-    if (usedSections.has(bs.id)) continue;
-    sections.push({
-      id: bs.id,
-      items: [...bs.items],
-      entries: bs.entries.map((be) => ({ id: be.id, bullets: be.bullets.map((b) => ({ sourceId: b.id, text: b.text })) })),
+    if (tooLong(text, original)) {
+      notes[key] = `Kept your original wording for ${where}: the rewrite was long enough to push your layout.`;
+      return original;
+    }
+    return text;
+  };
+
+  const sections = base.sections.map((bs) => {
+    const s = EDITABLE_KINDS.has(bs.kind) ? doc.sections.find((x) => x.id === bs.id) : undefined;
+    let items: string[];
+    if (isShortList(bs.items) && opts.trusted) {
+      // The user's own list, as they left it (any order or length; it prints as one line).
+      const own = (s?.items ?? bs.items).map((i) => i.trim()).filter(Boolean);
+      items = own.length ? own : [...bs.items];
+    } else if (bs.items.length === 0) {
+      // A section without lines (experience, projects): whatever came back as lines is ignored.
+      items = [];
+    } else if (isShortList(bs.items)) {
+      // One list of single skills: any order, any subset, nothing new (layout: one comma-separated line).
+      const picked = uniqueCaseInsensitive((s?.items ?? []).map((i) => i.trim()).filter(Boolean));
+      const known = picked.map((i) => bs.items.find((b) => b.toLowerCase() === i.toLowerCase())).filter((i): i is string => Boolean(i));
+      const added = picked.filter((i) => !bs.items.some((b) => b.toLowerCase() === i.toLowerCase()));
+      if (added.length) notes[`${bs.id}#list`] = `Left out ${added.map((a) => `"${a}"`).join(", ")} from ${bs.heading}: not in your resume.`;
+      items = known.length ? known : [...bs.items];
+    } else {
+      items = bs.items.map((line, k) => {
+        const key = `${bs.id}#${k}`;
+        let rewrite = s?.items[k]?.trim();
+        const label = splitLabel(line).label;
+        if (!opts.trusted && label && rewrite && !rewrite.toLowerCase().startsWith(label.toLowerCase())) {
+          // Models often return just the list: the line's own label goes back in front. A different label is rejected.
+          if (splitLabel(rewrite).label) {
+            notes[key] = `Kept your original wording for a ${bs.heading} line: the rewrite changed its label "${label}".`;
+            return line;
+          }
+          rewrite = `${label} ${rewrite}`;
+        }
+        return accept(key, rewrite, line, [line], `a ${bs.heading} line`, false);
+      });
+    }
+    const entries = bs.entries.map((be) => {
+      const te = s?.entries.find((x) => x.id === be.id);
+      return {
+        id: be.id,
+        bullets: be.bullets.map((bb) => ({
+          sourceId: bb.id,
+          text: accept(bb.id, te?.bullets.find((x) => x.sourceId === bb.id)?.text, bb.text, [bb.text, be.title, be.org], `a ${be.org ?? be.title ?? bs.heading} bullet`, true),
+        })),
+      };
     });
-  }
-  return { value: { summary, sections }, warnings, violations };
+    return { id: bs.id, entries, items };
+  });
+  return { value: { summary: base.summary, sections }, warnings: Object.values(notes), violations, notes };
+}
+
+/**
+ * The rewritable pieces of a gated resume next to their originals: every bullet and skills line of
+ * Experience, Projects and Skills (a list of single skills counts as one piece). Gated resumes share
+ * the base's shape, so pieces line up by position.
+ */
+export function pieces(base: ResumeStructure, doc: TailoredResume): { key: string; original: string; text: string }[] {
+  return base.sections.flatMap((bs, i) => {
+    if (!EDITABLE_KINDS.has(bs.kind)) return [];
+    const s = doc.sections[i];
+    const lines = isShortList(bs.items)
+      ? bs.items.length
+        ? [{ key: `${bs.id}#list`, original: bs.items.join(", "), text: s.items.join(", ") }]
+        : []
+      : bs.items.map((line, k) => ({ key: `${bs.id}#${k}`, original: line, text: s.items[k] }));
+    const bullets = bs.entries.flatMap((be, j) => be.bullets.map((bb, k) => ({ key: bb.id, original: bb.text, text: s.entries[j].bullets[k].text })));
+    return [...bullets, ...lines];
+  });
+}
+
+/** How many of the rewritable pieces a gated resume rewrote, out of how many. */
+export function rewriteCount(base: ResumeStructure, doc: TailoredResume): { rewritten: number; total: number } {
+  const all = pieces(base, doc);
+  return { rewritten: all.filter((p) => p.text !== p.original).length, total: all.length };
+}
+
+/**
+ * Two gated answers to the same request, merged piece by piece: each bullet and skills line takes
+ * the second answer's rewrite, else the first's, else stays as written; a "kept your original
+ * wording" note is kept only for pieces that did stay as written. Both answers already passed the
+ * gate, so whatever is picked is truthful.
+ */
+export function mergeGated(base: ResumeStructure, first: GateResult<TailoredResume>, second: GateResult<TailoredResume>): GateResult<TailoredResume> {
+  const notes: Record<string, string> = {};
+  const pick = <T,>(key: string, unchanged: (v: T) => boolean, a: T, b: T): T => {
+    const value = !unchanged(b) ? b : a;
+    if (unchanged(value)) {
+      const note = second.notes?.[key] ?? first.notes?.[key];
+      if (note) notes[key] = note;
+    }
+    return value;
+  };
+  const sections = base.sections.map((bs, i) => {
+    const [fa, fb] = [first.value.sections[i], second.value.sections[i]];
+    const items = isShortList(bs.items)
+      ? pick(`${bs.id}#list`, (v: string[]) => v.join("\n") === bs.items.join("\n"), fa.items, fb.items)
+      : bs.items.map((line, k) => pick(`${bs.id}#${k}`, (v: string) => v === line, fa.items[k], fb.items[k]));
+    return {
+      id: bs.id,
+      items,
+      entries: bs.entries.map((be, j) => ({
+        id: be.id,
+        bullets: be.bullets.map((bb, k) => ({
+          sourceId: bb.id,
+          text: pick(bb.id, (v: string) => v === bb.text, fa.entries[j].bullets[k].text, fb.entries[j].bullets[k].text),
+        })),
+      })),
+    };
+  });
+  return { value: { summary: base.summary, sections }, warnings: Object.values(notes), violations: [...first.violations, ...second.violations], notes };
 }
 
 /** Splits a paragraph into sentences (keeping their punctuation). */
