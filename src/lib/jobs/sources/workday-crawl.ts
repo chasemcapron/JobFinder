@@ -23,7 +23,9 @@ import {
  * three titles and 25 details in 9 s; measured on 2026-11-03, that reached 19 of 34+ relevant
  * Capital One listings, and pages 2-5 were still 45-80% relevant. So this one:
  * - searches every target title and a few synonyms, US filter on;
- * - pages until the site's total, MAX_OFFSET, or two pages in a row with no relevant title;
+ * - pages each term until its total, MAX_OFFSET, or two thin pages in a row (no title at
+ *   STRONG_SIMILARITY and fewer than two at RELEVANT_SIMILARITY), within a budget of
+ *   MAX_PAGES_PER_SITE listing pages shared by all terms;
  * - fetches details only for postings not already stored (`knownKeys`), best titles first;
  * - reports every US listing it saw, so stored postings are marked seen and don't go stale;
  * - spaces requests and backs off on 429 (Workday sits behind Cloudflare, which rate limited one
@@ -36,8 +38,9 @@ const PAGE_SIZE = 20;
 export const MAX_OFFSET = 400;
 /** Listings with at least this title similarity count as relevant (and get their details fetched). */
 export const RELEVANT_SIMILARITY = 0.3;
-/** Paging goes on only while a page has at least PAGE_KEEP_GOING titles this close to a target title. */
-const STRONG_SIMILARITY = 0.5;
+/** A page is worth following with one title this close to a target title, */
+export const STRONG_SIMILARITY = 0.5;
+/** or with this many relevant ones. */
 const PAGE_KEEP_GOING = 2;
 /**
  * Listing pages per site per night, shared by its search terms. Without a budget, 12 terms × 20 pages
@@ -145,35 +148,43 @@ export async function crawlWorkdaySite(slug: string, opts: CrawlOptions): Promis
     }
   };
 
-  // The site's page budget is shared evenly by its terms; a term that ends early leaves its pages unused.
-  const pagesPerQuery = Math.max(2, Math.ceil(MAX_PAGES_PER_SITE / Math.max(1, opts.queries.length)));
+  // One term's state; `done` once it reaches its total, MAX_OFFSET, an empty page, or two thin pages.
+  const searches = opts.queries.map((query) => ({ query, offset: 0, total: Infinity, barren: 0, done: false }));
+  const readPage = async (t: (typeof searches)[number]) => {
+    const data = await listPage(t.query, t.offset);
+    // Only the first page states the total; later pages may say 0.
+    if (t.offset === 0) t.total = data.total ?? 0;
+    const postings = parseItems(data.jobPostings ?? [], ListingPosting);
+    let strong = 0;
+    let relevant = 0;
+    for (const p of postings) {
+      const sim = relevance(p.title);
+      if (sim >= STRONG_SIMILARITY) strong++;
+      if (sim >= RELEVANT_SIMILARITY) relevant++;
+      const prev = listings.get(p.externalPath);
+      listings.set(p.externalPath, {
+        posting: p,
+        relevant: sim >= RELEVANT_SIMILARITY || Boolean(prev?.relevant),
+        firstPage: t.offset === 0 || Boolean(prev?.firstPage),
+      });
+    }
+    // A page is worth following if it has one close title or a couple of related ones (Leidos
+    // lists about one exact match per page among others). Two thin pages in a row end the term;
+    // one can be followed by a good one (also seen on Leidos).
+    t.barren = strong >= 1 || relevant >= PAGE_KEEP_GOING ? 0 : t.barren + 1;
+    t.offset += PAGE_SIZE;
+    t.done = postings.length === 0 || t.barren >= 2 || t.offset >= Math.min(t.total, MAX_OFFSET);
+  };
+
+  // The site's page budget is shared by its terms: each round splits what's left evenly between
+  // the terms still going, so pages a term doesn't need go to the ones still finding results.
+  let pagesLeft = MAX_PAGES_PER_SITE;
   try {
-    for (const query of opts.queries) {
-      let total = Infinity;
-      let barren = 0;
-      const maxOffset = Math.min(MAX_OFFSET, pagesPerQuery * PAGE_SIZE);
-      for (let offset = 0; offset < Math.min(total, maxOffset); offset += PAGE_SIZE) {
-        const data = await listPage(query, offset);
-        // Only the first page states the total; later pages may say 0.
-        if (offset === 0) total = data.total ?? 0;
-        const postings = parseItems(data.jobPostings ?? [], ListingPosting);
-        if (postings.length === 0) break;
-        let strong = 0;
-        for (const p of postings) {
-          const sim = relevance(p.title);
-          if (sim >= STRONG_SIMILARITY) strong++;
-          const prev = listings.get(p.externalPath);
-          listings.set(p.externalPath, {
-            posting: p,
-            relevant: sim >= RELEVANT_SIMILARITY || Boolean(prev?.relevant),
-            firstPage: offset === 0 || Boolean(prev?.firstPage),
-          });
-        }
-        // Two thin pages in a row end the term; one can be followed by a good one (seen on Leidos).
-        barren = strong >= PAGE_KEEP_GOING ? 0 : barren + 1;
-        if (barren >= 2) break;
+    for (let active = searches; active.length > 0 && pagesLeft > 0; active = searches.filter((t) => !t.done)) {
+      const share = Math.max(1, Math.floor(pagesLeft / active.length));
+      for (const t of active) {
+        for (let i = 0; i < share && !t.done && pagesLeft > 0; i++, pagesLeft--) await readPage(t);
       }
-      totals[query] = Number.isFinite(total) ? total : 0;
     }
   } catch (err) {
     if (err instanceof SourceError && (err.status === 404 || err.status === 422)) {
@@ -183,6 +194,7 @@ export async function crawlWorkdaySite(slug: string, opts: CrawlOptions): Promis
     error = err instanceof Error ? err.message : String(err);
     if (listings.size === 0) return { status: status === "partial" ? "error" : status, jobs: [], seenKeys: [], totals, listingsSeen: 0, detailsFetched: 0, error };
   }
+  for (const t of searches) if (Number.isFinite(t.total)) totals[t.query] = t.total;
 
   const usable = [...listings.values()].filter(
     (l) => !isAbroad(l.posting.locationsText) && !isExcludedTitle(l.posting.title, opts.profile.excludeKeywords),

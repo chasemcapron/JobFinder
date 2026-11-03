@@ -65,6 +65,8 @@ type PoolJob = JobForScoring & {
   postedAt: string | null;
   stored: { score: number; keywordScore: number; aiScored: boolean; reasons: string };
   applied: boolean;
+  /** Added by `extend` after the sample: not in the baseline, whose scores predate it. */
+  extended?: boolean;
 };
 type Snapshot = { sampledAt: string; userName: string | null; profile: Profile };
 type FixtureItem = { key: string; jobId: string; bucket: "top20" | "mid" | "dropped" | "applied" | "extra"; baselineRank: number };
@@ -116,6 +118,27 @@ function shuffle<T>(items: T[], rand: () => number): T[] {
 }
 
 // ---------------------------------------------------------------- sample
+
+/**
+ * Postings as roles, in the order the Jobs page shows them (score, then newest; Postgres puts a
+ * missing date first when sorting descending), one card per role; id breaks the last ties, so a
+ * seeded sample is the same whatever order the database returned. Skips roles already in `seen`.
+ */
+function toRoles(postings: PoolJob[], seen = new Set<string>()): PoolJob[] {
+  const sorted = [...postings].sort(
+    (a, b) =>
+      b.stored.score - a.stored.score ||
+      (b.postedAt ?? "\uffff").localeCompare(a.postedAt ?? "\uffff") ||
+      a.id.localeCompare(b.id),
+  );
+  const roles: PoolJob[] = [];
+  for (const j of sorted) {
+    if (seen.has(j.key)) continue;
+    seen.add(j.key);
+    roles.push(j);
+  }
+  return roles;
+}
 
 /** Every current match of the user, with its job, as frozen pool entries. */
 async function loadPool(db: Awaited<ReturnType<typeof getDb>>, userId: string): Promise<PoolJob[]> {
@@ -194,18 +217,7 @@ async function sample() {
 
   const pool = await loadPool(db, user.id);
 
-  // Roles in the order the Jobs page shows them (score, then newest; Postgres puts a missing
-  // date first when sorting descending), one card per role.
-  const sorted = [...pool].sort(
-    (a, b) => b.stored.score - a.stored.score || (b.postedAt ?? "\uffff").localeCompare(a.postedAt ?? "\uffff"),
-  );
-  const roles: PoolJob[] = [];
-  const seen = new Set<string>();
-  for (const j of sorted) {
-    if (seen.has(j.key)) continue;
-    seen.add(j.key);
-    roles.push(j);
-  }
+  const roles = toRoles(pool);
   const rankOf = new Map(roles.map((r, i) => [r.key, i + 1]));
   const visible = roles.filter((r) => r.stored.score >= VISIBLE_FROM);
 
@@ -266,15 +278,11 @@ async function extend() {
   const fixture = await readJson<FixtureItem[]>(FILES.fixture);
   const order = await readJson<string[]>(FILES.order);
   const inPool = new Set(pool.map((j) => j.id));
-  const added = (await loadPool(db, profile.userId)).filter((j) => j.source === source && !inPool.has(j.id));
+  const added = (await loadPool(db, profile.userId))
+    .filter((j) => j.source === source && !inPool.has(j.id))
+    .map((j) => ({ ...j, extended: true }));
   pool.push(...added);
-  const roles: PoolJob[] = [];
-  const seen = new Set(fixture.map((f) => f.key));
-  for (const j of [...added].sort((a, b) => b.stored.score - a.stored.score)) {
-    if (seen.has(j.key)) continue;
-    seen.add(j.key);
-    roles.push(j);
-  }
+  const roles = toRoles(added, new Set(fixture.map((f) => f.key)));
   const top = roles.slice(0, Math.ceil(want / 2));
   const rest = shuffle(roles.slice(top.length), rand).slice(0, want - top.length);
   const picked = shuffle([...top, ...rest], rand);
@@ -399,7 +407,8 @@ async function run() {
   const errors: string[] = [];
   const byHolistic = arg("score") === "holistic";
   if (mode === "baseline") {
-    for (const j of pool) scored.set(j.id, { score: j.stored.score, ai: j.stored.aiScored, skip: false });
+    // Only what existed when sampled: postings added later carry scores from a newer pipeline.
+    for (const j of pool) if (!j.extended) scored.set(j.id, { score: j.stored.score, ai: j.stored.aiScored, skip: false });
   } else if (mode === "keyword" || mode === "pipeline") {
     // As after a profile change: nothing is fresh. Keyword mode is the same pipeline without AI
     // (the fixed rules still apply), so both drop excluded titles the way production does.
@@ -510,7 +519,13 @@ function printRun(r: RunFile) {
 
 async function report() {
   const files = (await readdir(FILES.runs).catch(() => [] as string[])).filter((f) => f.endsWith(".json")).sort();
-  for (const f of files) printRun(await readJson<RunFile>(path.join(FILES.runs, f)));
+  // Runs over different label sets (before and after `extend`) aren't comparable: mark the switch.
+  let labeled: number | null = null;
+  for (const f of files) {
+    const r = await readJson<RunFile>(path.join(FILES.runs, f));
+    if (r.metrics.labeled !== labeled) console.log(`--- runs over ${(labeled = r.metrics.labeled)} labeled roles ---`);
+    printRun(r);
+  }
   process.exit(0);
 }
 

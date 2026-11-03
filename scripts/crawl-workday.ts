@@ -30,6 +30,12 @@ const AI_BUDGET_MS = 10 * 60_000;
 /** Workday postings unseen this long get a liveness check (most are just outside the crawl's search). */
 const RECHECK_AFTER_MS = 3 * 86_400_000;
 const MAX_LIVENESS_CHECKS = 60;
+/**
+ * No new site is started after this. A site takes up to ~2 minutes (160 requests 300 ms apart plus
+ * Workday's response time), so 70 big sites can't all fit one night; with liveness (1 min) and AI
+ * scoring (10 min) it stays inside the workflow's 40 minutes. Sites left over go first next night.
+ */
+const CRAWL_BUDGET_MS = 18 * 60_000;
 
 const argv = process.argv.slice(2);
 const dryRun = argv.includes("--dry-run");
@@ -69,6 +75,14 @@ async function main() {
       }
       return known;
     };
+    // Least recently crawled first (never crawled before all), so sites a short night left out go first.
+    const lastCrawl = new Map(
+      (await db
+        .select({ slug: workdayCrawlState.slug, at: workdayCrawlState.lastCrawledAt })
+        .from(workdayCrawlState)
+        .where(eq(workdayCrawlState.userId, userId))).map((c) => [c.slug, c.at.getTime()]),
+    );
+    slugs.sort((a, b) => (lastCrawl.get(a) ?? 0) - (lastCrawl.get(b) ?? 0) || a.localeCompare(b));
     console.log(`user ${userNo}: ${slugs.length} site(s), ${queries.length} search terms${dryRun ? " (dry run)" : ""}`);
 
     // Crawl sites a few at a time; store each site's results as it finishes.
@@ -130,13 +144,16 @@ async function main() {
     };
     await Promise.all(
       Array.from({ length: Math.min(SITE_CONCURRENCY, slugs.length) }, async () => {
-        while (next < slugs.length) {
+        while (next < slugs.length && Date.now() - started < CRAWL_BUDGET_MS) {
           const i = next++;
           await crawlOne(slugs[i], i + 1);
         }
       }),
     );
-    console.log(`  sites: ${Object.entries(statusCount).map(([s, n]) => `${n} ${s}`).join(", ")}; ${fetched.size} postings to score`);
+    const left = slugs.length - next;
+    console.log(
+      `  sites: ${Object.entries(statusCount).map(([s, n]) => `${n} ${s}`).join(", ")}${left ? `, ${left} left for next night (time budget)` : ""}; ${fetched.size} postings to score`,
+    );
     if (dryRun) continue;
 
     // Postings the crawl didn't list for a few days: still open? (Most are; they're just outside the search.)

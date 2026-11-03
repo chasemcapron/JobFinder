@@ -96,6 +96,42 @@ describe("crawlWorkdaySite", () => {
     expect(Math.max(...lists.map((c) => c.body!.offset))).toBe((MAX_PAGES_PER_SITE / 10 - 1) * 20);
   });
 
+  it("never goes over the page budget, whatever the number of terms", async () => {
+    const terms = Array.from({ length: 7 }, (_, i) => `Data Analyst ${i}`);
+    const pages = Object.fromEntries(terms.map((t) => [t, Array.from({ length: 1_000 }, (_, i) => posting(`${t} Role`, i))]));
+    const calls = site(pages);
+    await crawlWorkdaySite(SLUG, options({ queries: terms, maxDetails: 0 }));
+    expect(calls.filter((c) => c.url.endsWith("/jobs"))).toHaveLength(MAX_PAGES_PER_SITE);
+  });
+
+  it("gives pages a finished term didn't need to the terms still finding results", async () => {
+    const short = (t: string) => Array.from({ length: 5 }, (_, i) => posting(`${t} Role`, i));
+    const calls = site({
+      "Data Analyst": Array.from({ length: 1_000 }, (_, i) => posting(`Data Analyst ${i}`, i)),
+      "Reporting Analyst": short("Reporting Analyst"),
+      "BI Analyst": short("BI Analyst"),
+      "Systems Analyst": short("Systems Analyst"),
+    });
+    await crawlWorkdaySite(SLUG, options({ queries: ["Data Analyst", "Reporting Analyst", "BI Analyst", "Systems Analyst"], maxDetails: 0 }));
+    const deep = calls.filter((c) => c.url.endsWith("/jobs") && c.body!.searchText === "Data Analyst");
+    // An even split would have stopped it at 15 pages; it gets the rest, up to MAX_OFFSET.
+    expect(Math.max(...deep.map((c) => c.body!.offset))).toBe(MAX_OFFSET - 20);
+  });
+
+  it("follows pages with a single close title, and stops after two pages with none", async () => {
+    const page = (k: number, hit: boolean) =>
+      Array.from({ length: 20 }, (_, i) => posting(hit && i === 0 ? `Data Analyst ${k}` : `Nurse Practitioner ${k}-${i}`, k * 100 + i));
+    const sparse = [0, 1, 2, 3].flatMap((k) => page(k, true));
+    const followed = site({ "Data Analyst": sparse });
+    await crawlWorkdaySite(SLUG, options({ maxDetails: 0 }));
+    expect(followed.filter((c) => c.url.endsWith("/jobs")).map((c) => c.body!.offset)).toEqual([0, 20, 40, 60]);
+
+    const dry = [page(0, true), page(1, false), page(2, false), page(3, true)].flat();
+    const stopped = site({ "Data Analyst": dry });
+    await crawlWorkdaySite(SLUG, options({ maxDetails: 0 }));
+    expect(stopped.filter((c) => c.url.endsWith("/jobs")).map((c) => c.body!.offset)).toEqual([0, 20, 40]);
+  });
+
   it("skips details for postings already stored but still reports them as seen", async () => {
     const list = [posting("Data Analyst", 1), posting("Data Analyst II", 2)];
     const calls = site({ "Data Analyst": list });
