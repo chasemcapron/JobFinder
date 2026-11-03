@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildCrawlQueries, crawlWorkdaySite, MAX_OFFSET, type CrawlOptions } from "./workday-crawl";
+import { buildCrawlQueries, crawlWorkdaySite, MAX_OFFSET, MAX_PAGES_PER_SITE, type CrawlOptions } from "./workday-crawl";
 
 const detail = JSON.parse(readFileSync(path.join(process.cwd(), "tests/fixtures/workday-job.json"), "utf8"));
 const SLUG = "acme.wd5/Careers";
@@ -84,6 +84,16 @@ describe("crawlWorkdaySite", () => {
     const deep = site({ "Data Analyst": endless });
     await crawlWorkdaySite(SLUG, options({ maxDetails: 0 }));
     expect(Math.max(...deep.filter((c) => c.url.endsWith("/jobs")).map((c) => c.body!.offset))).toBe(MAX_OFFSET - 20);
+  });
+
+  it("shares the site's page budget between its search terms", async () => {
+    const terms = Array.from({ length: 10 }, (_, i) => `Data Analyst ${i}`);
+    const pages = Object.fromEntries(terms.map((t) => [t, Array.from({ length: 1_000 }, (_, i) => posting(`${t} Role`, i))]));
+    const calls = site(pages);
+    await crawlWorkdaySite(SLUG, options({ queries: terms, maxDetails: 0 }));
+    const lists = calls.filter((c) => c.url.endsWith("/jobs"));
+    expect(lists).toHaveLength(MAX_PAGES_PER_SITE);
+    expect(Math.max(...lists.map((c) => c.body!.offset))).toBe((MAX_PAGES_PER_SITE / 10 - 1) * 20);
   });
 
   it("skips details for postings already stored but still reports them as seen", async () => {

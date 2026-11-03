@@ -36,8 +36,16 @@ const PAGE_SIZE = 20;
 export const MAX_OFFSET = 400;
 /** Listings with at least this title similarity count as relevant (and get their details fetched). */
 export const RELEVANT_SIMILARITY = 0.3;
+/** Paging goes on only while a page has at least PAGE_KEEP_GOING titles this close to a target title. */
+const STRONG_SIMILARITY = 0.5;
+const PAGE_KEEP_GOING = 2;
+/**
+ * Listing pages per site per night, shared by its search terms. Without a budget, 12 terms × 20 pages
+ * on 70 sites came to ~16,000 requests a night: too long for the job and impolite to Workday.
+ */
+export const MAX_PAGES_PER_SITE = 60;
 /** Most new postings whose details one crawl fetches per site (the first crawl of a big site). */
-export const MAX_DETAILS_PER_SITE = 150;
+export const MAX_DETAILS_PER_SITE = 100;
 /** Between requests to one site. */
 export const CRAWL_SPACING_MS = 300;
 /** A site crawled this recently is left to the crawler by the Vercel search, and its crawl is shown in Settings. */
@@ -46,7 +54,7 @@ export const CRAWLED_RECENTLY_MS = 30 * 3_600_000;
 const REQUEST_TIMEOUT_MS = 15_000;
 /** 429 backoff: tries after the first, with these base delays (plus up to 50% jitter). */
 const BACKOFF_MS = [2_000, 5_000, 12_000];
-const MAX_QUERIES = 12;
+const MAX_QUERIES = 10;
 
 /** Search terms that mean the same work as a target title, for sites whose search is literal. */
 const QUERY_SYNONYMS: [RegExp, string[]][] = [
@@ -137,29 +145,32 @@ export async function crawlWorkdaySite(slug: string, opts: CrawlOptions): Promis
     }
   };
 
+  // The site's page budget is shared evenly by its terms; a term that ends early leaves its pages unused.
+  const pagesPerQuery = Math.max(2, Math.ceil(MAX_PAGES_PER_SITE / Math.max(1, opts.queries.length)));
   try {
     for (const query of opts.queries) {
       let total = Infinity;
       let barren = 0;
-      for (let offset = 0; offset < Math.min(total, MAX_OFFSET); offset += PAGE_SIZE) {
+      const maxOffset = Math.min(MAX_OFFSET, pagesPerQuery * PAGE_SIZE);
+      for (let offset = 0; offset < Math.min(total, maxOffset); offset += PAGE_SIZE) {
         const data = await listPage(query, offset);
         // Only the first page states the total; later pages may say 0.
         if (offset === 0) total = data.total ?? 0;
         const postings = parseItems(data.jobPostings ?? [], ListingPosting);
         if (postings.length === 0) break;
-        let anyRelevant = false;
+        let strong = 0;
         for (const p of postings) {
-          const relevant = relevance(p.title) >= RELEVANT_SIMILARITY;
-          anyRelevant ||= relevant;
+          const sim = relevance(p.title);
+          if (sim >= STRONG_SIMILARITY) strong++;
           const prev = listings.get(p.externalPath);
           listings.set(p.externalPath, {
             posting: p,
-            relevant: relevant || Boolean(prev?.relevant),
+            relevant: sim >= RELEVANT_SIMILARITY || Boolean(prev?.relevant),
             firstPage: offset === 0 || Boolean(prev?.firstPage),
           });
         }
-        // Two barren pages in a row end the term; one can be followed by a good one (seen on Leidos).
-        barren = anyRelevant ? 0 : barren + 1;
+        // Two thin pages in a row end the term; one can be followed by a good one (seen on Leidos).
+        barren = strong >= PAGE_KEEP_GOING ? 0 : barren + 1;
         if (barren >= 2) break;
       }
       totals[query] = Number.isFinite(total) ? total : 0;
