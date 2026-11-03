@@ -146,6 +146,7 @@ Workday URLs can't be guessed, so Settings → Target companies has a **Workday 
 | UTC | Route | What it does |
 | --- | --- | --- |
 | 09:00 | `/api/cron/search` | Searches every source and scores matches (the slow, Gemini-using part), then prunes jobs unseen for 60 days and search runs older than 90. That's 4 AM Central in summer, 3 AM in winter. |
+| 10:00 | `/api/cron/score` | Has the AI evaluate up to 80 stored matches that lack a current evaluation (after a profile change, or ones the search's cap didn't reach), with no fetching. Skips a user whose search is still running. Does nothing without `GEMINI_API_KEY`. |
 | 11:00, 12:00, 13:00, 14:00 | `/api/cron/morning` | The invocation that's 6 AM in America/Chicago builds the email and schedules it with Resend for **7:00 AM sharp**; the ones that are 7 and 8 AM retry a run that didn't finish, sending right away. Vercel Cron has no daylight saving, so which UTC hours those are changes twice a year (the fourth cron covers both seasons). |
 
 Why schedule instead of sending at 7: a Hobby cron fires at some minute within its hour (it was 7:31), and Resend's scheduled sending (free) delivers on the minute. The email only searches itself when the early search didn't succeed. A run that Vercel cuts off at 60 s is retried at 7 or 8 AM, and Resend's idempotency key keeps a retry from sending the same email twice.
@@ -156,6 +157,7 @@ Test them manually (`force=1` skips the hour check but still sends at most once 
 
 ```bash
 curl -H "Authorization: Bearer $CRON_SECRET" "https://<your-domain>/api/cron/search"
+curl -H "Authorization: Bearer $CRON_SECRET" "https://<your-domain>/api/cron/score"
 curl -H "Authorization: Bearer $CRON_SECRET" "https://<your-domain>/api/cron/morning?force=1"
 ```
 

@@ -144,6 +144,15 @@ export default async function SettingsPage() {
           </p>
 
           <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="avoidMilitary" defaultChecked={profile.avoidMilitary} className="size-4 accent-accent" />
+            Skip jobs with military branches
+          </label>
+          <p className="-mt-2 text-xs text-muted">
+            Marks jobs at the Army, Navy, Air Force, Marine Corps, Coast Guard, Space Force and National Guard (civilian roles
+            included) as &ldquo;do not apply&rdquo;. Civilian defense agencies such as DFAS or DISA aren&apos;t affected.
+          </p>
+
+          <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" name="emailEnabled" defaultChecked={profile.emailEnabled} className="size-4 accent-accent" />
             Email me the top new matches every morning (7:00 AM Central)
           </label>

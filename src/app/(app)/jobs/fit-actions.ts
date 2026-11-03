@@ -6,6 +6,8 @@ import { applications, fitChecks, jobMatches, jobs } from "@/db/schema";
 import { checkFit } from "@/lib/ai/fit-check";
 import { AiRequestError, AiUnavailableError } from "@/lib/ai/gemini";
 import { aiProvider } from "@/lib/ai/provider";
+import { hardBlockers } from "@/lib/jobs/blockers";
+import { evaluationFromFit } from "@/lib/jobs/evaluation";
 import type { FitCheckView } from "@/lib/jobs/fit-checks";
 import { ensureProfile, getUser } from "@/lib/profile";
 import { currentUserId } from "@/lib/session";
@@ -30,7 +32,11 @@ export async function checkFitAction(jobId: string, force = false): Promise<FitC
     // Only jobs this user has a match or an application for.
     const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
     const [match] = job
-      ? await db.select({ id: jobMatches.id }).from(jobMatches).where(and(eq(jobMatches.userId, userId), eq(jobMatches.jobId, jobId))).limit(1)
+      ? await db
+          .select({ id: jobMatches.id, evaluation: jobMatches.evaluation })
+          .from(jobMatches)
+          .where(and(eq(jobMatches.userId, userId), eq(jobMatches.jobId, jobId)))
+          .limit(1)
       : [];
     const [application] =
       job && !match
@@ -53,9 +59,19 @@ export async function checkFitAction(jobId: string, force = false): Promise<FitC
       .values({ userId, jobId, result, model, createdAt: now })
       .onConflictDoUpdate({ target: [fitChecks.userId, fitChecks.jobId], set: { result, model, createdAt: now } });
     if (match) {
+      // The deeper read replaces the batch verdict and score (the user's fixed rules still win);
+      // it counts as a current evaluation.
+      const { verdict, score, evaluation } = evaluationFromFit(result, match.evaluation, hardBlockers(job, profile));
       await db
         .update(jobMatches)
-        .set({ score: result.fitScore, aiScored: true, reasons: result.summary.split(/(?<=[.!?])\s/)[0].slice(0, 200), scoredAt: now })
+        .set({
+          score,
+          aiScored: true,
+          verdict,
+          evaluation,
+          reasons: result.summary.split(/(?<=[.!?])\s/)[0].slice(0, 200),
+          scoredAt: now,
+        })
         .where(eq(jobMatches.id, match.id));
     }
     return { ok: true, view: { result, model, checkedAt: now.toISOString(), stale: false } };

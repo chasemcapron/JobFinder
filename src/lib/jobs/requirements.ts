@@ -10,7 +10,7 @@ const NUMBER = `(\\d{1,2}|${Object.keys(WORD_NUMBERS).join("|")})`;
  * "2-4 years of hands-on experience". The number must be followed by years and then "experience"
  * within a few words, so "for over 25 years, Acme has…" doesn't count.
  */
-const YEARS_RE = new RegExp(
+export const YEARS_RE = new RegExp(
   `\\b${NUMBER}(?:\\s*\\(\\d{1,2}\\))?\\s*(?:\\+|plus)?\\s*(?:(?:-|–|to)\\s*\\d{1,2}\\s*)?\\+?\\s*(?:years?|yrs?)['’]?[^.;:\\n]{0,40}?\\bexperience`,
   "gi",
 );
@@ -37,7 +37,7 @@ export function levelFromYears(years: number): ExperienceLevel {
 
 // Bare "secret" only next to a clearance word, so "trade secret" or "secret management" don't count.
 // A Public Trust background check isn't a clearance and is easy to get, so it isn't listed.
-const CLEARANCE_RE =
+export const CLEARANCE_RE =
   /\b(ts\s*\/\s*sci|top[\s-]secret|secret[\s-](?:level\s+)?clearance|(?:active|current|interim|final)\s+secret|clearance|polygraph|ci[\s-]poly|full[\s-]scope[\s-]poly)\b/i;
 /** Phrases that mean the employer gets you the clearance after hiring. */
 const OBTAINABLE_RE = /\b(ability|able|eligib\w*|willing(?:ness)?|sponsor\w*|obtain\w*|qualify)\b/i;

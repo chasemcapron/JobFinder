@@ -104,6 +104,8 @@ export const profiles = pgTable("profiles", {
   remotePreference: text("remote_preference").$type<RemotePreference>().notNull().default("any"),
   /** Holds an active security clearance, so jobs that need one aren't marked down. */
   hasClearance: boolean("has_clearance").notNull().default(false),
+  /** Won't work for a military branch (Army, Navy, Air Force, Marine Corps, Coast Guard…), civilian roles included. */
+  avoidMilitary: boolean("avoid_military").notNull().default(false),
   adzunaCountry: text("adzuna_country").notNull().default("us"),
   // Google Sheets
   sheetId: text("sheet_id"),
@@ -160,6 +162,35 @@ export const jobs = pgTable(
   ],
 );
 
+export const MATCH_VERDICTS = ["apply", "maybe", "skip"] as const;
+export type MatchVerdict = (typeof MATCH_VERDICTS)[number];
+export const ROLE_FITS = ["on_target", "adjacent", "off_target"] as const;
+export const SENIORITY_FITS = ["fits", "stretch", "too_senior", "too_junior"] as const;
+export const SKILL_COVERAGES = ["strong", "partial", "weak"] as const;
+export const LOCATION_FITS = ["ok", "unknown", "mismatch"] as const;
+
+/**
+ * Why a job got its verdict. "ai": the batch scorer read the posting against the resume and
+ * rated each part. "rule": a fixed rule decided it without AI (needs an active clearance the user
+ * doesn't hold, an internship, a military branch, clearly too senior), and only `blockers` is set.
+ */
+export type MatchEvaluation = {
+  version: number;
+  source: "ai" | "rule";
+  roleFit?: (typeof ROLE_FITS)[number];
+  seniorityFit?: (typeof SENIORITY_FITS)[number];
+  skillsCoverage?: (typeof SKILL_COVERAGES)[number];
+  locationFit?: (typeof LOCATION_FITS)[number];
+  /** Skills the posting asks for that the resume shows. */
+  matchedSkills: string[];
+  /** Skills the posting requires that the resume doesn't show. */
+  missingSkills: string[];
+  /** Hard stops: clearance, years, degree, licence, internship, military. */
+  blockers: string[];
+  /** The model's own 0-100 number, kept for comparison; `job_matches.score` is computed from the parts. */
+  holistic?: number;
+};
+
 export const jobMatches = pgTable(
   "job_matches",
   {
@@ -176,6 +207,9 @@ export const jobMatches = pgTable(
     aiScored: boolean("ai_scored").notNull().default(false),
     reasons: text("reasons").notNull().default(""),
     matchedKeywords: jsonb("matched_keywords").$type<string[]>().notNull().default([]),
+    /** apply / maybe / skip; null when only the keyword matcher has seen the job. Skips are hidden by default. */
+    verdict: text("verdict").$type<MatchVerdict | null>(),
+    evaluation: jsonb("evaluation").$type<MatchEvaluation | null>(),
     scoredAt: timestamp("scored_at", { mode: "date" }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("job_matches_user_job_idx").on(t.userId, t.jobId), index("job_matches_user_score_idx").on(t.userId, t.score)],
@@ -183,6 +217,22 @@ export const jobMatches = pgTable(
 
 export const FIT_VERDICTS = ["strong", "good", "stretch", "poor"] as const;
 export type FitVerdict = (typeof FIT_VERDICTS)[number];
+
+export const REQUIREMENT_IMPORTANCE = ["critical", "high", "preferred"] as const;
+export const REQUIREMENT_MATCH = ["strong", "partial", "missing"] as const;
+
+/**
+ * One posting requirement against the resume. Importance is judged from the posting alone,
+ * before the resume is read, so a strong match can't make a requirement look more important
+ * (career-ops' two-pass requirements table, github.com/career-ops-hq/career-ops, MIT).
+ */
+export type RequirementRow = {
+  requirement: string;
+  importance: (typeof REQUIREMENT_IMPORTANCE)[number];
+  match: (typeof REQUIREMENT_MATCH)[number];
+  /** The resume line that shows it, or why it's missing. */
+  evidence: string;
+};
 
 /** An AI comparison of the user's resume with one posting ("Check my fit"). */
 export type FitCheckResult = {
@@ -194,6 +244,8 @@ export type FitCheckResult = {
   /** Terms from the posting the resume doesn't use; worth adding only if they're true. */
   missingKeywords: string[];
   resumeTips: string[];
+  /** Added 2026-11-03; older checks don't have it. */
+  requirements?: RequirementRow[];
 };
 
 /** Cached fit checks. Stale once the profile changes after `createdAt` (the resume was edited). */

@@ -2,10 +2,12 @@ import { and, eq, gt, inArray, lt, sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
 import { jobMatches, jobs, searchRuns, type Profile, type SourceRunResult, type TargetCompanyRow } from "@/db/schema";
 import { env } from "@/lib/env";
-import { ensureProfile, listEnabledTargetCompanies } from "@/lib/profile";
+import { redactPersonalInfo } from "@/lib/ai/redact";
+import { ensureProfile, getUser, listEnabledTargetCompanies } from "@/lib/profile";
+import { isCurrentEvaluation } from "./evaluation";
 import { isInTargetCountry } from "./location";
 import { dedupeJobs } from "./normalize";
-import { rankCandidates, type JobForScoring } from "./rank";
+import { finalMatch, rankCandidates, type JobForScoring } from "./rank";
 import { STALE_AFTER_DAYS } from "./results";
 import { buildSourceTasks, mockJobsForced, runSourceTasks } from "./sources";
 import type { SourceTask } from "./types";
@@ -41,6 +43,14 @@ function chunk<T>(items: T[], size: number): T[][] {
 /** No search runs this long: Vercel stops a function after 60 s. */
 export const ABANDONED_RUN_MS = 5 * 60_000;
 export const ABANDONED_RUN_ERROR = "Stopped before finishing (the server function ran out of time)";
+
+/** True while a search for this user started in the last minute and hasn't finished (functions stop at 60 s). */
+export async function searchInFlight(userId: string, db: Db, now = new Date()) {
+  const running = await db.query.searchRuns.findFirst({
+    where: and(eq(searchRuns.userId, userId), eq(searchRuns.status, "running"), gt(searchRuns.startedAt, new Date(now.getTime() - 60_000))),
+  });
+  return Boolean(running);
+}
 
 /** Marks runs still "running" past ABANDONED_RUN_MS as stopped, so they don't read as in progress forever. */
 export async function closeAbandonedRuns(userId: string, db: Db, now: Date) {
@@ -161,12 +171,45 @@ export async function runJobSearch(userId: string, opts: Options): Promise<RunSu
 /**
  * Re-ranks the user's stored matches against the current profile with the keyword matcher
  * (no fetching, no AI), so edits to the resume or preferences apply to every job right away.
- * The next search then AI-scores the top ones again.
+ * The next search, or the backlog cron (scoreBacklog), then has the AI evaluate them again.
  */
 export async function rescoreStoredMatches(userId: string, db?: Db) {
   db ??= await getDb();
   const profile = await ensureProfile(userId, db);
   return scoreAndSaveMatches(userId, profile, db, { fetched: new Map(), useAi: false, now: new Date() });
+}
+
+/**
+ * How many roles one backlog run evaluates: 10 batches of 8. Batches start 4.5 s apart (the
+ * free tier's per-minute limit), so about 10 fit in the cron's 50 s of AI time.
+ */
+export const BACKLOG_CAP = 80;
+
+/**
+ * Has the AI evaluate stored matches that lack a current evaluation, with no fetching: after a
+ * profile change every evaluation is stale, and a search only evaluates its usual cap. Run by
+ * the score cron between the morning search and the email.
+ */
+export async function scoreBacklog(userId: string, opts: { db?: Db; deadline: number; cap?: number }) {
+  const db = opts.db ?? (await getDb());
+  // Hobby crons fire at any minute of their hour, so a late search can still be running: it
+  // evaluates the same roles, and doing both would double the free-tier calls.
+  if (await searchInFlight(userId, db)) return { saved: 0, removed: 0, aiScored: 0, errors: ["A search is running; skipped"] };
+  const profile = await ensureProfile(userId, db);
+  return scoreAndSaveMatches(userId, profile, db, {
+    fetched: new Map(),
+    useAi: true,
+    maxAiScores: opts.cap ?? BACKLOG_CAP,
+    deadline: opts.deadline,
+    now: new Date(),
+  });
+}
+
+/** The resume as the AI may see it: personal details removed (free-tier inputs may be used by Google). */
+async function redactedResume(userId: string, profile: Profile, db: Db): Promise<string | null> {
+  if (!profile.resumeText?.trim()) return null;
+  const user = await getUser(userId, db);
+  return redactPersonalInfo(profile.resumeText, { names: [user?.name] });
 }
 
 /**
@@ -205,6 +248,7 @@ async function scoreAndSaveMatches(
       clearance: jobs.clearance,
       aiScored: jobMatches.aiScored,
       scoredAt: jobMatches.scoredAt,
+      evaluation: jobMatches.evaluation,
     })
     .from(jobMatches)
     .innerJoin(jobs, eq(jobs.id, jobMatches.jobId))
@@ -214,9 +258,10 @@ async function scoreAndSaveMatches(
   const all = new Map<string, JobForScoring>(stored.map((r) => [r.id, r]));
   for (const [id, job] of opts.fetched) all.set(id, job);
 
+  // Fresh: evaluated by the AI since the last profile change, with the current prompt.
   const isFresh = (id: string) => {
     const m = existing.get(id);
-    return Boolean(m?.aiScored && m.scoredAt >= profile.matchingUpdatedAt);
+    return Boolean(m?.aiScored && m.scoredAt >= profile.matchingUpdatedAt && isCurrentEvaluation(m.evaluation));
   };
   const { candidates, excluded, aiScores, errors: rankErrors } = await rankCandidates(profile, all, {
     isFresh,
@@ -224,6 +269,7 @@ async function scoreAndSaveMatches(
     useAi: opts.useAi,
     hideMock: env.isProduction && !mockJobsForced(),
     deadline: opts.deadline,
+    resume: opts.useAi ? await redactedResume(userId, profile, db) : null,
   });
   errors.push(...rankErrors);
 
@@ -232,19 +278,21 @@ async function scoreAndSaveMatches(
     await db.delete(jobMatches).where(and(eq(jobMatches.userId, userId), inArray(jobMatches.jobId, ids)));
   }
 
-  // Save (keep fresh AI scores from earlier runs untouched).
+  // Save (keep fresh AI evaluations from earlier runs untouched).
   const matchRows = candidates
     .filter((c) => aiScores.has(c.id) || !isFresh(c.id))
     .map((c) => {
-      const ai = aiScores.get(c.id);
+      const final = finalMatch(c, aiScores.get(c.id));
       return {
         userId,
         jobId: c.id,
-        score: ai?.score ?? c.kw.score,
+        score: final.score,
         keywordScore: c.kw.score,
-        aiScored: Boolean(ai),
-        reasons: ai?.reason ?? c.kw.reason,
+        aiScored: final.aiScored,
+        reasons: final.reasons,
         matchedKeywords: c.kw.matched,
+        verdict: final.verdict,
+        evaluation: final.evaluation,
         scoredAt: opts.now,
       };
     });
@@ -260,6 +308,8 @@ async function scoreAndSaveMatches(
           aiScored: sqlExcluded("ai_scored"),
           reasons: sqlExcluded("reasons"),
           matchedKeywords: sqlExcluded("matched_keywords"),
+          verdict: sqlExcluded("verdict"),
+          evaluation: sqlExcluded("evaluation"),
           scoredAt: sqlExcluded("scored_at"),
         },
       });

@@ -193,6 +193,14 @@ describe("runDigestForUser", () => {
     expect(picked[0].job.title).toBe("Engineer 2");
   });
 
+  it("excludes jobs marked do not apply, whatever their score", async () => {
+    await db.update(schema.jobMatches).set({ verdict: "skip" }).where(eq(schema.jobMatches.jobId, jobIds[0]));
+    await db.update(schema.jobMatches).set({ verdict: "apply" }).where(eq(schema.jobMatches.jobId, jobIds[1]));
+    const picked = await pickDigestJobs(userId, db);
+    expect(picked.map((p) => p.job.title)).not.toContain("Engineer 1");
+    expect(picked[0].job.title).toBe("Engineer 2");
+  });
+
   it("adds Adzuna attribution for Adzuna jobs", async () => {
     await db.delete(schema.jobMatches);
     await addJob(200, 90, "adzuna");

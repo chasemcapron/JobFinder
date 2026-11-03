@@ -1,5 +1,5 @@
 import { render } from "@react-email/components";
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or } from "drizzle-orm";
 import { createElement } from "react";
 import { getDb, type Db } from "@/db";
 import { applications, emailLog, jobMatches, jobs, profiles, searchRuns, users } from "@/db/schema";
@@ -94,6 +94,8 @@ export async function pickDigestJobs(userId: string, db: Db, limit = DIGEST_MAX_
       and(
         eq(jobMatches.userId, userId),
         gte(jobMatches.score, DIGEST_MIN_SCORE),
+        // Never email a job marked "do not apply" (by the AI or a fixed rule).
+        or(isNull(jobMatches.verdict), ne(jobMatches.verdict, "skip")),
         gt(jobs.lastSeenAt, recent),
         inTargetCountry,
         isNull(emailLog.id),

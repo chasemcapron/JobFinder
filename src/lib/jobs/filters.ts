@@ -19,6 +19,8 @@ export type JobFilters = {
   sources: JobSource[];
   posted: PostedWithin;
   applied: "dim" | "hide" | "only";
+  /** Jobs marked "do not apply" (by the AI or a fixed rule): hidden by default. */
+  skip: "hide" | "show" | "only";
   minScore: number;
   sort: "score" | "date";
   page: number;
@@ -41,6 +43,7 @@ export const DEFAULT_FILTERS: JobFilters = {
   sources: [],
   posted: "any",
   applied: "dim",
+  skip: "hide",
   minScore: DEFAULT_MIN_SCORE,
   sort: "score",
   page: 1,
@@ -76,6 +79,7 @@ export function parseFilters(params: Params): JobFilters {
     sources: many(params.source).filter((s): s is JobSource => (JOB_SOURCES as readonly string[]).includes(s)),
     posted: pick(one(params.posted), POSTED_WITHIN, "any"),
     applied: pick(one(params.applied), ["dim", "hide", "only"] as const, "dim"),
+    skip: pick(one(params.skip), ["hide", "show", "only"] as const, "hide"),
     minScore: Number.isFinite(minScore) ? Math.max(0, Math.min(100, Math.round(minScore))) : DEFAULT_MIN_SCORE,
     sort: pick(one(params.sort), ["score", "date"] as const, "score"),
     page: Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1,
@@ -95,6 +99,7 @@ export function filtersToSearchParams(f: Partial<JobFilters>): URLSearchParams {
   for (const s of full.sources) p.append("source", s);
   if (full.posted !== "any") p.set("posted", full.posted);
   if (full.applied !== "dim") p.set("applied", full.applied);
+  if (full.skip !== "hide") p.set("skip", full.skip);
   if (full.minScore !== DEFAULT_MIN_SCORE) p.set("minScore", String(full.minScore));
   if (full.sort !== "score") p.set("sort", full.sort);
   if (full.page > 1) p.set("page", String(full.page));
@@ -126,7 +131,11 @@ export function filterMatches(rows: MatchResult[], f: JobFilters, now = new Date
     const j = m.job;
     if (f.applied === "hide" && m.application) return false;
     if (f.applied === "only" && !m.application) return false;
-    if (m.score < f.minScore) return false;
+    // A job already applied to stays visible whatever its verdict.
+    if (f.skip === "hide" && m.verdict === "skip" && !m.application) return false;
+    if (f.skip === "only" && m.verdict !== "skip") return false;
+    // Skips score 30 or less by design, so asking to see them shows them past the weak cut-off.
+    if (m.score < f.minScore && !(f.skip !== "hide" && m.verdict === "skip")) return false;
     if (f.country && !eqi(j.country, f.country)) return false;
     if (f.state && !eqi(j.state, f.state)) return false;
     if (f.city && !eqi(j.city, f.city)) return false;
@@ -178,7 +187,7 @@ export function isNewMatch(m: MatchResult, now = new Date()): boolean {
  * new ones worth a look, and strong matches. Before a resume exists nothing is strong.
  */
 export function summarizeMatches(rows: MatchResult[], opts: { ranked: boolean; strongAt: number }, now = new Date()) {
-  const open = rows.filter((m) => !m.application && (!opts.ranked || m.score >= DEFAULT_MIN_SCORE));
+  const open = rows.filter((m) => !m.application && m.verdict !== "skip" && (!opts.ranked || m.score >= DEFAULT_MIN_SCORE));
   return {
     newToday: groupByRole(open.filter((m) => isNewMatch(m, now))).length,
     strong: opts.ranked ? groupByRole(open.filter((m) => m.score >= opts.strongAt)).length : 0,
@@ -234,6 +243,7 @@ export function activeFilterCount(f: JobFilters): number {
     (f.sources.length ? 1 : 0) +
     (f.posted !== "any" ? 1 : 0) +
     (f.applied !== "dim" ? 1 : 0) +
+    (f.skip !== "hide" ? 1 : 0) +
     (f.minScore !== DEFAULT_MIN_SCORE ? 1 : 0)
   );
 }

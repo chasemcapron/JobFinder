@@ -6,7 +6,7 @@
  *     Freezes the profile, every current match (the "pool") and ~45 sampled roles (the "fixture").
  *   ... show                       Prints the fixture as a numbered list to label.
  *   ... label "1g 2b 3m 4-6 b"     Saves labels (g good, m maybe, b bad) by the shown numbers.
- *   ... run --mode baseline|keyword|pipeline [--tag name]
+ *   ... run --mode baseline|keyword|pipeline [--tag name] [--cap 40] [--score holistic] [--explain]
  *     baseline: the scores stored when sampled. keyword: today's keyword matcher.
  *     pipeline: today's full ranking (rankCandidates) over the frozen pool, AI answers cached on
  *     disk so re-runs are free and repeatable.
@@ -22,12 +22,13 @@ import { getDb } from "@/db";
 import { applications, jobMatches, jobs, profiles, users, type Profile } from "@/db/schema";
 import { toGeminiSchema } from "@/lib/ai/gemini";
 import { aiJson } from "@/lib/ai/provider";
+import { redactPersonalInfo } from "@/lib/ai/redact";
 import { parseLabelInput, rankingMetrics, recall, type Label, type RankingMetrics } from "@/lib/eval/metrics";
 import type { AiJsonFn } from "@/lib/jobs/ai-score";
 import { DEFAULT_MIN_SCORE } from "@/lib/jobs/filters";
 import { formatLocation, isInTargetCountry } from "@/lib/jobs/location";
 import { roleKey } from "@/lib/jobs/normalize";
-import { rankCandidates, type JobForScoring } from "@/lib/jobs/rank";
+import { finalMatch, rankCandidates, type JobForScoring } from "@/lib/jobs/rank";
 import { STALE_AFTER_DAYS } from "@/lib/jobs/results";
 import { titleSimilarity } from "@/lib/jobs/scoring";
 
@@ -44,8 +45,10 @@ const FILES = {
 /** The Jobs page hides scores under this by default. */
 const VISIBLE_FROM = DEFAULT_MIN_SCORE;
 /**
- * Roles the AI scores per run: production's default with a Gemini key. Fixed rather than read
- * from env, so a re-run builds the same batches and hits the cache.
+ * Roles the AI evaluates: by default one search's cap (production's default with a Gemini key).
+ * `--cap 120` matches what's evaluated by the morning email: the 09:00 search (40) plus the
+ * 10:00 backlog run (BACKLOG_CAP, 80). Fixed rather than read from env, so a re-run builds the
+ * same batches and hits the cache.
  */
 const EVAL_AI_CAP = 40;
 /** Free-tier Gemini allows a handful of requests a minute: one new call per 4.5 s stays well under. */
@@ -70,10 +73,14 @@ type RunFile = {
   at: string;
   metrics: RankingMetrics;
   prefilterRecall: number | null;
+  /** Labeled roles the Jobs page shows by default (not skipped, not under the weak cut-off). */
+  visible?: Record<Label, number>;
+  /** The same metrics over only what's shown, in order. */
+  shownMetrics?: RankingMetrics;
   aiCalls: number;
   /** AI errors (rate limit, out of time): the run is partial and its numbers aren't comparable. */
   errors: string[];
-  ranking: { key: string; score: number; ai: boolean; label: Label | null }[];
+  ranking: { key: string; score: number; ai: boolean; skip?: boolean; label: Label | null }[];
 };
 
 async function readJson<T>(file: string): Promise<T> {
@@ -332,35 +339,63 @@ function cachedAi(stats: { calls: number; hits: number; prompt: number; cached: 
 async function run() {
   const mode = arg("mode") ?? "pipeline";
   const tag = arg("tag") ?? mode;
-  const { profile } = await readJson<Snapshot>(FILES.profile);
+  const { profile, userName } = await readJson<Snapshot>(FILES.profile);
   profile.matchingUpdatedAt = new Date(profile.matchingUpdatedAt);
+  // Settings added after the snapshot was taken (set them in profile.json to match the user's).
+  profile.avoidMilitary ??= false;
   const pool = await readJson<PoolJob[]>(FILES.pool);
   const labels = await readLabels();
   if (Object.keys(labels).length === 0) throw new Error("No labels yet: run `show`, then `label`.");
 
   // Score per posting; a role's score is its best posting's, as on the Jobs page.
-  const scoreById = new Map<string, number>();
+  const scored = new Map<string, { score: number; ai: boolean; skip: boolean }>();
   const aiIds = new Set<string>();
   const stats = { calls: 0, hits: 0, prompt: 0, cached: 0 };
   let selectedKeys: Set<string> | null = null;
   const errors: string[] = [];
+  const byHolistic = arg("score") === "holistic";
   if (mode === "baseline") {
-    for (const j of pool) scoreById.set(j.id, j.stored.score);
+    for (const j of pool) scored.set(j.id, { score: j.stored.score, ai: j.stored.aiScored, skip: false });
   } else if (mode === "keyword" || mode === "pipeline") {
-    // As after a profile change: nothing is fresh. Keyword mode is the same pipeline without AI,
-    // so both drop the profile's excluded titles the way production does.
+    // As after a profile change: nothing is fresh. Keyword mode is the same pipeline without AI
+    // (the fixed rules still apply), so both drop excluded titles the way production does.
     const all = new Map(pool.map((j) => [j.id, j as JobForScoring]));
     const result = await rankCandidates(profile, all, {
       isFresh: () => false,
-      cap: EVAL_AI_CAP,
+      cap: Number(arg("cap") ?? EVAL_AI_CAP),
       useAi: mode === "pipeline",
       deadline: Date.now() + 15 * 60_000,
+      resume: profile.resumeText ? redactPersonalInfo(profile.resumeText, { names: [userName] }) : null,
       ai: cachedAi(stats),
+      // cachedAi spaces real calls itself; cache hits needn't wait.
+      spacingMs: 0,
     });
     errors.push(...result.errors);
+    if (process.argv.includes("--explain")) {
+      // Why each labeled role got its verdict (cached answers, so free to repeat).
+      const shown = new Set<string>();
+      for (const c of result.candidates) {
+        const key = roleKey(c.job);
+        const ai = result.aiScores.get(c.id);
+        if (!labels[key] || shown.has(key) || (!ai && !c.blockers.length)) continue;
+        shown.add(key);
+        const e = ai?.evaluation;
+        console.log(
+          `[${labels[key]}] ${c.job.title} — ${c.job.company}\n   ` +
+            (e
+              ? `${ai.verdict} ${ai.score} | role ${e.roleFit}, level ${e.seniorityFit}, skills ${e.skillsCoverage}, location ${e.locationFit} | holistic ${e.holistic}` +
+                `${e.blockers.length ? ` | blockers: ${e.blockers.join("; ")}` : ""}\n   ${ai.reason}`
+              : `rule skip: ${c.blockers.join("; ")}`),
+        );
+      }
+    }
     for (const c of result.candidates) {
       const ai = result.aiScores.get(c.id);
-      scoreById.set(c.id, ai?.score ?? c.kw.score);
+      const final = finalMatch(c, ai);
+      // --score holistic: the model's own number; --score keyword: AI verdicts (skips hide) but keyword order.
+      const score =
+        byHolistic && ai?.evaluation.holistic !== undefined ? ai.evaluation.holistic : arg("score") === "keyword" ? c.kw.score : final.score;
+      scored.set(c.id, { score, ai: final.aiScored, skip: final.verdict === "skip" });
       if (ai) aiIds.add(c.id);
     }
     if (mode === "pipeline") selectedKeys = new Set(pool.filter((j) => aiIds.has(j.id)).map((j) => j.key));
@@ -368,18 +403,27 @@ async function run() {
     throw new Error(`Unknown mode "${mode}"`);
   }
 
-  const roleScore = new Map<string, { score: number; ai: boolean }>();
+  // Jobs marked "do not apply" are hidden on the Jobs page, so they rank below everything shown.
+  const roleScore = new Map<string, { score: number; ai: boolean; skip: boolean }>();
   for (const j of pool) {
-    const score = scoreById.get(j.id);
-    if (score === undefined) continue; // excluded by the profile
+    const s = scored.get(j.id);
+    if (!s) continue; // excluded by the profile
     const prev = roleScore.get(j.key);
-    if (!prev || score > prev.score) roleScore.set(j.key, { score, ai: aiIds.has(j.id) });
+    if (!prev || (prev.skip && !s.skip) || (prev.skip === s.skip && s.score > prev.score)) roleScore.set(j.key, s);
   }
   const ranking = [...roleScore.entries()]
-    .sort((a, b) => b[1].score - a[1].score || a[0].localeCompare(b[0]))
-    .map(([key, s]) => ({ key, score: s.score, ai: s.ai, label: labels[key] ?? null }));
+    .sort((a, b) => Number(a[1].skip) - Number(b[1].skip) || b[1].score - a[1].score || a[0].localeCompare(b[0]))
+    .map(([key, s]) => ({ key, score: s.score, ai: s.ai, skip: s.skip, label: labels[key] ?? null }));
   const metrics = rankingMetrics(
     ranking.map((r) => r.key),
+    labels,
+  );
+  // What the Jobs page shows by default: not marked do-not-apply, and not under the weak cut-off.
+  const shown = ranking.filter((r) => r.label && !r.skip && r.score >= VISIBLE_FROM);
+  const visible = { good: 0, maybe: 0, bad: 0 };
+  for (const r of shown) visible[r.label!]++;
+  const shownMetrics = rankingMetrics(
+    shown.map((r) => r.key),
     labels,
   );
   const out: RunFile = {
@@ -387,6 +431,8 @@ async function run() {
     mode,
     at: new Date().toISOString(),
     metrics,
+    visible,
+    shownMetrics,
     prefilterRecall: selectedKeys ? recall(selectedKeys, labels) : null,
     aiCalls: stats.calls,
     errors,
@@ -409,7 +455,12 @@ function printRun(r: RunFile) {
     `${r.tag} (${r.mode}): labeled ${m.labeled} (good ${m.good}, maybe ${m.maybe}, bad ${m.bad}) | ` +
       `P@10 ${m.p10} (lenient ${m.p10Lenient}) | P@20 ${m.p20} (lenient ${m.p20Lenient}) | ` +
       `bad in top 10 ${m.badInTop10}, top 20 ${m.badInTop20} | nDCG@20 ${m.ndcg20}` +
-      (r.prefilterRecall === null ? "" : ` | good roles AI-scored ${r.prefilterRecall}`),
+      (r.prefilterRecall === null ? "" : ` | good roles AI-scored ${r.prefilterRecall}`) +
+      (r.visible ? `
+   shown by default: good ${r.visible.good}, maybe ${r.visible.maybe}, bad ${r.visible.bad}` : "") +
+      (r.shownMetrics
+        ? ` | top 10 shown: P@10 ${r.shownMetrics.p10} (lenient ${r.shownMetrics.p10Lenient}), bad ${r.shownMetrics.badInTop10}`
+        : ""),
   );
 }
 

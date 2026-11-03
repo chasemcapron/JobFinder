@@ -48,6 +48,8 @@ function row(job: Partial<MatchResult["job"]> = {}, extra: Partial<MatchResult> 
     aiScored: false,
     reasons: "",
     matchedKeywords: [],
+    verdict: null,
+    evaluation: null,
     application: null,
     ...extra,
   };
@@ -115,6 +117,22 @@ describe("filterMatches", () => {
     expect(titles(filterMatches(rows, f({ applied: "only" }), NOW))).toEqual(["Payments Engineer"]);
   });
 
+  it("hides jobs marked do-not-apply by default, unless already applied to", () => {
+    const marked = [
+      row({ title: "Skip me" }, { verdict: "skip" }),
+      row({ title: "Applied skip" }, { verdict: "skip", application: { id: "a", status: "applied", appliedAt: NOW, sheetSyncStatus: "synced", sheetSyncError: null } }),
+      row({ title: "Apply" }, { verdict: "apply" }),
+      row({ title: "Unrated" }),
+    ];
+    expect(titles(filterMatches(marked, f({}), NOW))).toEqual(["Applied skip", "Apply", "Unrated"]);
+    expect(filterMatches(marked, f({ skip: "show" }), NOW)).toHaveLength(4);
+    // Skips score 30 or less by design; asking to see them shows them past the weak cut-off.
+    const weakSkip = [row({ title: "Weak skip" }, { verdict: "skip", score: 10 })];
+    expect(filterMatches(weakSkip, f({ skip: "only", minScore: 25 }), NOW)).toHaveLength(1);
+    expect(filterMatches(weakSkip, f({ skip: "hide", minScore: 25 }), NOW)).toHaveLength(0);
+    expect(titles(filterMatches(marked, f({ skip: "only" }), NOW))).toEqual(["Skip me", "Applied skip"]);
+  });
+
   it("applies a minimum score and combines filters", () => {
     expect(filterMatches(rows, f({ minScore: 75 }), NOW)).toHaveLength(3);
     expect(titles(filterMatches(rows, f({ minScore: 75, country: "US", remote: "onsite", applied: "hide" }), NOW))).toEqual([
@@ -130,7 +148,7 @@ describe("filterMatches", () => {
 
 describe("parseFilters / filtersToSearchParams", () => {
   it("round-trips", () => {
-    const filters = f({ q: "rust", country: "US", levels: ["senior", "lead"], sources: ["lever"], posted: "7", applied: "hide", minScore: 50, sort: "date", page: 2 });
+    const filters = f({ q: "rust", country: "US", levels: ["senior", "lead"], sources: ["lever"], posted: "7", applied: "hide", skip: "only", minScore: 50, sort: "date", page: 2 });
     const params = Object.fromEntries(
       [...filtersToSearchParams(filters).entries()].reduce((m, [k, v]) => m.set(k, [...(m.get(k) ?? []), v]), new Map<string, string[]>()),
     );

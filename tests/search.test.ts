@@ -4,8 +4,9 @@ import { createPglite, schema, type Db } from "@/db";
 import { mockJobs } from "@/lib/jobs/sources/mock";
 import { buildSourceTasks, runSourceTasks } from "@/lib/jobs/sources";
 import { listMatches } from "@/lib/jobs/results";
-import { rescoreStoredMatches, runJobSearch } from "@/lib/jobs/search";
+import { rescoreStoredMatches, runJobSearch, scoreBacklog } from "@/lib/jobs/search";
 import type { SourceTask } from "@/lib/jobs/types";
+import { overallScore } from "@/lib/jobs/evaluation";
 import { ensureProfile, SEED_TARGET_COMPANIES } from "@/lib/profile";
 
 let db: Db;
@@ -172,17 +173,32 @@ describe("scoring pipeline", () => {
 
   describe("with Gemini configured", () => {
     let aiCalls = 0;
+    /** The score a strong on-target evaluation from the stub works out to (see overallScore). */
+    const STRONG = overallScore({ roleFit: "on_target", seniorityFit: "fits", skillsCoverage: "strong", locationFit: "ok", blockers: [], score: 91, verdict: "apply" });
+    const body = (call: number) => JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[call][1]!.body));
     beforeEach(() => {
       aiCalls = 0;
       vi.stubEnv("GEMINI_API_KEY", "test-key");
-      // Answers every job id in the prompt with a fixed score, like the real batch endpoint would.
+      // Answers every job id in the prompt with a strong evaluation, like the real batch endpoint would.
       vi.stubGlobal(
         "fetch",
         vi.fn(async (_url: string, init: RequestInit) => {
           aiCalls++;
           const prompt: string = JSON.parse(String(init.body)).contents[0].parts[0].text;
           const ids = [...prompt.matchAll(/<job id="([^"]+)">/g)].map((m) => m[1]);
-          const results = ids.map((id) => ({ id, score: 91, reason: "Strong backend payments fit" }));
+          const results = ids.map((id) => ({
+            id,
+            roleFit: "on_target",
+            seniorityFit: "fits",
+            skillsCoverage: "strong",
+            locationFit: "ok",
+            matchedSkills: ["TypeScript", "Kafka"],
+            missingSkills: [],
+            blockers: [],
+            verdict: "apply",
+            score: 91,
+            reason: "Strong backend payments fit",
+          }));
           return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ results }) }] }, finishReason: "STOP" }] }));
         }),
       );
@@ -197,7 +213,7 @@ describe("scoring pipeline", () => {
       expect(first.aiScored).toBe(3);
       const rows = await matchTitles();
       expect(rows.filter((r) => r.aiScored)).toHaveLength(3);
-      expect(rows[0]).toMatchObject({ score: 91, aiScored: true });
+      expect(rows[0]).toMatchObject({ score: STRONG, aiScored: true });
 
       const callsAfterFirst = aiCalls;
       const second = await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [sampleTask], maxAiScores: 3 });
@@ -222,7 +238,44 @@ describe("scoring pipeline", () => {
       const prompt: string = JSON.parse(String(fetchSpy.mock.calls[0][1]!.body)).contents[0].parts[0].text;
       expect([...prompt.matchAll(/<job id=/g)]).toHaveLength(1);
       expect(summary.aiScored).toBe(3);
-      expect((await matchTitles()).every((m) => m.aiScored && m.score === 91)).toBe(true);
+      expect((await matchTitles()).every((m) => m.aiScored && m.score === STRONG)).toBe(true);
+    });
+
+    it("puts the redacted resume in the stable system prefix and only jobs, with short ids, in the turn", async () => {
+      await db.update(schema.users).set({ name: "Jordan Example" }).where(eq(schema.users.id, userId));
+      await setProfile({ resumeText: "Jordan Example\njordan@example.com\nBuilt Kafka payment pipelines in TypeScript." });
+      await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [sampleTask], maxAiScores: 2 });
+      const { systemInstruction, contents } = body(0);
+      const system: string = systemInstruction.parts[0].text;
+      const turn: string = contents[0].parts[0].text;
+      expect(system).toContain("Built Kafka payment pipelines");
+      expect(system).not.toMatch(/Jordan|jordan@example\.com/);
+      expect(turn).not.toContain("Built Kafka payment pipelines");
+      expect([...turn.matchAll(/<job id="(j\d+)">/g)].map((m) => m[1])).toEqual(["j1", "j2"]);
+    });
+
+    it("never sends a job a fixed rule rules out, and marks it skip", async () => {
+      // An entry-level profile: "Senior Backend Engineer" is two levels up by its title.
+      await setProfile({ experienceLevels: ["entry"], seniority: "entry" });
+      await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [sampleTask] });
+      for (let i = 0; i < aiCalls; i++) expect(body(i).contents[0].parts[0].text).not.toContain("Senior Backend Engineer at");
+      const [senior] = await db
+        .select({ verdict: schema.jobMatches.verdict, score: schema.jobMatches.score, evaluation: schema.jobMatches.evaluation, aiScored: schema.jobMatches.aiScored })
+        .from(schema.jobMatches)
+        .innerJoin(schema.jobs, eq(schema.jobs.id, schema.jobMatches.jobId))
+        .where(eq(schema.jobs.title, "Senior Backend Engineer"));
+      expect(senior).toMatchObject({ verdict: "skip", aiScored: false, evaluation: { source: "rule", blockers: ["Senior-level title"] } });
+      expect(senior.score).toBeLessThanOrEqual(30);
+    });
+
+    it("evaluates the stored backlog without fetching, and leaves fresh evaluations alone", async () => {
+      await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [sampleTask], maxAiScores: 2 });
+      const before = (await matchTitles()).filter((r) => r.aiScored).length;
+      const r = await scoreBacklog(userId, { db, deadline: Date.now() + 30_000, cap: 3 });
+      expect(r.aiScored).toBeGreaterThan(0);
+      expect((await matchTitles()).filter((m) => m.aiScored).length).toBe(before + r.aiScored);
+      // Only Gemini was called: nothing was fetched from job boards.
+      expect(vi.mocked(globalThis.fetch).mock.calls.every(([url]) => String(url).includes("generativelanguage"))).toBe(true);
     });
 
     it("falls back to keyword scores when Gemini is busy", async () => {

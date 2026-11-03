@@ -33,6 +33,9 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
     hasProfile && filters.minScore === HIDE_BELOW_SCORE ? groupByRole(filterMatches(all, { ...filters, minScore: 0 })).length - filtered.length : 0;
   const { newToday, strong } = summarizeMatches(all, { ranked: hasProfile, strongAt: SCORE_THRESHOLDS.high });
   const showWeakHref = `/jobs?${filtersToSearchParams({ ...filters, minScore: 0, page: 1 }).toString()}`;
+  // Jobs the AI or a fixed rule marked "do not apply" are hidden by default, with a count to show them.
+  const skipHidden = filters.skip === "hide" ? groupByRole(filterMatches(all, { ...filters, skip: "show" })).length - filtered.length : 0;
+  const showSkippedHref = `/jobs?${filtersToSearchParams({ ...filters, skip: "show", page: 1 }).toString()}`;
   // "Check my fit" needs the AI and a saved resume; earlier checks for this page's jobs load with it.
   const canCheckFit = Boolean(aiProvider() && profile.resumeText?.trim());
   const fitChecks = canCheckFit
@@ -131,6 +134,15 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
                   {" · "}
                   {weakHidden.toLocaleString()} weak match{weakHidden === 1 ? "" : "es"} (under {HIDE_BELOW_SCORE}) hidden.{" "}
                   <Link href={showWeakHref} className={linkClass}>
+                    Show
+                  </Link>
+                </>
+              ) : null}
+              {skipHidden > 0 ? (
+                <>
+                  {" · "}
+                  {skipHidden.toLocaleString()} marked do not apply hidden.{" "}
+                  <Link href={showSkippedHref} className={linkClass}>
                     Show
                   </Link>
                 </>

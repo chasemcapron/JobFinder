@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
-import { applications, jobMatches, jobs, searchRuns, type ApplicationStatus, type JobRow, type SheetSyncStatus } from "@/db/schema";
+import { applications, jobMatches, jobs, searchRuns, type ApplicationStatus, type JobRow, type MatchEvaluation, type MatchVerdict, type SheetSyncStatus } from "@/db/schema";
 import { TARGET_COUNTRY } from "./location";
 
 /** Postings not seen by any search in this long are treated as closed and hidden. */
@@ -37,6 +37,9 @@ export type MatchResult = {
   aiScored: boolean;
   reasons: string;
   matchedKeywords: string[];
+  /** apply / maybe / skip; null when only the keyword matcher has seen the job. */
+  verdict: MatchVerdict | null;
+  evaluation: MatchEvaluation | null;
   application: {
     id: string;
     status: ApplicationStatus;
@@ -80,6 +83,8 @@ export async function listMatches(userId: string, db?: Db): Promise<MatchResult[
       aiScored: jobMatches.aiScored,
       reasons: jobMatches.reasons,
       matchedKeywords: jobMatches.matchedKeywords,
+      verdict: jobMatches.verdict,
+      evaluation: jobMatches.evaluation,
       applicationId: applications.id,
       applicationStatus: applications.status,
       appliedAt: applications.appliedAt,
@@ -99,6 +104,8 @@ export async function listMatches(userId: string, db?: Db): Promise<MatchResult[
     aiScored: r.aiScored,
     reasons: r.reasons,
     matchedKeywords: r.matchedKeywords,
+    verdict: r.verdict,
+    evaluation: r.evaluation,
     application:
       r.applicationId && r.applicationStatus && r.appliedAt && r.sheetSyncStatus
         ? {

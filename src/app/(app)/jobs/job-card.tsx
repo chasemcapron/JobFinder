@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import type { MatchVerdict } from "@/db/schema";
 import { Badge, buttonClass, Card, cx, Icon, ScoreBadge, scoreTier, SourceBadge } from "@/components/ui";
 import { applicationStatusLabel } from "@/lib/applications";
 import { formatRelativeDate, formatSalary } from "@/lib/format";
@@ -38,6 +39,33 @@ function MetaLine({ parts }: { parts: ReactNode[] }) {
         </span>
       ))}
     </p>
+  );
+}
+
+const VERDICTS: Record<MatchVerdict, { label: string; tone: "success" | "warning" | "danger"; title: string }> = {
+  apply: { label: "Apply", tone: "success", title: "Worth applying: on target, at your level, most required skills shown" },
+  maybe: { label: "Maybe", tone: "warning", title: "Worth a look, with real gaps" },
+  skip: { label: "Do not apply", tone: "danger", title: "Off target, too senior, or a hard requirement you don't meet" },
+};
+
+/** What the evaluation found: skills the posting asks for that the resume shows, and what's missing. */
+function EvaluationLines({ matched, missing }: { matched: string[]; missing: string[] }) {
+  if (!matched.length && !missing.length) return null;
+  return (
+    <dl className="mt-2 grid gap-0.5 text-[13px] leading-5">
+      {matched.length ? (
+        <div className="flex gap-1.5">
+          <dt className="shrink-0 font-medium text-success-fg">Matches:</dt>
+          <dd className="min-w-0 text-muted">{matched.join(", ")}</dd>
+        </div>
+      ) : null}
+      {missing.length ? (
+        <div className="flex gap-1.5">
+          <dt className="shrink-0 font-medium text-warning-fg">Missing:</dt>
+          <dd className="min-w-0 text-muted">{missing.join(", ")}</dd>
+        </div>
+      ) : null}
+    </dl>
   );
 }
 
@@ -93,6 +121,10 @@ export function JobCard({
   const posted = formatRelativeDate(job.postedAt ?? job.firstSeenAt);
   const isNew = isNewMatch(match);
   const needsClearance = job.clearance === "active" && !hasClearance;
+  const verdict = match.verdict ? VERDICTS[match.verdict] : null;
+  const evaluation = match.evaluation;
+  // The clearance badge already says so; other hard stops get their own badge.
+  const blocker = evaluation?.blockers.find((b) => !(needsClearance && /clearance/i.test(b)));
   const source =
     job.source === "adzuna" ? (
       // Adzuna's terms require each displayed ad to link "Adzuna" back to their site.
@@ -146,6 +178,17 @@ export function JobCard({
               ]}
             />
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+              {verdict ? (
+                <Badge tone={verdict.tone} dot title={evaluation?.source === "rule" ? "Decided by a fixed rule, without AI" : verdict.title}>
+                  {verdict.label}
+                </Badge>
+              ) : null}
+              {blocker ? (
+                <Badge tone="danger" title="A hard requirement this job has that your profile doesn't meet">
+                  <Icon name="alert-triangle" className="size-3" />
+                  {blocker}
+                </Badge>
+              ) : null}
               {needsClearance ? (
                 <Badge tone="danger" title="The posting asks for a security clearance you already hold. Change this in Settings if you have one.">
                   <Icon name="alert-triangle" className="size-3" />
@@ -166,6 +209,7 @@ export function JobCard({
                 {match.reasons}
               </p>
             ) : null}
+            {evaluation?.source === "ai" ? <EvaluationLines matched={evaluation.matchedSkills} missing={evaluation.missingSkills} /> : null}
             {others.length ? <OtherPlaces others={others} /> : null}
           </div>
         </div>

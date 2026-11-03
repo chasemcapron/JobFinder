@@ -1,6 +1,6 @@
 import { EXPERIENCE_LEVELS, type ExperienceLevel, type Profile } from "@/db/schema";
 import { containsTerm, normalizeForKey, uniqueCaseInsensitive } from "@/lib/text";
-import { EXPERIENCE_LABELS } from "./experience";
+import { EXPERIENCE_LABELS, inferExperienceLevel } from "./experience";
 import { countryName } from "./location";
 import type { NormalizedJob } from "./types";
 
@@ -8,13 +8,13 @@ export type MatchProfile = Pick<
   Profile,
   "skills" | "titles" | "keywords" | "searchKeywords" | "preferredLocations" | "experienceLevels" | "remotePreference" | "seniority"
 > &
-  Partial<Pick<Profile, "hasClearance">>;
+  Partial<Pick<Profile, "hasClearance" | "avoidMilitary">>;
 
 export type ScoredJob = Pick<
   NormalizedJob,
   "title" | "description" | "city" | "state" | "country" | "remote" | "locationRaw" | "experienceLevel"
 > &
-  Partial<Pick<NormalizedJob, "minYears" | "clearance">>;
+  Partial<Pick<NormalizedJob, "minYears" | "clearance" | "source">>;
 
 export type KeywordResult = { score: number; matched: string[]; reason: string };
 
@@ -52,17 +52,49 @@ const TITLE_SYNONYMS: Record<string, string[]> = {
   isso: ["information", "security", "officer"],
   developer: ["engineer"],
   dev: ["engineer"],
+  sysadmin: ["systems", "administrator"],
+  noc: ["network", "operations"],
+  helpdesk: ["helpdesk", "support"],
 };
 
 /**
- * Words that all mean security work. One of them in the job title stands in, at RELATED_CREDIT,
- * for a different one in the profile title: "SOC Analyst" is close to "Cyber Defense Analyst".
+ * Multi-word names rewritten before the title is split into words, so "Information Technology
+ * Specialist" reads as "IT Specialist" and "Service Desk Analyst" shares a word with "Help Desk
+ * Technician". Runs on normalizeForKey output (lowercase, punctuation as spaces).
  */
-const SECURITY_WORDS = new Set(["security", "cyber", "threat", "incident", "vulnerability", "penetration", "forensics", "malware", "detection", "siem"]);
+const TITLE_PHRASES: [RegExp, string][] = [
+  [/\binformation technology\b/g, "it"],
+  [/\b(?:help|service|it service) desk\b/g, "helpdesk"],
+  [/\bdesktop support\b/g, "helpdesk desktop"],
+  [/\bbusiness intelligence\b/g, "bi"],
+  [/\bsys(?:tems?)? ?admin(?:istrator)?\b/g, "sysadmin"],
+];
+
+/**
+ * Words that mean the same kind of work. One of them in the job title stands in, at
+ * RELATED_CREDIT, for a different one from the same family in the profile title: "SOC Analyst"
+ * is close to "Cyber Defense Analyst", and "IT Specialist" to "Systems Analyst". The family is
+ * the profile word's, so the credit follows what the user is looking for. Security was the only
+ * family until 2026-11-03, when the user moved to entry-level IT, data and systems roles.
+ */
+// Only words specific to the field: broad ones ("reporting", "support", "technology",
+// "applications") also name other professions ("Financial Reporting Analyst", "Customer Support").
+const FIELD_FAMILIES: ReadonlySet<string>[] = [
+  new Set(["security", "cyber", "threat", "incident", "vulnerability", "penetration", "forensics", "malware", "detection", "siem"]),
+  new Set(["data", "analytics", "bi", "database", "sql", "etl"]),
+  new Set(["it", "systems", "infrastructure", "network", "sysadmin", "helpdesk", "desktop", "cloud"]),
+  new Set(["business", "requirements", "erp"]),
+];
 const RELATED_CREDIT = 0.6;
 
+function familyOf(word: string): ReadonlySet<string> | undefined {
+  return FIELD_FAMILIES.find((f) => f.has(word));
+}
+
 function titleTokens(title: string): string[] {
-  return normalizeForKey(title)
+  let text = normalizeForKey(title);
+  for (const [re, to] of TITLE_PHRASES) text = text.replace(re, to);
+  return text
     .split(" ")
     .filter((t) => t && !TITLE_NOISE.has(t))
     .flatMap((t) => TITLE_SYNONYMS[t] ?? [t]);
@@ -79,14 +111,14 @@ export function titleSimilarity(profileTitle: string, jobTitle: string): number 
   const have = new Set(titleTokens(jobTitle));
   const weight = (t: string) => (GENERIC_ROLE.has(t) ? 0.5 : 1);
   const total = want.reduce((sum, t) => sum + weight(t), 0);
-  const jobHasSecurityWord = [...have].some((t) => SECURITY_WORDS.has(t));
   let points = 0;
   let fieldMatched = false;
   for (const t of want) {
+    const family = familyOf(t);
     if (have.has(t)) {
       points += weight(t);
       if (!GENERIC_ROLE.has(t)) fieldMatched = true;
-    } else if (SECURITY_WORDS.has(t) && jobHasSecurityWord) {
+    } else if (family && [...have].some((h) => family.has(h))) {
       points += weight(t) * RELATED_CREDIT;
       fieldMatched = true;
     }
@@ -115,6 +147,20 @@ const SKILL_ALIASES: Record<string, string[]> = {
   "penetration testing": ["pen testing", "pentesting", "penetration tests"],
   "threat intelligence": ["threat intel", "cti"],
   "digital forensics": ["forensics", "dfir"],
+  // IT, data and systems tools, as postings write them.
+  "power bi": ["powerbi"],
+  "microsoft 365": ["office 365", "o365", "m365"],
+  "office 365": ["microsoft 365", "o365", "m365"],
+  servicenow: ["service now"],
+  "sql server": ["mssql", "ms sql", "microsoft sql"],
+  "google workspace": ["g suite", "gsuite"],
+  "microsoft excel": ["excel"],
+  "active directory": ["ad ds", "entra id", "azure ad"],
+  intune: ["endpoint manager"],
+  sccm: ["configuration manager", "mecm"],
+  "windows server": ["windows servers"],
+  itil: ["itil v4", "itil 4"],
+  "business intelligence": ["bi tools"],
 };
 /** Certification vendors resumes put in front of the name and postings often leave out. */
 const CERT_VENDOR = /^(comptia|\(isc\)²?|isc2|ec-council|giac|cisco|microsoft)\s+/i;
@@ -204,20 +250,25 @@ export function keywordScore(job: ScoredJob, profile: MatchProfile): KeywordResu
   if (matchedKeywords.length && !matchedSkills.length) reasons.push(`Keywords: ${matchedKeywords.slice(0, 4).join(", ")}`);
 
   // Experience level (+5 / penalties). Problems go first in the reasons, so the card leads with them.
+  // A federal posting's level comes from its pay grade unless the title or years say otherwise;
+  // grades are a poor guide to who gets hired (the user labeled GS-14 "IT Specialist" roles
+  // good), so a grade alone neither adds nor costs points.
   const problems: string[] = [];
-  if (job.experienceLevel) {
-    const asksFor = job.minYears ? `Asks for ${job.minYears}+ years` : `${EXPERIENCE_LABELS[job.experienceLevel]} role`;
+  const gradeOnly = job.source === "usajobs" && !job.minYears && !inferExperienceLevel(job.title);
+  const level = gradeOnly ? null : job.experienceLevel;
+  if (level) {
+    const asksFor = job.minYears ? `Asks for ${job.minYears}+ years` : `${EXPERIENCE_LABELS[level]} role`;
     if (profile.experienceLevels.length) {
-      if (profile.experienceLevels.includes(job.experienceLevel)) {
+      if (profile.experienceLevels.includes(level)) {
         score += 5;
-        reasons.push(EXPERIENCE_LABELS[job.experienceLevel]);
+        reasons.push(EXPERIENCE_LABELS[level]);
       } else {
         score -= 20;
         problems.push(asksFor);
       }
     } else if (profile.seniority) {
       // Above your level costs far more than below it: a Senior role is out of reach for an entry-level candidate.
-      const gap = levelGap(job.experienceLevel, profile.seniority);
+      const gap = levelGap(level, profile.seniority);
       if (gap === 0) score += 5;
       else if (gap === 1) score -= 5;
       else if (gap >= 2) {

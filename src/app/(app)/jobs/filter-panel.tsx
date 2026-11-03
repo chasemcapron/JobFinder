@@ -31,7 +31,7 @@ function toQuery(form: HTMLFormElement): string {
   for (const [k, v] of new FormData(form)) {
     const value = String(v).trim();
     // Drop empty values and defaults so URLs stay readable.
-    if (!value || (k === "remote" && value === "any") || (k === "posted" && value === "any") || (k === "applied" && value === "dim") || (k === "sort" && value === "score") || (k === "minScore" && value === String(HIDE_BELOW_SCORE))) continue;
+    if (!value || (k === "remote" && value === "any") || (k === "posted" && value === "any") || (k === "applied" && value === "dim") || (k === "skip" && value === "hide") || (k === "sort" && value === "score") || (k === "minScore" && value === String(HIDE_BELOW_SCORE))) continue;
     params.append(k, value);
   }
   return params.toString();
@@ -192,6 +192,14 @@ export function FilterPanel({
       ) : null}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-1">
+        <div>
+          <Label htmlFor="skip">Marked do not apply</Label>
+          <select id="skip" name="skip" defaultValue={filters.skip} key={`sk-${filters.skip}`} className={selectClass}>
+            <option value="hide">Hide</option>
+            <option value="show">Show</option>
+            <option value="only">Only these</option>
+          </select>
+        </div>
         <div>
           <Label htmlFor="applied">Applied jobs</Label>
           <select id="applied" name="applied" defaultValue={filters.applied} key={`a-${filters.applied}`} className={selectClass}>
