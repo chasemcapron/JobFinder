@@ -7,6 +7,9 @@ import type { MatchProfile, ScoredJob } from "./scoring";
 
 export type AiScore = { score: number; reason: string };
 
+/** The structured-output call; injectable so the eval harness can cache answers on disk. */
+export type AiJsonFn = typeof aiJson;
+
 const BATCH_SIZE = 10;
 /** Free-tier Gemini allows only a handful of requests per minute; two at a time stays under it. */
 const CONCURRENCY = 2;
@@ -62,8 +65,9 @@ async function scoreBatch(
   profile: MatchProfile,
   batch: [string, ScoredJob & { company: string }][],
   deadline: number,
+  ai: AiJsonFn,
 ): Promise<Map<string, AiScore>> {
-  const { data } = await aiJson({
+  const { data } = await ai({
     schema: ResultSchema,
     system: SYSTEM,
     prompt: `<candidate>\n${describeProfile(profile)}\n</candidate>\n\n${batch.map(([id, j]) => describeJob(id, j)).join("\n\n")}\n\nScore every job above.`,
@@ -94,11 +98,13 @@ async function scoreBatch(
 export async function scoreWithAi(
   profile: MatchProfile,
   jobs: Map<string, ScoredJob & { company: string }>,
-  opts: { deadline?: number } = {},
+  opts: { deadline?: number; ai?: AiJsonFn } = {},
 ): Promise<{ scores: Map<string, AiScore>; errors: string[] }> {
   const scores = new Map<string, AiScore>();
   const errors: string[] = [];
-  if (!aiProvider() || jobs.size === 0) return { scores, errors };
+  const configured = opts.ai ?? (aiProvider() ? aiJson : null);
+  if (!configured || jobs.size === 0) return { scores, errors };
+  const ai: AiJsonFn = configured;
   const deadline = opts.deadline ?? Date.now() + 30_000;
   const entries = [...jobs.entries()];
   const batches: (typeof entries)[] = [];
@@ -110,7 +116,7 @@ export async function scoreWithAi(
     while (!stopped && next < batches.length && deadline - Date.now() > 3_000) {
       const batch = batches[next++];
       try {
-        for (const [id, s] of await scoreBatch(profile, batch, deadline)) scores.set(id, s);
+        for (const [id, s] of await scoreBatch(profile, batch, deadline, ai)) scores.set(id, s);
       } catch (err) {
         console.error("AI scoring batch failed", err);
         errors.push(err instanceof Error ? err.message : String(err));

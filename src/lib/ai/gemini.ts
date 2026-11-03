@@ -61,6 +61,12 @@ export function toGeminiSchema(schema: z.ZodType): Record<string, unknown> {
 type GeminiResponse = {
   candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] }; finishReason?: string }[];
   promptFeedback?: { blockReason?: string };
+  usageMetadata?: {
+    promptTokenCount?: number;
+    cachedContentTokenCount?: number;
+    candidatesTokenCount?: number;
+    thoughtsTokenCount?: number;
+  };
   error?: { code?: number; message?: string; status?: string };
 };
 
@@ -73,8 +79,14 @@ function describeAttempts(attempts: GeminiAttempt[]): string {
   return `Gemini failed: ${attempts.map((a) => `${a.model}: ${a.message}`).join("; ")}`.slice(0, 400);
 }
 
+/**
+ * Token counts for the answer that won (failed or hedged attempts aren't counted). `cached` shows
+ * whether Gemini's implicit prefix caching applied; `output` includes thinking tokens.
+ */
+export type AiUsage = { prompt: number; cached: number; output: number };
+
 type AttemptOutcome<T> =
-  | { kind: "ok"; data: T; model: string }
+  | { kind: "ok"; data: T; model: string; usage?: AiUsage }
   | { kind: "failed"; attempt: GeminiAttempt }
   | { kind: "fatal"; error: AiRequestError };
 
@@ -139,7 +151,11 @@ async function attemptModel<S extends z.ZodType>(
     }
     const result = opts.schema.safeParse(parsed);
     if (!result.success) return failed(res.status, "returned JSON that didn't match the expected shape");
-    return { kind: "ok", data: result.data as z.infer<S>, model };
+    const u = body.usageMetadata;
+    const usage = u
+      ? { prompt: u.promptTokenCount ?? 0, cached: u.cachedContentTokenCount ?? 0, output: (u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount ?? 0) }
+      : undefined;
+    return { kind: "ok", data: result.data as z.infer<S>, model, usage };
   } catch (err) {
     if (signal.aborted) return failed(null, `no answer after ${Math.round((Date.now() - started) / 1000)}s`);
     return failed(null, err instanceof Error ? err.message : String(err));
@@ -164,7 +180,7 @@ export async function geminiJson<S extends z.ZodType>(opts: {
   /** Epoch ms when every attempt is abandoned (keeps callers inside Vercel's 60 s limit). */
   deadline?: number;
   maxOutputTokens?: number;
-}): Promise<{ data: z.infer<S>; model: string }> {
+}): Promise<{ data: z.infer<S>; model: string; usage?: AiUsage }> {
   const key = env.geminiApiKey;
   if (!key) throw new AiRequestError("GEMINI_API_KEY is not configured");
   const responseJsonSchema = toGeminiSchema(opts.schema);
@@ -209,7 +225,7 @@ export async function geminiJson<S extends z.ZodType>(opts: {
       }
       running.delete(settled.index);
       const { outcome } = settled;
-      if (outcome.kind === "ok") return { data: outcome.data, model: outcome.model };
+      if (outcome.kind === "ok") return { data: outcome.data, model: outcome.model, usage: outcome.usage };
       if (outcome.kind === "fatal") throw outcome.error;
       attempts.push(outcome.attempt);
       if (canStart()) start();

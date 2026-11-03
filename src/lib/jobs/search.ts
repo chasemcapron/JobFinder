@@ -1,15 +1,12 @@
 import { and, eq, gt, inArray, lt, sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
-import { jobMatches, jobs, searchRuns, type JobSource, type Profile, type SourceRunResult, type TargetCompanyRow } from "@/db/schema";
-import { aiProvider } from "@/lib/ai/provider";
+import { jobMatches, jobs, searchRuns, type Profile, type SourceRunResult, type TargetCompanyRow } from "@/db/schema";
 import { env } from "@/lib/env";
 import { ensureProfile, listEnabledTargetCompanies } from "@/lib/profile";
-import { normalizeForKey } from "@/lib/text";
-import { scoreWithAi, type AiScore } from "./ai-score";
 import { isInTargetCountry } from "./location";
 import { dedupeJobs } from "./normalize";
+import { rankCandidates, type JobForScoring } from "./rank";
 import { STALE_AFTER_DAYS } from "./results";
-import { isExcludedTitle, keywordScore, profileHasTerms, type ScoredJob } from "./scoring";
 import { buildSourceTasks, mockJobsForced, runSourceTasks } from "./sources";
 import type { SourceTask } from "./types";
 
@@ -40,8 +37,6 @@ function chunk<T>(items: T[], size: number): T[][] {
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
 }
-
-type JobForScoring = ScoredJob & { company: string; source: JobSource };
 
 /** No search runs this long: Vercel stops a function after 60 s. */
 export const ABANDONED_RUN_MS = 5 * 60_000;
@@ -223,46 +218,18 @@ async function scoreAndSaveMatches(
     const m = existing.get(id);
     return Boolean(m?.aiScored && m.scoredAt >= profile.matchingUpdatedAt);
   };
-  const hideMock = env.isProduction && !mockJobsForced();
-  const hasTerms = profileHasTerms(profile);
+  const { candidates, excluded, aiScores, errors: rankErrors } = await rankCandidates(profile, all, {
+    isFresh,
+    cap: opts.maxAiScores ?? env.maxAiScoresPerRun,
+    useAi: opts.useAi,
+    hideMock: env.isProduction && !mockJobsForced(),
+    deadline: opts.deadline,
+  });
+  errors.push(...rankErrors);
 
-  const toRemove: string[] = [];
-  const candidates: { id: string; job: JobForScoring; kw: ReturnType<typeof keywordScore> }[] = [];
-  for (const [id, job] of all) {
-    if (isExcludedTitle(job.title, profile.excludeKeywords) || !isInTargetCountry(job) || (hideMock && job.source === "mock")) {
-      if (existing.has(id)) toRemove.push(id);
-      continue;
-    }
-    candidates.push({ id, job, kw: keywordScore(job, profile) });
-  }
+  const toRemove = excluded.filter((id) => existing.has(id));
   for (const ids of chunk(toRemove, 500)) {
     await db.delete(jobMatches).where(and(eq(jobMatches.userId, userId), inArray(jobMatches.jobId, ids)));
-  }
-
-  // AI scores only the best candidates that don't already have a fresh AI score. Companies
-  // often post one role once per city ("Solutions Engineer" x 11 states), so each company +
-  // title is scored once and the result is shared with its copies, saving free-tier quota.
-  const cap = opts.maxAiScores ?? env.maxAiScoresPerRun;
-  const groups = new Map<string, typeof candidates>();
-  if (opts.useAi && hasTerms && aiProvider()) {
-    for (const c of [...candidates].filter((c) => !isFresh(c.id)).sort((a, b) => b.kw.score - a.kw.score)) {
-      const key = `${normalizeForKey(c.job.company)}|${normalizeForKey(c.job.title)}`;
-      const group = groups.get(key);
-      if (group) group.push(c);
-      else if (groups.size < cap) groups.set(key, [c]);
-    }
-  }
-  const representatives = [...groups.values()].map((g) => g[0]);
-  const { scores: groupScores, errors: aiErrors } = await scoreWithAi(
-    profile,
-    new Map(representatives.map((c) => [c.id, c.job])),
-    { deadline: opts.deadline },
-  );
-  errors.push(...aiErrors.map((e) => `AI scoring: ${e}`));
-  const aiScores = new Map<string, AiScore>();
-  for (const group of groups.values()) {
-    const score = groupScores.get(group[0].id);
-    if (score) for (const c of group) aiScores.set(c.id, score);
   }
 
   // Save (keep fresh AI scores from earlier runs untouched).

@@ -49,5 +49,7 @@ export async function listEnabledTargetCompanies(userId: string, db?: Db) {
   return db
     .select()
     .from(targetCompanies)
-    .where(and(eq(targetCompanies.userId, userId), eq(targetCompanies.enabled, true)));
+    .where(and(eq(targetCompanies.userId, userId), eq(targetCompanies.enabled, true)))
+    // A fixed order keeps the daily Workday rotation (takeTurns) stable.
+    .orderBy(asc(targetCompanies.ats), asc(targetCompanies.slug));
 }

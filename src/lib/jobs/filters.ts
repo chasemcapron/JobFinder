@@ -1,8 +1,8 @@
 import { HIDE_BELOW_SCORE } from "@/components/ui";
 import { EXPERIENCE_LEVELS, JOB_SOURCES, type JobSource } from "@/db/schema";
-import { normalizeForKey } from "@/lib/text";
 import { LEVEL_UNSTATED, type LevelFilter } from "./experience";
 import { countryName } from "./location";
+import { roleKey } from "./normalize";
 import type { MatchResult } from "./results";
 
 export const POSTED_WITHIN = ["any", "1", "3", "7", "14", "30"] as const;
@@ -158,7 +158,7 @@ export type RoleMatch = MatchResult & {
 export function groupByRole(rows: MatchResult[]): RoleMatch[] {
   const groups = new Map<string, RoleMatch>();
   for (const m of rows) {
-    const key = `${normalizeForKey(m.job.company)}|${normalizeForKey(m.job.title)}`;
+    const key = roleKey(m.job);
     const group = groups.get(key);
     if (group) group.others.push(m);
     else groups.set(key, { ...m, others: [] });

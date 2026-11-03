@@ -8,6 +8,14 @@ import type { NormalizedJob } from "./types";
 
 export const MAX_DESCRIPTION_CHARS = 20_000;
 
+/**
+ * One role posted once per city: company + title. The Jobs page shows one card per role, and
+ * AI scoring scores each role once and shares the result with its copies.
+ */
+export function roleKey(job: { company: string; title: string }) {
+  return `${normalizeForKey(job.company)}|${normalizeForKey(job.title)}`;
+}
+
 type Derived = "city" | "state" | "country" | "remote" | "experienceLevel" | "minYears" | "clearance" | "salaryMin" | "salaryMax" | "salaryCurrency";
 type JobInput = Omit<NormalizedJob, Derived> &
   Partial<Pick<NormalizedJob, Derived>> & {

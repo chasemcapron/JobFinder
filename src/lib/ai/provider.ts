@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import { env } from "@/lib/env";
 import { claudeJson } from "./claude";
-import { geminiJson, type GeminiTier } from "./gemini";
+import { geminiJson, type AiUsage, type GeminiTier } from "./gemini";
 
 export type AiProvider = "gemini" | "claude";
 
@@ -31,10 +31,10 @@ export async function aiJson<S extends z.ZodType>(opts: {
   maxTokens?: number;
   hedgeAfterMs?: number | null;
   deadline?: number;
-}): Promise<{ data: z.infer<S>; provider: AiProvider; model: string }> {
+}): Promise<{ data: z.infer<S>; provider: AiProvider; model: string; usage?: AiUsage }> {
   const provider = aiProvider();
   if (provider === "gemini") {
-    const { data, model } = await geminiJson({
+    const { data, model, usage } = await geminiJson({
       schema: opts.schema,
       system: opts.system,
       prompt: opts.prompt,
@@ -43,7 +43,7 @@ export async function aiJson<S extends z.ZodType>(opts: {
       deadline: opts.deadline,
       maxOutputTokens: opts.maxTokens,
     });
-    return { data, provider, model };
+    return { data, provider, model, usage };
   }
   if (provider === "claude") {
     const data = await claudeJson({ schema: opts.schema, system: opts.system, prompt: opts.prompt, maxTokens: opts.maxTokens });
