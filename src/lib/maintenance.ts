@@ -10,8 +10,8 @@ const DAY_MS = 86_400_000;
 /**
  * Keeps the database inside Neon's free 0.5 GB. Jobs are shared across users, so this is a global
  * maintenance step run only by the CRON_SECRET-protected search cron. Jobs anyone applied to are kept
- * (deleting one would cascade to the application); deleting a job also removes its matches, fit
- * checks and email log rows.
+ * (deleting one would cascade to the application), and with them the tailored resumes sent; deleting
+ * a job also removes its matches, fit checks, email log rows and any tailored versions never sent.
  */
 export async function pruneOldData(db: Db, now: Date): Promise<{ jobs: number; searchRuns: number }> {
   const goneJobs = await db
