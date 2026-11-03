@@ -6,10 +6,11 @@ import { ruleEvaluation } from "./evaluation";
 import { isInTargetCountry } from "./location";
 import { roleKey } from "./normalize";
 import {
+  bestTitleSimilarity,
   isExcludedTitle,
   keywordScore,
+  ownFamily,
   profileHasTerms,
-  titleSimilarity,
   type KeywordResult,
   type MatchProfile,
   type ScoredJob,
@@ -58,12 +59,6 @@ export function finalMatch(c: Candidate, ai: AiScore | undefined): FinalMatch {
   return { score: c.kw.score, verdict: null, evaluation: null, reasons: c.kw.reason, aiScored: false };
 }
 
-function bestTitleSimilarity(profile: MatchProfile, title: string): number {
-  let best = 0;
-  for (const t of [...profile.titles, ...profile.searchKeywords]) best = Math.max(best, titleSimilarity(t, title));
-  return best;
-}
-
 /**
  * Picks the roles the AI evaluates this run: never ones a fixed rule already ruled out, nor ones
  * with a fresh evaluation. 75% of the slots go by keyword score; 25% are kept for roles whose
@@ -90,9 +85,11 @@ export function selectForAi(candidates: Candidate[], profile: MatchProfile, opts
     if (chosen.size >= opts.cap - reserved) break;
     chosen.set(r.key, r.members);
   }
+  const terms = [...profile.titles, ...profile.searchKeywords];
+  const own = ownFamily(profile.titles);
   const byTitle = roles
     .filter((r) => !chosen.has(r.key))
-    .map((r) => ({ ...r, sim: bestTitleSimilarity(profile, r.members[0].job.title) }))
+    .map((r) => ({ ...r, sim: bestTitleSimilarity(terms, r.members[0].job.title, own) }))
     .filter((r) => r.sim >= RESERVE_SIMILARITY)
     .sort((a, b) => b.sim - a.sim || b.kw - a.kw);
   for (const r of byTitle) {

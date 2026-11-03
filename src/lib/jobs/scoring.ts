@@ -101,16 +101,39 @@ function titleTokens(title: string): string[] {
 }
 
 /**
+ * The field words of the user's own target titles (not search keywords, which are free-form
+ * interests) that no built-in family covers, as one more family, so fields outside tech get
+ * related-title credit too: "Clinical Nurse" for "Registered Nurse - ICU". It's weaker than a
+ * built-in family (see titleSimilarity), and built-in family words are left out, so a profile in
+ * those fields scores exactly as it did before. Compute it once per profile, not per job.
+ */
+export function ownFamily(titles: string[]): ReadonlySet<string> | undefined {
+  const words = new Set(titles.flatMap(titleTokens).filter((t) => !GENERIC_ROLE.has(t) && !familyOf(t)));
+  return words.size >= 2 ? words : undefined;
+}
+
+/** The best similarity of a job title to any of the terms (target titles, search keywords). */
+export function bestTitleSimilarity(terms: string[], jobTitle: string, own?: ReadonlySet<string>): number {
+  return Math.max(0, ...terms.map((t) => titleSimilarity(t, jobTitle, own)));
+}
+
+/**
  * How much of the profile title's meaningful words appear in the job title (0-1). Generic role
  * words count half, and when the profile title has field words but none of them match, the
  * result is capped at 0.15, so "Credit Analyst" barely registers for "Security Analyst".
+ * `own` is the user's own family (ownFamily), for fields the built-in families don't cover. It's
+ * looser than a built-in one, so it only refines a title that already shares a field word, and only
+ * from a job word the profile title doesn't have: "Registered Nurse" gets nothing from "Clinical
+ * Research Coordinator", nor "Social Media Specialist" from "Social Worker".
  */
-export function titleSimilarity(profileTitle: string, jobTitle: string): number {
+export function titleSimilarity(profileTitle: string, jobTitle: string, own?: ReadonlySet<string>): number {
   const want = [...new Set(titleTokens(profileTitle))];
   if (want.length === 0) return 0;
   const have = new Set(titleTokens(jobTitle));
   const weight = (t: string) => (GENERIC_ROLE.has(t) ? 0.5 : 1);
   const total = want.reduce((sum, t) => sum + weight(t), 0);
+  const exactField = want.some((t) => have.has(t) && !GENERIC_ROLE.has(t));
+  const ownRelated = Boolean(own && exactField && [...have].some((h) => own.has(h) && !want.includes(h)));
   let points = 0;
   let fieldMatched = false;
   for (const t of want) {
@@ -118,7 +141,7 @@ export function titleSimilarity(profileTitle: string, jobTitle: string): number 
     if (have.has(t)) {
       points += weight(t);
       if (!GENERIC_ROLE.has(t)) fieldMatched = true;
-    } else if (family && [...have].some((h) => family.has(h))) {
+    } else if (family ? [...have].some((h) => family.has(h)) : ownRelated && own!.has(t)) {
       points += weight(t) * RELATED_CREDIT;
       fieldMatched = true;
     }
@@ -227,8 +250,9 @@ export function keywordScore(job: ScoredJob, profile: MatchProfile): KeywordResu
 
   // Title (40)
   let bestTitle = { sim: 0, title: "" };
+  const own = ownFamily(profile.titles);
   for (const t of profile.titles) {
-    const sim = titleSimilarity(t, job.title);
+    const sim = titleSimilarity(t, job.title, own);
     if (sim > bestTitle.sim) bestTitle = { sim, title: t };
   }
   score += bestTitle.sim * 40;

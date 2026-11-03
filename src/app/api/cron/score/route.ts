@@ -27,7 +27,10 @@ export async function GET(req: NextRequest) {
   const db = await getDb();
   const results: { userId: string; aiScored?: number; errors?: string[]; error?: string }[] = [];
   let deferred = 0;
-  for (const userId of await digestRecipients(db)) {
+  // One user's backlog can take the whole run: start with a different user each day.
+  const users = await digestRecipients(db);
+  const shift = users.length ? Math.floor(started / 86_400_000) % users.length : 0;
+  for (const userId of [...users.slice(shift), ...users.slice(0, shift)]) {
     if (Date.now() - started > START_BUDGET_MS) {
       deferred++;
       continue;

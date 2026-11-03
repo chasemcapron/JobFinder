@@ -4,7 +4,7 @@ import { htmlToText } from "@/lib/text";
 import { inferExperienceLevel, isTooSenior } from "../experience";
 import { normalizeCountry, parseLocation, TARGET_COUNTRY } from "../location";
 import { companyFromSlug, finalizeJob, parseDate } from "../normalize";
-import { isExcludedTitle, titleSimilarity } from "../scoring";
+import { bestTitleSimilarity, isExcludedTitle, ownFamily } from "../scoring";
 import { SourceError, type NormalizedJob } from "../types";
 import { fetchJson, parseItems } from "./http";
 import { findWorkdayEmployer } from "./workday-employers";
@@ -181,12 +181,13 @@ export function normalizeWorkdayJob(
  * only the description tells them apart.
  */
 export function rankForDetails<T extends { title: string }>(postings: T[], profile: Pick<Profile, "titles" | "seniority">): T[] {
+  const own = ownFamily(profile.titles);
   return postings
     .map((p, i) => ({
       p,
       i,
       senior: isTooSenior(inferExperienceLevel(p.title), profile.seniority),
-      sim: Math.max(0, ...profile.titles.map((t) => titleSimilarity(t, p.title))),
+      sim: bestTitleSimilarity(profile.titles, p.title, own),
     }))
     .sort((a, b) => Number(a.senior) - Number(b.senior) || b.sim - a.sim || a.i - b.i)
     .map((x) => x.p);

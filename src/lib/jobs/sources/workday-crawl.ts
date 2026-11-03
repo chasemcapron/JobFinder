@@ -1,6 +1,6 @@
 import type { CrawlStatus, Profile } from "@/db/schema";
 import { uniqueCaseInsensitive } from "@/lib/text";
-import { isExcludedTitle, titleSimilarity } from "../scoring";
+import { bestTitleSimilarity, isExcludedTitle, ownFamily } from "../scoring";
 import { SourceError, type NormalizedJob } from "../types";
 import { fetchJson, parseItems } from "./http";
 import {
@@ -112,7 +112,8 @@ export async function crawlWorkdaySite(slug: string, opts: CrawlOptions): Promis
   const outer = opts.signal ?? new AbortController().signal;
   const signal = () => AbortSignal.any([outer, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]);
   const terms = [...opts.profile.titles, ...opts.profile.searchKeywords];
-  const relevance = (title: string) => Math.max(0, ...terms.map((t) => titleSimilarity(t, title)));
+  const own = ownFamily(opts.profile.titles);
+  const relevance = (title: string) => bestTitleSimilarity(terms, title, own);
   const totals: Record<string, number> = {};
   const listings = new Map<string, { posting: ListingPosting; relevant: boolean; firstPage: boolean }>();
   let status: CrawlStatus = "ok";

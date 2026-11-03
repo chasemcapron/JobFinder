@@ -1,9 +1,10 @@
 name: Workday crawl
 
 # Crawls the Workday career sites users follow, deeper than a 60-second Vercel function can,
-# and writes the postings to the app's database (scripts/crawl-workday.ts). Runs before the
-# 09:00 UTC search cron, which then leaves the crawled sites alone. Scheduled runs often start
-# late; GitHub pauses schedules after 60 days without repository activity.
+# and writes the postings to the app's database (scripts/crawl-workday.ts). Runs at 05:00 UTC,
+# two hours before the first search cron slot (07:00), which then leaves the crawled sites alone:
+# scheduled runs often start late, and the job can take 40 minutes. GitHub pauses schedules after
+# 60 days without repository activity.
 #
 # Needs repository secrets DATABASE_URL and GEMINI_API_KEY. This workflow runs only on its
 # schedule or by hand, never for pull requests, so forks can't reach the secrets.
@@ -11,7 +12,7 @@ name: Workday crawl
 
 on:
   schedule:
-    - cron: "0 7 * * *"
+    - cron: "0 5 * * *"
   workflow_dispatch:
 
 permissions:

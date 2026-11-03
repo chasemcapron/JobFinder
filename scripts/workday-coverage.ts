@@ -11,7 +11,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { and, eq, gt, like } from "drizzle-orm";
 import { getDb } from "@/db";
 import { jobs } from "@/db/schema";
-import { titleSimilarity } from "@/lib/jobs/scoring";
+import { bestTitleSimilarity, ownFamily } from "@/lib/jobs/scoring";
 import { fetchJson, parseItems } from "@/lib/jobs/sources/http";
 import { Listing, ListingPosting, parseWorkdaySlug, rankForDetails, US_COUNTRY_ID, WORKDAY_MAX_QUERIES, workdayApi } from "@/lib/jobs/sources/workday";
 import { SourceError } from "@/lib/jobs/types";
@@ -88,7 +88,9 @@ async function main() {
     await writeFile(`eval-data/workday/${b.tenant}-${b.site}.json`, JSON.stringify({ at: new Date().toISOString(), facets, perTitle }, null, 2));
     const titleOf = new Map<string, string>();
     for (const t of perTitle) t.paths.forEach((p, i) => titleOf.set(p, t.titles[i]));
-    const relevant = (p: string) => titles.some((t) => titleSimilarity(t, titleOf.get(p)!) >= RELEVANT);
+    // As the crawl judges relevance (workday-crawl.ts), own family included.
+    const own = ownFamily(titles);
+    const relevant = (p: string) => bestTitleSimilarity(titles, titleOf.get(p)!, own) >= RELEVANT;
     const distinct = [...titleOf.keys()];
     // Today: the first WORKDAY_MAX_QUERIES titles, one page each, details for the 25 best by title (as fetchWorkday ranks them).
     const candidates = [...new Set(perTitle.slice(0, WORKDAY_MAX_QUERIES).flatMap((t) => t.paths))].map((path) => ({ path, title: titleOf.get(path)! }));

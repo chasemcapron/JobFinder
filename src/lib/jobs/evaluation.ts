@@ -13,9 +13,10 @@ import {
 
 /**
  * Bumped when the evaluation prompt or shape changes; older evaluations count as stale and are
- * redone (see `isFreshEvaluation`). 1 was the single score with a reason, before 2026-11-03.
+ * redone (see `isCurrentEvaluation`). 1 was the single score with a reason, before 2026-11-03;
+ * 2 the structured evaluation; 3 judges "off target" against the candidate's own field.
  */
-export const EVAL_VERSION = 2;
+export const EVAL_VERSION = 3;
 
 /**
  * One job's structured evaluation, as the batch scorer returns it. Separate ratings instead of

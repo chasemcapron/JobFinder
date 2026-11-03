@@ -4,7 +4,7 @@ import { createPglite, schema, type Db } from "@/db";
 import { mockJobs } from "@/lib/jobs/sources/mock";
 import { buildSourceTasks, runSourceTasks } from "@/lib/jobs/sources";
 import { listMatches } from "@/lib/jobs/results";
-import { rescoreStoredMatches, runJobSearch, scoreBacklog } from "@/lib/jobs/search";
+import { rescoreStoredMatches, runJobSearch, scoreBacklog, usersDueForSearch } from "@/lib/jobs/search";
 import type { SourceTask } from "@/lib/jobs/types";
 import { overallScore } from "@/lib/jobs/evaluation";
 import { ensureProfile, SEED_TARGET_COMPANIES } from "@/lib/profile";
@@ -36,6 +36,37 @@ describe("ensureProfile", () => {
     await ensureProfile(userId, db);
     const rows = await db.select().from(schema.targetCompanies).where(eq(schema.targetCompanies.userId, userId));
     expect(rows).toHaveLength(SEED_TARGET_COMPANIES.length);
+  });
+});
+
+describe("usersDueForSearch", () => {
+  it("skips users searched in the last 12 hours and puts the least recently searched first", async () => {
+    const now = new Date("2026-11-04T08:30:00Z");
+    const hoursAgo = (h: number) => new Date(now.getTime() - h * 3_600_000);
+    const make = async (email: string) => (await db.insert(schema.users).values({ email }).returning())[0].id;
+    const [fresh, yesterday, never, failed, killed] = [
+      userId,
+      await make("b@example.com"),
+      await make("c@example.com"),
+      await make("d@example.com"),
+      await make("e@example.com"),
+    ];
+    await db.insert(schema.searchRuns).values([
+      { userId: fresh, trigger: "cron", startedAt: hoursAgo(1.5), status: "ok" },
+      { userId: yesterday, trigger: "cron", startedAt: hoursAgo(23), status: "ok" },
+      { userId: yesterday, trigger: "manual", startedAt: hoursAgo(30), status: "ok" },
+      // A failed search doesn't count: it's retried in the next slot.
+      { userId: failed, trigger: "cron", startedAt: hoursAgo(25), status: "ok" },
+      { userId: failed, trigger: "cron", startedAt: hoursAgo(0.5), status: "error" },
+      // Nor does one Vercel stopped mid-run (left "running"); one running right now does.
+      { userId: killed, trigger: "cron", startedAt: hoursAgo(1), status: "running" },
+      { userId: fresh, trigger: "manual", startedAt: hoursAgo(0.01), status: "running" },
+    ]);
+    const due = await usersDueForSearch([fresh, yesterday, never, failed, killed], db, now);
+    // Never (successfully) searched first, in id order; then the oldest search first.
+    expect(due.slice(0, 2)).toEqual([never, killed].sort());
+    expect(due.slice(2)).toEqual([failed, yesterday]);
+    expect(await usersDueForSearch([], db, now)).toEqual([]);
   });
 });
 

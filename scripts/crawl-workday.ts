@@ -18,7 +18,7 @@ import { checkLiveness } from "@/lib/jobs/liveness";
 import { isInTargetCountry } from "@/lib/jobs/location";
 import { dedupeJobs } from "@/lib/jobs/normalize";
 import type { JobForScoring } from "@/lib/jobs/rank";
-import { markListingsSeen, scoreAndSaveMatches, storeJobs } from "@/lib/jobs/search";
+import { markListingsSeen, scoreAndSaveMatches, searchInFlight, storeJobs } from "@/lib/jobs/search";
 import { buildCrawlQueries, crawlWorkdaySite, type CrawlResult } from "@/lib/jobs/sources/workday-crawl";
 import { parseWorkdaySlug } from "@/lib/jobs/sources/workday";
 
@@ -181,9 +181,13 @@ async function main() {
     if (live.length) await db.update(jobs).set({ lastSeenAt: now }).where(inArray(jobs.id, live));
     console.log(`  liveness: ${stale.length} checked, ${closed.length} closed, ${live.length} still open`);
 
+    // A late-starting run can meet a Vercel search for this user: leave the AI step to it then
+    // (both would evaluate the same roles on the one free Gemini quota); keyword scores still save.
+    const searching = await searchInFlight(userId, db);
+    if (searching) console.log("  a search is running for this user: keyword scores only");
     const scored = await scoreAndSaveMatches(userId, profile, db, {
       fetched,
-      useAi: true,
+      useAi: !searching,
       maxAiScores: CRAWL_AI_CAP,
       deadline: Date.now() + AI_BUDGET_MS,
       now: new Date(),

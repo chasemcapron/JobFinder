@@ -301,9 +301,13 @@ export async function runDigestForUser(userId: string, opts: DigestOptions = {})
   }
 }
 
-/** Every user with the morning email turned on. */
+/** Every user with the morning email turned on, in a fixed order (the crons rotate through it). */
 export async function digestRecipients(db?: Db) {
   db ??= await getDb();
-  const rows = await db.select({ userId: profiles.userId }).from(profiles).where(eq(profiles.emailEnabled, true));
+  const rows = await db
+    .select({ userId: profiles.userId })
+    .from(profiles)
+    .where(eq(profiles.emailEnabled, true))
+    .orderBy(asc(profiles.userId));
   return rows.map((r) => r.userId);
 }

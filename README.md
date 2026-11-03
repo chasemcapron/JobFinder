@@ -130,7 +130,7 @@ To check a Workday URL before adding it, use **Test a Workday site** in Settings
 
 ### Nightly Workday crawl (GitHub Actions)
 
-`.github/workflows/crawl-workday.yml` runs `scripts/crawl-workday.ts` at 07:00 UTC (and on demand from the Actions tab), with no 60-second limit. It writes to the same database, so add two **repository secrets** (Settings → Secrets and variables → Actions): `DATABASE_URL` (the Neon connection string) and `GEMINI_API_KEY`. Actions minutes are free on a public repository. The workflow never runs for pull requests, so forks can't read the secrets, and it prints counts only because logs on a public repo are public. GitHub pauses scheduled workflows after 60 days without repository activity; re-enable it from the Actions tab.
+`.github/workflows/crawl-workday.yml` runs `scripts/crawl-workday.ts` at 05:00 UTC (and on demand from the Actions tab), with no 60-second limit. It writes to the same database, so add two **repository secrets** (Settings → Secrets and variables → Actions): `DATABASE_URL` (the Neon connection string) and `GEMINI_API_KEY`. Actions minutes are free on a public repository. The workflow never runs for pull requests, so forks can't read the secrets, and it prints counts only because logs on a public repo are public. GitHub pauses scheduled workflows after 60 days without repository activity; re-enable it from the Actions tab.
 
 Run it locally the same way: `npx tsx --env-file-if-exists=.env.local scripts/crawl-workday.ts [--sites acme.wd5/Careers] [--dry-run]`.
 
@@ -149,13 +149,13 @@ Workday URLs can't be guessed, so Settings → Target companies has a **Workday 
 
 ### Morning email cron
 
-`vercel.json` registers five daily cron jobs (Hobby allows any number of once-a-day jobs, each firing somewhere within its hour):
+`vercel.json` registers eight daily cron jobs (Hobby allows up to 100 once-a-day jobs, each firing somewhere within its hour):
 
 | UTC | Route | What it does |
 | --- | --- | --- |
-| 09:00 | `/api/cron/search` | Searches every source and scores matches (the slow, Gemini-using part), then prunes jobs unseen for 60 days and search runs older than 90. That's 4 AM Central in summer, 3 AM in winter. |
-| 07:00 (GitHub Actions) | `scripts/crawl-workday.ts` | The nightly Workday crawl (see below); not a Vercel cron. |
-| 10:00 | `/api/cron/score` | Has the AI evaluate up to 80 stored matches that lack a current evaluation (after a profile change, or ones the search's cap didn't reach), with no fetching. Skips a user whose search is still running. Does nothing without `GEMINI_API_KEY`. |
+| 07:00, 08:00, 09:00 | `/api/cron/search` | Searches every source and scores matches (the slow, Gemini-using part), then prunes jobs unseen for 60 days and search runs older than 90. That's 2-4 AM Central in summer. A search takes ~40 s of the 60 s limit, so each slot reaches about one user: it takes the users not searched in the last 12 hours, least recently searched first. With more than three users, the ones a morning missed go first the next day. |
+| 05:00 (GitHub Actions) | `scripts/crawl-workday.ts` | The nightly Workday crawl (see below); not a Vercel cron. Two hours before the first search slot, since GitHub often starts scheduled runs late. |
+| 10:00 | `/api/cron/score` | Has the AI evaluate up to 80 stored matches that lack a current evaluation (after a profile change, or ones the search's cap didn't reach), with no fetching. Skips a user whose search is still running. One user can take the whole run, so it starts with a different user each day. Does nothing without `GEMINI_API_KEY`. |
 | 11:00, 12:00, 13:00, 14:00 | `/api/cron/morning` | The invocation that's 6 AM in America/Chicago builds the email and schedules it with Resend for **7:00 AM sharp**; the ones that are 7 and 8 AM retry a run that didn't finish, sending right away. Vercel Cron has no daylight saving, so which UTC hours those are changes twice a year (the fourth cron covers both seasons). |
 
 Why schedule instead of sending at 7: a Hobby cron fires at some minute within its hour (it was 7:31), and Resend's scheduled sending (free) delivers on the minute. The email only searches itself when the early search didn't succeed. A run that Vercel cuts off at 60 s is retried at 7 or 8 AM, and Resend's idempotency key keeps a retry from sending the same email twice.
@@ -175,6 +175,17 @@ To preview the email without sending: Settings → **Preview the email** (or `/a
 The email also reminds you, once, about applications still marked **Applied** 7 to 30 days later, with a link to update their status. On days with no new matches but a reminder due, it sends just the reminder.
 
 **Email delivery:** in Resend, verify a domain you own and set `EMAIL_FROM` to an address on it. For a quick test without a domain, `EMAIL_FROM="Job Finder <onboarding@resend.dev>"` works, but Resend only delivers it to the email address of your Resend account. The digest goes to the email of your Google account.
+
+### Inviting someone else
+
+Matching runs entirely on each person's own profile (resume, target titles, seniority, US locations, remote preference, clearance, military and excluded words, employers), so it works for any field, not just yours. To let someone in:
+
+1. Add their Google email to `ALLOWED_EMAILS` in Vercel (comma-separated) and redeploy.
+2. If the Google OAuth consent screen is still in **Testing**, add them under **Test users** (Google Cloud console → APIs & Services → OAuth consent screen).
+3. For the morning email to reach them, `EMAIL_FROM` must be on a domain verified in Resend: `onboarding@resend.dev` only delivers to you.
+4. They sign in, upload a resume, check their titles and seniority, and add employers in Settings (the Workday list, or **Suggest companies**).
+
+Limits: US jobs only. Everyone shares the one free Gemini key's daily quota. The keyword matcher knows related titles best in tech fields (security, data, IT, business analysis); for other fields it relates the words of the person's own target titles to each other, and the AI evaluation does the rest.
 
 ---
 

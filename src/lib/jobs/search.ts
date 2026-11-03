@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNull, lt, notInArray, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lt, ne, notInArray, or, sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
 import { jobMatches, jobs, searchRuns, workdayCrawlState, type Profile, type SourceRunResult, type TargetCompanyRow } from "@/db/schema";
 import { env } from "@/lib/env";
@@ -51,6 +51,37 @@ export async function searchInFlight(userId: string, db: Db, now = new Date()) {
     where: and(eq(searchRuns.userId, userId), eq(searchRuns.status, "running"), gt(searchRuns.startedAt, new Date(now.getTime() - 60_000))),
   });
   return Boolean(running);
+}
+
+/** A user whose search (any trigger) started this recently and didn't fail is skipped by the next cron slot. */
+export const SEARCHED_RECENTLY_MS = 12 * 3_600_000;
+
+/**
+ * The users a daily search slot should search, least recently searched first (never searched
+ * before all). One search takes ~40 s of a 60 s function, so each slot reaches about one user;
+ * with three slots (vercel.json) and this order, every user gets a search, and with more users
+ * than slots the ones a day missed go first the next day. Failed searches don't count, so they're
+ * retried in the next slot; nor do ones Vercel stopped mid-run (still "running" past
+ * ABANDONED_RUN_MS: closeAbandonedRuns only marks them at the user's next search).
+ */
+export async function usersDueForSearch(userIds: string[], db: Db, now = new Date()): Promise<string[]> {
+  if (userIds.length === 0) return [];
+  const rows = await db
+    .select({ userId: searchRuns.userId, last: sql`max(${searchRuns.startedAt})`.mapWith(searchRuns.startedAt) })
+    .from(searchRuns)
+    .where(
+      and(
+        inArray(searchRuns.userId, userIds),
+        ne(searchRuns.status, "error"),
+        or(ne(searchRuns.status, "running"), gt(searchRuns.startedAt, new Date(now.getTime() - ABANDONED_RUN_MS))),
+      ),
+    )
+    .groupBy(searchRuns.userId);
+  const last = new Map(rows.map((r) => [r.userId, r.last.getTime()]));
+  const at = (id: string) => last.get(id) ?? 0;
+  return userIds
+    .filter((id) => now.getTime() - at(id) >= SEARCHED_RECENTLY_MS)
+    .sort((a, b) => at(a) - at(b) || a.localeCompare(b));
 }
 
 /** Marks runs still "running" past ABANDONED_RUN_MS as stopped, so they don't read as in progress forever. */
