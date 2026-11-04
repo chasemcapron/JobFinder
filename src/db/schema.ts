@@ -403,6 +403,13 @@ export const applications = pgTable(
     sheetSyncedAt: timestamp("sheet_synced_at", { mode: "date" }),
     /** When the morning email suggested following up (once per application). */
     followUpSentAt: timestamp("follow_up_sent_at", { mode: "date" }),
+    /** The user's own notes, not synced to the sheet. */
+    notes: text("notes").notNull().default(""),
+    /** Recruiter or hiring manager: name, email, whatever helps. */
+    contact: text("contact").notNull().default(""),
+    /** What happens next ("Phone screen") and when (a day, stored as 9 AM Chicago). */
+    nextStep: text("next_step").notNull().default(""),
+    nextStepAt: timestamp("next_step_at", { mode: "date" }),
   },
   (t) => [uniqueIndex("applications_user_job_idx").on(t.userId, t.jobId)],
 );

@@ -122,6 +122,26 @@ export async function updateApplicationStatus(userId: string, applicationId: str
     .where(and(eq(applications.id, applicationId), eq(applications.userId, userId)));
 }
 
+export const NOTE_LIMITS = { notes: 2_000, contact: 200, nextStep: 100 } as const;
+
+export type ApplicationNotes = { notes: string; contact: string; nextStep: string; nextStepAt: Date | null };
+
+/** The user's notes on one of their applications (never synced to the sheet). False when it isn't theirs. */
+export async function saveApplicationNotes(userId: string, applicationId: string, input: ApplicationNotes, db?: Db): Promise<boolean> {
+  db ??= await getDb();
+  const updated = await db
+    .update(applications)
+    .set({
+      notes: input.notes.trim().slice(0, NOTE_LIMITS.notes),
+      contact: input.contact.trim().slice(0, NOTE_LIMITS.contact),
+      nextStep: input.nextStep.trim().slice(0, NOTE_LIMITS.nextStep),
+      nextStepAt: input.nextStepAt,
+    })
+    .where(and(eq(applications.id, applicationId), eq(applications.userId, userId)))
+    .returning({ id: applications.id });
+  return updated.length > 0;
+}
+
 export async function deleteApplication(userId: string, applicationId: string, db?: Db) {
   db ??= await getDb();
   await db.delete(applications).where(and(eq(applications.id, applicationId), eq(applications.userId, userId)));

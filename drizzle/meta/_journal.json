@@ -92,6 +92,13 @@
       "when": 1793808687638,
       "tag": "0012_setup_guide",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793808689884,
+      "tag": "0013_application_notes",
+      "breakpoints": true
     }
   ]
 }
