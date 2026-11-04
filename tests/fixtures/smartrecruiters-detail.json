@@ -1,0 +1,74 @@
+{
+  "id": "744000159668209",
+  "name": "AI Solutions Delivery Associate",
+  "uuid": "3eba1428-5a06-47f5-8e28-d9ad4f4ddd0f",
+  "jobId": "d4bc97a4-6698-420d-8024-b69d9f40576b",
+  "jobAdId": "b993a61d-24be-42f4-9a71-ce54edeea14e",
+  "defaultJobAd": true,
+  "refNumber": "JB0076897",
+  "company": {
+    "name": "ServiceNow",
+    "identifier": "ServiceNow"
+  },
+  "location": {
+    "city": "West Palm Beach",
+    "region": "Florida",
+    "country": "us",
+    "address": "525 Okeechobee Boulevard",
+    "postalCode": "33401",
+    "remote": false,
+    "hybrid": true,
+    "fullLocation": "West Palm Beach, Florida, United States"
+  },
+  "releasedDate": "2026-11-04T15:43:08.770Z",
+  "postingUrl": "https://jobs.smartrecruiters.com/ServiceNow/744000159668209-ai-solutions-delivery-associate",
+  "applyUrl": "https://jobs.smartrecruiters.com/ServiceNow/744000159668209-ai-solutions-delivery-associate?oga=true",
+  "referralUrl": "https://jobs.smartrecruiters.com/external-referrals/company/ServiceNow/publication/3eba1428-5a06-47f5-8e28-d9ad4f4ddd0f?dcr_ci=ServiceNow",
+  "jobAd": {
+    "sections": {
+      "companyDescription": {
+        "title": "Company Description",
+        "text": "<p>It all started when engineer Fred Luddy wrote code that automated a tedious task for his coworker, Phyllis. She cried tears of joy. That moment inspired Fred to build a company that could do that for everyone—freeing people from busywork so they could focus on meaningful work. Today, ServiceNow is the AI control tower for business reinvention. Our ServiceNow AI platform brings together any AI, any data, and any workflow— helping 85% of the Fortune 500® work smarter, faster, and better. We're building an AI-native culture where technology and talent are unstoppable together. And we're just g"
+      },
+      "jobDescription": {
+        "title": "Job Description",
+        "text": "<p>The Associate AI Solutions Delivery Associate helps turn business needs into practical, AI-enabled solutions while building hands-on delivery skills. Working with close guidance and detailed instructions, you will configure approved AI capabilities, departmental automations, digital intake experiences, and productivity tools using reusable patterns and standard low-code/no-code platform components. You will learn how to translate well-defined requirements into reliable solutions, test your work, document how they operate, and support colleagues who use them.&#xa0;</p><p>What you get to do i"
+      },
+      "qualifications": {
+        "title": "Qualifications",
+        "text": "<p>To be successful in this role, you have:&#xa0;</p><ul><li>1+ years of relevant experience through employment, internships, academic work, training programs, volunteer work, or personal projects in business systems, workflow automation, application development, data, or AI-enabled solutions.&#xa0;</li><li>A bachelor’s degree in information systems, business, computer science, data, or a related field, or equivalent practical experience.&#xa0;</li><li>Working knowledge of structured data concepts, including tables, fields, keys, relationships, validation, and basic data quality.&#xa0;</li>"
+      },
+      "additionalInformation": {
+        "title": "Additional Information",
+        "text": "<p><strong>Work Personas</strong></p><p>We approach our distributed world of work with flexibility and trust. Work personas (flexible, remote, or required in office) are categories that are assigned to ServiceNow employees depending on the nature of their work and their assigned work location. <a href=\"https://careers.servicenow.com/life-at-servicenow#workpersonas\" rel=\"noopener noreferrer\"><u>Learn more here</u></a>. To determine eligibility for a work persona, ServiceNow may confirm the distance between your primary residence and the closest ServiceNow office using a third-party service.</p>"
+      }
+    }
+  },
+  "active": true,
+  "visibility": "PUBLIC",
+  "industry": {
+    "id": "it_and_services",
+    "label": "Information Technology And Services"
+  },
+  "function": {
+    "id": "human_resources",
+    "label": "Human Resources"
+  },
+  "department": {
+    "id": 2294140,
+    "label": "Legal"
+  },
+  "experienceLevel": {
+    "id": "not_applicable",
+    "label": "Not Applicable"
+  },
+  "typeOfEmployment": {
+    "id": "permanent",
+    "label": "Full-time"
+  },
+  "language": {
+    "code": "en",
+    "label": "English",
+    "labelNative": "English (US)"
+  }
+}

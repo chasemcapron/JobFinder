@@ -58,7 +58,7 @@ function RunResult({ summary }: { summary: RunSummary }) {
     return (
       <Alert tone="warning" title="Nothing to search yet">
         <p>
-          Add target companies (their Greenhouse, Lever or Ashby job boards) in Settings, or a free USAJobs key, then
+          Add target companies (their Greenhouse, Lever, Ashby, Workday or SmartRecruiters job boards) in Settings, or a free USAJobs key, then
           refresh. Your saved jobs were re-ranked against your current profile.
         </p>
       </Alert>

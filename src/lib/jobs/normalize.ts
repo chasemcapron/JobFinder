@@ -77,6 +77,7 @@ export const SOURCE_PRIORITY: Record<JobSource, number> = {
   lever: 0,
   ashby: 0,
   workday: 0,
+  smartrecruiters: 0,
   usajobs: 1,
   adzuna: 2,
   mock: 3,

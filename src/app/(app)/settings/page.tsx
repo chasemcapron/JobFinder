@@ -182,7 +182,7 @@ export default async function SettingsPage() {
           title="Target companies"
           description={
             <>
-              Greenhouse, Lever, Ashby, and Workday are searched per company. Add <code>ats:slug</code> (e.g.{" "}
+              Greenhouse, Lever, Ashby, Workday and SmartRecruiters are searched per company. Add <code>ats:slug</code> (e.g.{" "}
               <code>greenhouse:stripe</code>) or paste a job board URL. For Workday, paste the careers page URL
               (<code>….myworkdayjobs.com/…</code>) or pick from the checked list below; it&apos;s searched for your top target titles.
             </>

@@ -10,6 +10,7 @@ const BOARD_URLS: Record<string, (slug: string) => string> = {
   lever: (s) => `https://jobs.lever.co/${s}`,
   ashby: (s) => `https://jobs.ashbyhq.com/${s}`,
   workday: (s) => `https://${s.split("/")[0]}.myworkdayjobs.com/${s.split("/")[1]}`,
+  smartrecruiters: (s) => `https://careers.smartrecruiters.com/${encodeURIComponent(s)}`,
 };
 
 export function TargetCompanyRow({

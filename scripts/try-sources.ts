@@ -3,11 +3,13 @@
  * Usage: npx tsx scripts/try-sources.ts greenhouse:stripe lever:spotify ashby:ramp
  * Workday sites are searched rather than listed, so pass search terms with --q:
  *   npx tsx scripts/try-sources.ts https://leidos.wd5.myworkdayjobs.com/External --q "security analyst"
+ * SmartRecruiters companies are searched too: smartrecruiters:servicenow --q "data analyst"
  */
 import { runSourceTasks } from "@/lib/jobs/sources";
 import { fetchAshby } from "@/lib/jobs/sources/ashby";
 import { fetchGreenhouse } from "@/lib/jobs/sources/greenhouse";
 import { fetchLever } from "@/lib/jobs/sources/lever";
+import { fetchSmartRecruiters } from "@/lib/jobs/sources/smartrecruiters";
 import { fetchWorkday } from "@/lib/jobs/sources/workday";
 import { dedupeJobs } from "@/lib/jobs/normalize";
 import { parseTargetCompany } from "@/lib/parse-input";
@@ -23,6 +25,7 @@ async function main() {
     lever: fetchLever,
     ashby: fetchAshby,
     workday: (slug: string, signal: AbortSignal) => fetchWorkday(slug, workday, signal),
+    smartrecruiters: (slug: string, signal: AbortSignal) => fetchSmartRecruiters(slug, workday, signal),
   };
   const tasks: SourceTask[] = targets.map((t) => ({
     label: `${t.ats}:${t.slug}`,

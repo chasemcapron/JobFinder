@@ -12,6 +12,7 @@ const SOURCE_OPTIONS = [
   ["lever", "Lever"],
   ["ashby", "Ashby"],
   ["workday", "Workday"],
+  ["smartrecruiters", "SmartRecruiters"],
   ["adzuna", "Adzuna"],
   ["usajobs", "USAJobs"],
   ["mock", "Sample data"],

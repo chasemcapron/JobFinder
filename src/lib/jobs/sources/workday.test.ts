@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseTargetCompany } from "@/lib/parse-input";
 import { parseLocation } from "../location";
 import { buildSourceTasks, MAX_WORKDAY_SITES_PER_SEARCH, takeTurns } from ".";
+import { MAX_SMARTRECRUITERS_PER_SEARCH } from "./smartrecruiters";
 import {
   fetchWorkday,
   normalizeWorkdayJob,
@@ -263,6 +264,17 @@ describe("Workday sites per search", () => {
     const tasks = buildSourceTasks(profile, targets, new Date("2026-10-20T12:00:00Z"));
     expect(tasks.filter((t) => t.source === "workday")).toHaveLength(MAX_WORKDAY_SITES_PER_SEARCH);
     expect(tasks.map((t) => t.label)).toContain("greenhouse:stripe");
+  });
+
+  it(`caps SmartRecruiters companies at ${MAX_SMARTRECRUITERS_PER_SEARCH} per run too, taking turns`, () => {
+    const targets = [
+      { ats: "greenhouse" as const, slug: "stripe" },
+      ...Array.from({ length: 10 }, (_, i) => ({ ats: "smartrecruiters" as const, slug: `co${i}` })),
+    ];
+    const day1 = buildSourceTasks(profile, targets, new Date("2026-10-20T12:00:00Z")).filter((t) => t.source === "smartrecruiters");
+    const day2 = buildSourceTasks(profile, targets, new Date("2026-10-21T12:00:00Z")).filter((t) => t.source === "smartrecruiters");
+    expect(day1).toHaveLength(MAX_SMARTRECRUITERS_PER_SEARCH);
+    expect(new Set([...day1, ...day2].map((t) => t.label)).size).toBe(10);
   });
 });
 

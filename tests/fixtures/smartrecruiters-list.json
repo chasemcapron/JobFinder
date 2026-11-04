@@ -1,0 +1,104 @@
+{
+  "offset": 0,
+  "limit": 2,
+  "totalFound": 17,
+  "content": [
+    {
+      "id": "744000159668209",
+      "name": "AI Solutions Delivery Associate",
+      "uuid": "3eba1428-5a06-47f5-8e28-d9ad4f4ddd0f",
+      "jobAdId": "b993a61d-24be-42f4-9a71-ce54edeea14e",
+      "defaultJobAd": true,
+      "refNumber": "JB0076897",
+      "company": {
+        "identifier": "ServiceNow",
+        "name": "ServiceNow"
+      },
+      "releasedDate": "2026-11-04T15:43:08.770Z",
+      "location": {
+        "city": "West Palm Beach",
+        "region": "Florida",
+        "country": "us",
+        "address": "525 Okeechobee Boulevard",
+        "postalCode": "33401",
+        "remote": false,
+        "hybrid": true,
+        "fullLocation": "West Palm Beach, Florida, United States"
+      },
+      "industry": {
+        "id": "it_and_services",
+        "label": "Information Technology And Services"
+      },
+      "department": {
+        "id": "2294140",
+        "label": "Legal"
+      },
+      "function": {
+        "id": "human_resources",
+        "label": "Human Resources"
+      },
+      "typeOfEmployment": {
+        "id": "permanent",
+        "label": "Full-time"
+      },
+      "experienceLevel": {
+        "id": "not_applicable",
+        "label": "Not Applicable"
+      },
+      "visibility": "PUBLIC",
+      "ref": "https://api.smartrecruiters.com/v1/companies/ServiceNow/postings/744000159668209",
+      "language": {
+        "code": "en",
+        "label": "English",
+        "labelNative": "English (US)"
+      }
+    },
+    {
+      "id": "744000159478474",
+      "name": "Sr Manager, Product Marketing - CRM",
+      "uuid": "6ce10932-1307-4c41-956e-8788f20bfa68",
+      "jobAdId": "6c4606bf-4ae4-468d-be2b-2eaf74249684",
+      "defaultJobAd": true,
+      "refNumber": "JB0076014",
+      "company": {
+        "identifier": "ServiceNow",
+        "name": "ServiceNow"
+      },
+      "releasedDate": "2026-11-03T19:25:57.527Z",
+      "location": {
+        "city": "Boston",
+        "region": "Massachusetts",
+        "country": "us",
+        "address": "100 Causeway Street",
+        "postalCode": "02114",
+        "remote": true,
+        "hybrid": false,
+        "fullLocation": "Boston, Massachusetts, United States"
+      },
+      "industry": {
+        "id": "it_and_services",
+        "label": "Information Technology And Services"
+      },
+      "department": {},
+      "function": {
+        "id": "marketing",
+        "label": "Marketing"
+      },
+      "typeOfEmployment": {
+        "id": "permanent",
+        "label": "Full-time"
+      },
+      "experienceLevel": {
+        "id": "not_applicable",
+        "label": "Not Applicable"
+      },
+      "visibility": "PUBLIC",
+      "ref": "https://api.smartrecruiters.com/v1/companies/ServiceNow/postings/744000159478474",
+      "language": {
+        "code": "en",
+        "label": "English",
+        "labelNative": "English (US)"
+      }
+    }
+  ]
+}

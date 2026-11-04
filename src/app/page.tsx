@@ -12,7 +12,7 @@ const FEATURES: { icon: IconName; title: string; body: string; tile: string }[] 
     icon: "target",
     tile: "bg-blue text-white",
     title: "Matched to your resume",
-    body: "Company career sites (Greenhouse, Lever, Ashby, Workday) and USAJobs, ranked by fit for your level.",
+    body: "Company career sites (Greenhouse, Lever, Ashby, Workday, SmartRecruiters) and USAJobs, ranked by fit for your level.",
   },
   { icon: "sheet", tile: "bg-green text-ink", title: "Tracked in your Google Sheet", body: "Mark a job applied and it's logged as a new row." },
   { icon: "mail", tile: "bg-orange text-ink", title: "A morning digest", body: "The top new matches in your inbox every day." },
