@@ -6,6 +6,7 @@ import { fetchAshby } from "./ashby";
 import { fetchGreenhouse } from "./greenhouse";
 import { fetchLever } from "./lever";
 import { mockJobs } from "./mock";
+import { fetchSmartRecruiters, MAX_SMARTRECRUITERS_PER_SEARCH, SMARTRECRUITERS_MAX_QUERIES } from "./smartrecruiters";
 import { fetchUsajobs, usajobsConfigured } from "./usajobs";
 import { fetchWorkday, WORKDAY_MAX_QUERIES, type WorkdaySearch } from "./workday";
 import { TARGET_COUNTRY } from "../location";
@@ -34,24 +35,30 @@ export function takeTurns<T>(items: T[], max: number, now: Date): T[] {
 }
 
 /**
- * One task per target company (Workday sites capped per run, see MAX_WORKDAY_SITES_PER_SEARCH),
- * plus one per keyword query for Adzuna/USAJobs.
+ * One task per target company, plus one per keyword query for Adzuna/USAJobs. Searched boards are
+ * capped per run (MAX_WORKDAY_SITES_PER_SEARCH, MAX_SMARTRECRUITERS_PER_SEARCH) to stay inside
+ * Vercel's 60 s; with more, they take turns day by day.
  */
 export function buildSourceTasks(profile: Profile, targets: Pick<TargetCompanyRow, "ats" | "slug">[], now = new Date()): SourceTask[] {
   if (mockJobsForced()) return [{ label: "sample data", source: "mock", run: async () => mockJobs() }];
-  const workdayTargets = targets.filter((t) => t.ats === "workday");
+  const capped: Partial<Record<AtsType, number>> = { workday: MAX_WORKDAY_SITES_PER_SEARCH, smartrecruiters: MAX_SMARTRECRUITERS_PER_SEARCH };
   const searched = [
-    ...targets.filter((t) => t.ats !== "workday"),
-    ...takeTurns(workdayTargets, MAX_WORKDAY_SITES_PER_SEARCH, now),
+    ...targets.filter((t) => capped[t.ats] === undefined),
+    ...Object.entries(capped).flatMap(([ats, max]) => takeTurns(targets.filter((t) => t.ats === ats), max, now)),
   ];
 
   // Workday sites are searched (they have no full feed), using the profile's top titles.
-  const workday: WorkdaySearch = { queries: buildSearchQueries(profile, WORKDAY_MAX_QUERIES).map((q) => q.what), profile };
+  // SmartRecruiters companies are searched the same way: big employers list hundreds of postings.
+  const searchBoard: WorkdaySearch = {
+    queries: buildSearchQueries(profile, Math.max(WORKDAY_MAX_QUERIES, SMARTRECRUITERS_MAX_QUERIES)).map((q) => q.what),
+    profile,
+  };
   const fetchBoard: Record<AtsType, (slug: string, signal: AbortSignal) => Promise<NormalizedJob[]>> = {
     greenhouse: (slug, signal) => fetchGreenhouse(slug, signal),
     lever: fetchLever,
     ashby: fetchAshby,
-    workday: (slug, signal) => fetchWorkday(slug, workday, signal),
+    workday: (slug, signal) => fetchWorkday(slug, searchBoard, signal),
+    smartrecruiters: (slug, signal) => fetchSmartRecruiters(slug, searchBoard, signal),
   };
   const tasks: SourceTask[] = searched.map(({ ats, slug }) => ({
     label: `${ats}:${slug}`,

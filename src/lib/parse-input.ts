@@ -59,6 +59,7 @@ function parseWorkdayTarget(value: string): TargetCompanyInput | null {
 /**
  * Parses "ats:slug" (e.g. "greenhouse:stripe"). Also accepts board URLs such as
  * https://boards.greenhouse.io/stripe, https://jobs.lever.co/spotify, https://jobs.ashbyhq.com/linear,
+ * https://jobs.smartrecruiters.com/ServiceNow (or careers.smartrecruiters.com),
  * and Workday careers pages (see parseWorkdayTarget).
  */
 export function parseTargetCompany(input: string): TargetCompanyInput {
@@ -69,6 +70,7 @@ export function parseTargetCompany(input: string): TargetCompanyInput {
     ["greenhouse", /(?:boards|job-boards)(?:\.eu)?\.greenhouse\.io\/(?:embed\/job_board\?for=)?([\w-]+)/i],
     ["lever", /jobs\.(?:eu\.)?lever\.co\/([\w-]+)/i],
     ["ashby", /jobs\.ashbyhq\.com\/([\w.-]+)/i],
+    ["smartrecruiters", /(?:jobs|careers)\.smartrecruiters\.com\/(?:(?:oneclick-ui|external-referrals)\/company\/)?([\w-]+)/i],
   ];
   for (const [ats, re] of urlPatterns) {
     const m = value.match(re);

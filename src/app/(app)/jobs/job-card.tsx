@@ -15,6 +15,7 @@ const SOURCE_LABELS: Record<string, string> = {
   lever: "Lever",
   ashby: "Ashby",
   workday: "Workday",
+  smartrecruiters: "SmartRecruiters",
   adzuna: "Adzuna",
   usajobs: "USAJobs",
   mock: "Sample",

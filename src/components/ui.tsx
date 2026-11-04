@@ -398,6 +398,7 @@ const sourceHue: Record<string, string> = {
   lever: "border-pink/30 bg-pink/15 text-danger-fg",
   ashby: "border-blue/40 bg-blue/15 text-info-fg",
   workday: "border-orange/30 bg-orange/15 text-warning-fg",
+  smartrecruiters: "border-green/30 bg-green/15 text-success-fg",
   adzuna: "border-orange/30 bg-orange/15 text-warning-fg",
   usajobs: "border-blue/40 bg-blue/15 text-info-fg",
 };

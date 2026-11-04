@@ -2,7 +2,7 @@
 
 A personal web app that finds job postings matching your resume, lets you filter and track them, logs applications to your own Google Sheet, and emails you the top new matches every morning.
 
-- **Sources (JSON only, no HTML scraping):** Greenhouse, Lever, and Ashby public job board APIs and Workday career sites (per target company), plus Adzuna and USAJobs search (with API keys). Workday has no public API; the app calls the same JSON endpoints the career site's own page uses.
+- **Sources (JSON only, no HTML scraping):** Greenhouse, Lever, Ashby and SmartRecruiters public job board APIs and Workday career sites (per target company), plus Adzuna and USAJobs search (with API keys). Workday has no public API; the app calls the same JSON endpoints the career site's own page uses.
 - **Matching:** your resume is parsed into skills, titles, seniority, and keywords (Claude, or a built-in extractor without a key). A cheap keyword score ranks every posting; Claude re-scores only the top candidates each run and writes a one-line reason.
 - **Tracking:** "Mark applied" saves the application and writes a row to your Google Sheet using a column mapping you control.
 - **Notes:** each application card has notes, a contact, and a next step with its day ("Next: Phone screen · Thu, Nov 12"); Interviewing cards sort by it. Notes stay in the app, not the sheet.
@@ -33,7 +33,7 @@ With no `.env.local` at all:
 | Database | An embedded Postgres (PGlite) is created in `.data/` and migrated automatically |
 | Sign-in | A local demo account (dev only) |
 | Resume parsing / scoring | Built-in keyword extractor and keyword scoring instead of Claude |
-| Greenhouse / Lever / Ashby / Workday | **Live**, no keys needed (5 example companies are pre-seeded) |
+| Greenhouse / Lever / Ashby / Workday / SmartRecruiters | **Live**, no keys needed (5 example companies are pre-seeded) |
 | Adzuna / USAJobs | Skipped until keys are set |
 | Google Sheets | Applications are saved in the app, marked "Not synced" |
 | Email | The digest is printed to the server console |
@@ -117,18 +117,21 @@ Sign in with Google. The consent screen will warn that the app is unverified (ex
 
 ## Target companies
 
-Greenhouse, Lever, Ashby, and Workday are queried per company. In Settings → Target companies, add `ats:slug` or paste a board URL:
+Greenhouse, Lever, Ashby, Workday and SmartRecruiters are queried per company. In Settings → Target companies, add `ats:slug` or paste a board URL:
 
 | ATS | Board URL looks like | Entry |
 | --- | --- | --- |
 | Greenhouse | `job-boards.greenhouse.io/stripe` or `boards.greenhouse.io/stripe` | `greenhouse:stripe` |
 | Lever | `jobs.lever.co/spotify` | `lever:spotify` |
 | Ashby | `jobs.ashbyhq.com/linear` | `ashby:linear` |
+| SmartRecruiters | `jobs.smartrecruiters.com/NBCUniversal3` | `smartrecruiters:nbcuniversal3` |
 | Workday | `leidos.wd5.myworkdayjobs.com/External` or `wd1.myworkdaysite.com/recruiting/bah/BAH_Jobs` | paste the URL |
 
 To find a company's slug, open its careers page and follow an "Apply" link; the URL shows the ATS and slug. After a search, each company shows how many postings it returned, or why it failed (e.g. "No Lever board named …").
 
 Workday sites are different: there's no feed of every posting, and big employers list thousands. They're crawled every night by a GitHub Actions job (below), which searches each site for all your target titles and a few synonyms (US only where the site offers that filter), pages deep while results stay relevant, and loads only postings it doesn't have yet. If the crawler hasn't covered a site in the last 30 hours, the Vercel search falls back to a shallow search of it: your top 3 titles, one page each, the best 25 postings, up to 12 sites per run.
+
+SmartRecruiters companies are searched the same way, but by the daily search itself (the API is fast: about 3 s a company): your top 3 titles, US postings only, the best 25 by title, up to 6 companies per run (more take turns). Most US analyst postings on SmartRecruiters come from staffing agencies, so there's no built-in list; add a company that hires directly by pasting its board URL.
 
 To check a Workday URL before adding it, use **Test a Workday site** in Settings: it makes one live search and shows what the site returns. Each Workday company then shows its last nightly crawl, or why it failed.
 
@@ -205,7 +208,7 @@ Each job card has **Tailor resume** (`/jobs/[jobId]/tailor`). One click reads yo
 ## How it works
 
 - `runJobSearch(userId)` in `src/lib/jobs/search.ts` is the single pipeline used by both the **Refresh jobs** button (`POST /api/jobs/refresh`) and the cron: fetch every source in parallel (12 s timeout each, a failing source never fails the run) → normalize to one `Job` shape → dedupe across sources (same company + title + location; direct ATS postings win over aggregator copies) → store → keyword prefilter (also re-ranks matches already stored, so a profile change applies everywhere) → the AI (Gemini, free) scores the top `MAX_AI_SCORES_PER_RUN` that don't already have a fresh AI score → save matches with a reason.
-- Source adapters live in `src/lib/jobs/sources/`. The Greenhouse, Lever, Ashby, and Workday adapters were written against live responses; the trimmed real responses are the test fixtures in `tests/fixtures/`.
+- Source adapters live in `src/lib/jobs/sources/`. The Greenhouse, Lever, Ashby, Workday and SmartRecruiters adapters were written against live responses; the trimmed real responses are the test fixtures in `tests/fixtures/`.
 - Every search is recorded in `search_runs` with per-source counts and errors.
 - Design decisions and their reasons are listed in [DECISIONS.md](DECISIONS.md).
 
