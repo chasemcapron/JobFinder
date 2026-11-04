@@ -7,6 +7,7 @@ A personal web app that finds job postings matching your resume, lets you filter
 - **Tracking:** "Mark applied" saves the application and writes a row to your Google Sheet using a column mapping you control.
 - **Notes:** each application card has notes, a contact, and a next step with its day ("Next: Phone screen · Thu, Nov 12"); Interviewing cards sort by it. Notes stay in the app, not the sheet.
 - **Setup guide:** a new user sees a checklist on the Jobs page (resume, titles, preferences, employers, optional sheet, first search) until it's done or hidden.
+- **Delete my account:** Settings → Account removes a user's resume, matches, applications, notes, tailored resumes and settings (typing their email confirms it). Their Google Sheet isn't touched, and they can sign in again as a new user unless their email is taken out of `ALLOWED_EMAILS`.
 - **Not interested:** hide a role from the list and the morning email (every city it is posted in, now and later), or every job at a company. **Show** next to the count lists them to undo; hidden companies are also listed in Settings → Target companies.
 - **Morning email:** an early Vercel Cron job searches every source; at 6 AM Central another builds an email of up to 10 new roles (one entry per company and title, with the other places it's posted) and schedules it to arrive at 7:00 AM sharp (7 and 8 AM retry if that run didn't finish).
 

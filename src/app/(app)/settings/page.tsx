@@ -16,6 +16,7 @@ import { listTargetCompanies, listWorkdayCrawls } from "@/lib/profile";
 import { requireUser } from "@/lib/session";
 import { addTargetCompany, savePreferences, saveSheetSettings } from "./actions";
 import { CompanySuggestions } from "./company-suggestions";
+import { DeleteAccount } from "./delete-account";
 import { HiddenCompanies } from "./hidden-companies";
 import { SheetTest } from "./sheet-test";
 import { TargetCompanyRow } from "./target-company-row";
@@ -38,6 +39,7 @@ const SECTIONS = [
   ["companies", "Target companies"],
   ["sheet", "Google Sheet"],
   ["integrations", "Integrations"],
+  ["account", "Account"],
 ] as const;
 
 export default async function SettingsPage() {
@@ -65,7 +67,7 @@ export default async function SettingsPage() {
         className="sticky top-(--header-h) z-30 -mx-4 mb-6 overflow-x-auto bg-background/85 px-4 py-2.5 backdrop-blur [scrollbar-width:none] sm:mx-0 sm:px-0"
       >
         <ul className="flex gap-2">
-          {SECTIONS.map(([id, label]) => (
+          {SECTIONS.filter(([id]) => id !== "account" || user.email).map(([id, label]) => (
             <li key={id}>
               <a
                 href={`#${id}`}
@@ -336,6 +338,7 @@ export default async function SettingsPage() {
           </div>
         ) : null}
       </Card>
+      {user.email ? <DeleteAccount email={user.email} /> : null}
       </div>
     </>
   );

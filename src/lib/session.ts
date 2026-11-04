@@ -16,13 +16,18 @@ export async function requireUser() {
 
 /** The signed-in user's id and email (from the session, no lookup), or null. */
 export async function currentUser(): Promise<{ userId: string; email: string | null } | null> {
+  const userId = await currentUserId();
+  if (!userId) return null;
   const session = await auth();
-  const userId = session?.user?.id;
-  return userId ? { userId, email: session.user?.email ?? null } : null;
+  return { userId, email: session?.user?.email ?? null };
 }
 
 /** For API routes: returns the user id or null (caller responds 401). */
 export async function currentUserId(): Promise<string | null> {
   const session = await auth();
-  return session?.user?.id ?? null;
+  const userId = session?.user?.id;
+  if (!userId) return null;
+  // Sessions are JWTs, so another device can still hold one for a deleted account: it counts as
+  // signed out, instead of failing on the missing user later.
+  return (await getUser(userId)) ? userId : null;
 }
