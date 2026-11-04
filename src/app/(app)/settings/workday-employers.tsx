@@ -32,7 +32,7 @@ export function WorkdayEmployers({ addedSlugs, perSearch }: { addedSlugs: string
         <span className="font-medium">Workday employers</span>
         <span className="text-muted">
           {" "}
-          · {WORKDAY_EMPLOYERS.length} checked US career sites in security, defense, tech, finance, health and education
+          · {WORKDAY_EMPLOYERS.length} checked US career sites in security, defense, tech, finance, health, industry, retail and education
           {addedCount ? ` · ${addedCount} added` : ""}
         </span>
       </summary>
