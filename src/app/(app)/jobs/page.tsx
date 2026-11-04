@@ -7,13 +7,16 @@ import { formatDateTime } from "@/lib/format";
 import { activeFilterCount, filterMatches, filtersToSearchParams, groupByRole, locationFacets, paginate, parseFilters, sourceFacets, summarizeMatches } from "@/lib/jobs/filters";
 import { listFitChecks } from "@/lib/jobs/fit-checks";
 import { countHiddenRoles, lastSearchRun, listMatches } from "@/lib/jobs/results";
+import { countEnabledTargetCompanies } from "@/lib/profile";
 import { requireUser } from "@/lib/session";
+import { setupComplete, setupSteps } from "@/lib/setup";
 import { ApplyActions } from "./apply-actions";
 import { FilterPanel } from "./filter-panel";
 import { FiltersToggle } from "./filters-toggle";
 import { FitCheck } from "./fit-check";
 import { JobCard } from "./job-card";
 import { RefreshButton } from "./refresh-button";
+import { SetupChecklist } from "./setup-checklist";
 
 export const metadata: Metadata = { title: "Jobs · Job Finder" };
 // Server Actions on this page call the Sheets API (mark applied) and the AI (fit checks).
@@ -28,6 +31,18 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
     applicationStats(profile.userId),
     filters.hidden === "hide" ? countHiddenRoles(profile.userId) : 0,
   ]);
+  // The setup guide is for someone not yet past setup: no resume, or no matches yet. It stays
+  // until every required step is done or they hide it. A search counts once one has worked.
+  const pastSetup = Boolean(profile.resumeText?.trim()) && all.length > 0;
+  const steps =
+    profile.setupDismissedAt || pastSetup
+      ? null
+      : setupSteps({
+          ...profile,
+          enabledCompanies: await countEnabledTargetCompanies(profile.userId),
+          searched: lastRun?.status === "ok" || lastRun?.status === "partial",
+        });
+  const showSetup = steps !== null && !setupComplete(steps);
   const hasProfile = profile.skills.length + profile.titles.length + profile.searchKeywords.length > 0;
   // Before a resume exists every score is 0, so the "hide weak matches" default would hide everything.
   const filtered = groupByRole(filterMatches(all, hasProfile ? filters : { ...filters, minScore: 0 }));
@@ -72,6 +87,8 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
         action={<RefreshButton />}
       />
 
+      {showSetup && steps ? <SetupChecklist steps={steps} /> : null}
+
       {all.length > 0 ? (
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatTile hue="blue" label="New today" value={newToday} hint="First seen in the last 24 hours" href="/jobs?sort=date" />
@@ -108,7 +125,7 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
         </div>
       ) : null}
 
-      {all.length === 0 ? (
+      {all.length === 0 && showSetup ? null : all.length === 0 ? (
         <EmptyState
           icon={<Icon name="briefcase" />}
           title={lastRun ? "No matches yet" : "Run your first search"}

@@ -99,6 +99,8 @@ export const profiles = pgTable("profiles", {
   excludeKeywords: jsonb("exclude_keywords").$type<string[]>().notNull().default([]),
   /** Employers the user marked "Not interested" as a whole: their jobs are hidden from the list and the email. */
   hiddenCompanies: jsonb("hidden_companies").$type<string[]>().notNull().default([]),
+  /** When the user closed the setup guide on the Jobs page before finishing it. */
+  setupDismissedAt: timestamp("setup_dismissed_at", { mode: "date" }),
   // Preferences
   searchKeywords: jsonb("search_keywords").$type<string[]>().notNull().default([]),
   preferredLocations: jsonb("preferred_locations").$type<string[]>().notNull().default([]),
