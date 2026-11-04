@@ -33,6 +33,9 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
     hasProfile && filters.minScore === HIDE_BELOW_SCORE ? groupByRole(filterMatches(all, { ...filters, minScore: 0 })).length - filtered.length : 0;
   const { newToday, strong } = summarizeMatches(all, { ranked: hasProfile, strongAt: SCORE_THRESHOLDS.high });
   const showWeakHref = `/jobs?${filtersToSearchParams({ ...filters, minScore: 0, page: 1 }).toString()}`;
+  // Jobs the AI or a fixed rule marked "do not apply" are hidden by default, with a count to show them.
+  const skipHidden = filters.skip === "hide" ? groupByRole(filterMatches(all, { ...filters, skip: "show" })).length - filtered.length : 0;
+  const showSkippedHref = `/jobs?${filtersToSearchParams({ ...filters, skip: "show", page: 1 }).toString()}`;
   // "Check my fit" needs the AI and a saved resume; earlier checks for this page's jobs load with it.
   const canCheckFit = Boolean(aiProvider() && profile.resumeText?.trim());
   const fitChecks = canCheckFit
@@ -135,6 +138,15 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
                   </Link>
                 </>
               ) : null}
+              {skipHidden > 0 ? (
+                <>
+                  {" · "}
+                  {skipHidden.toLocaleString()} marked do not apply hidden.{" "}
+                  <Link href={showSkippedHref} className={linkClass}>
+                    Show
+                  </Link>
+                </>
+              ) : null}
             </p>
             {items.length === 0 ? (
               <EmptyState
@@ -168,7 +180,17 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
                     ranked={hasProfile}
                     hasClearance={profile.hasClearance}
                     actions={<ApplyActions jobId={m.job.id} application={m.application} />}
-                    fit={canCheckFit ? <FitCheck jobId={m.job.id} initial={fitChecks.get(m.job.id) ?? null} /> : null}
+                    fit={
+                      canCheckFit ? (
+                        <>
+                          <FitCheck jobId={m.job.id} initial={fitChecks.get(m.job.id) ?? null} />
+                          <Link href={`/jobs/${m.job.id}/tailor`} className={buttonClass("secondary", "sm")}>
+                            <Icon name="file" className="size-3.5" />
+                            Tailor resume
+                          </Link>
+                        </>
+                      ) : null
+                    }
                   />
                 ))}
               </ul>

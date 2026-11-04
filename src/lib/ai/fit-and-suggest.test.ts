@@ -37,6 +37,10 @@ describe("checkFit", () => {
         gaps: [],
         missingKeywords: ["EDR", "PowerShell"],
         resumeTips: ["Lead with the Splunk bullet"],
+        requirements: [
+          { requirement: "EDR alert triage", importance: "critical", match: "partial", evidence: "Splunk triage, not EDR" },
+          { requirement: "Python", importance: "preferred", match: "strong", evidence: "Python scripting" },
+        ],
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -52,6 +56,10 @@ describe("checkFit", () => {
     expect(result.fitScore).toBe(82);
     expect(result.verdict).toBe("strong");
     expect(result.strengths).toEqual(["Splunk alert triage", "Python scripting"]);
+    expect(result.requirements).toEqual([
+      { requirement: "EDR alert triage", importance: "critical", match: "partial", evidence: "Splunk triage, not EDR" },
+      { requirement: "Python", importance: "preferred", match: "strong", evidence: "Python scripting" },
+    ]);
   });
 });
 

@@ -2,6 +2,7 @@
 
 import { useTransition } from "react";
 import { Badge, Button, Icon, linkClass } from "@/components/ui";
+import type { CrawlStatus } from "@/db/schema";
 import { removeTargetCompany, setTargetCompanyEnabled } from "./actions";
 
 const BOARD_URLS: Record<string, (slug: string) => string> = {
@@ -18,6 +19,7 @@ export function TargetCompanyRow({
   name,
   enabled,
   lastResult,
+  crawl,
 }: {
   id: string;
   ats: string;
@@ -27,6 +29,8 @@ export function TargetCompanyRow({
   enabled: boolean;
   /** From the most recent search run, if this company was in it. */
   lastResult?: { ok: boolean; count: number; error?: string };
+  /** Workday: the nightly crawler's last visit. */
+  crawl?: { status: CrawlStatus; crawledAtLabel: string; listingsSeen: number; error: string | null };
 }) {
   const [pending, startTransition] = useTransition();
   return (
@@ -43,7 +47,18 @@ export function TargetCompanyRow({
           {name ?? slug}
           {enabled ? <Icon name="external-link" className="size-3" /> : null}
         </a>
-        {enabled && lastResult ? (
+        {enabled && crawl ? (
+          crawl.status === "ok" || crawl.status === "partial" ? (
+            <span className="text-xs text-muted" title={`Crawled ${crawl.crawledAtLabel}`}>
+              {crawl.listingsSeen.toLocaleString()} listings in the nightly crawl{crawl.status === "partial" ? " (partly)" : ""}
+            </span>
+          ) : (
+            <Badge tone={crawl.status === "rate_limited" ? "warning" : "danger"} dot>
+              {crawl.status === "not_found" ? "Site not found" : crawl.status === "rate_limited" ? "Rate limited last night" : (crawl.error ?? "Crawl failed")}
+            </Badge>
+          )
+        ) : null}
+        {enabled && lastResult && !crawl ? (
           lastResult.ok ? (
             <span className="text-xs text-muted">{lastResult.count.toLocaleString()} postings last search</span>
           ) : (

@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { AtsType, Profile } from "@/db/schema";
 import { EXPERIENCE_LABELS, inferExperienceLevel, isTooSenior } from "@/lib/jobs/experience";
 import { isInTargetCountry } from "@/lib/jobs/location";
-import { isExcludedTitle, titleSimilarity } from "@/lib/jobs/scoring";
+import { bestTitleSimilarity, isExcludedTitle, ownFamily } from "@/lib/jobs/scoring";
 import { fetchAshby } from "@/lib/jobs/sources/ashby";
 import { fetchGreenhouse } from "@/lib/jobs/sources/greenhouse";
 import { fetchLever } from "@/lib/jobs/sources/lever";
@@ -110,6 +110,7 @@ Suggest 25 employers.`,
   await probeBoards(missing.flatMap((w) => HOSTED_BOARDS.filter((a) => a !== w.ats).map((ats) => ({ ats, slug: w.slug }))));
 
   const out: CompanySuggestion[] = [];
+  const own = ownFamily(profile.titles);
   for (const [slug, { ats, jobs }] of found) {
     const meta = wanted.get(slug)!;
     const us = jobs.filter((j) => isInTargetCountry(j) && !isExcludedTitle(j.title, profile.excludeKeywords));
@@ -118,7 +119,7 @@ Suggest 25 employers.`,
     // enough) and isn't two or more levels above the profile (no "Senior" roles for entry level).
     const scored = us
       .filter((j) => !isTooSenior(j.experienceLevel ?? inferExperienceLevel(j.title), profile.seniority))
-      .map((j) => ({ title: j.title, sim: Math.max(0, ...profile.titles.map((t) => titleSimilarity(t, j.title))) }))
+      .map((j) => ({ title: j.title, sim: bestTitleSimilarity(profile.titles, j.title, own) }))
       .sort((a, b) => b.sim - a.sim);
     const good = scored.filter((s) => s.sim >= 0.75);
     out.push({

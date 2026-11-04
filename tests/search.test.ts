@@ -4,8 +4,9 @@ import { createPglite, schema, type Db } from "@/db";
 import { mockJobs } from "@/lib/jobs/sources/mock";
 import { buildSourceTasks, runSourceTasks } from "@/lib/jobs/sources";
 import { listMatches } from "@/lib/jobs/results";
-import { rescoreStoredMatches, runJobSearch } from "@/lib/jobs/search";
+import { rescoreStoredMatches, runJobSearch, scoreBacklog, usersDueForSearch } from "@/lib/jobs/search";
 import type { SourceTask } from "@/lib/jobs/types";
+import { overallScore } from "@/lib/jobs/evaluation";
 import { ensureProfile, SEED_TARGET_COMPANIES } from "@/lib/profile";
 
 let db: Db;
@@ -35,6 +36,37 @@ describe("ensureProfile", () => {
     await ensureProfile(userId, db);
     const rows = await db.select().from(schema.targetCompanies).where(eq(schema.targetCompanies.userId, userId));
     expect(rows).toHaveLength(SEED_TARGET_COMPANIES.length);
+  });
+});
+
+describe("usersDueForSearch", () => {
+  it("skips users searched in the last 12 hours and puts the least recently searched first", async () => {
+    const now = new Date("2026-11-04T08:30:00Z");
+    const hoursAgo = (h: number) => new Date(now.getTime() - h * 3_600_000);
+    const make = async (email: string) => (await db.insert(schema.users).values({ email }).returning())[0].id;
+    const [fresh, yesterday, never, failed, killed] = [
+      userId,
+      await make("b@example.com"),
+      await make("c@example.com"),
+      await make("d@example.com"),
+      await make("e@example.com"),
+    ];
+    await db.insert(schema.searchRuns).values([
+      { userId: fresh, trigger: "cron", startedAt: hoursAgo(1.5), status: "ok" },
+      { userId: yesterday, trigger: "cron", startedAt: hoursAgo(23), status: "ok" },
+      { userId: yesterday, trigger: "manual", startedAt: hoursAgo(30), status: "ok" },
+      // A failed search doesn't count: it's retried in the next slot.
+      { userId: failed, trigger: "cron", startedAt: hoursAgo(25), status: "ok" },
+      { userId: failed, trigger: "cron", startedAt: hoursAgo(0.5), status: "error" },
+      // Nor does one Vercel stopped mid-run (left "running"); one running right now does.
+      { userId: killed, trigger: "cron", startedAt: hoursAgo(1), status: "running" },
+      { userId: fresh, trigger: "manual", startedAt: hoursAgo(0.01), status: "running" },
+    ]);
+    const due = await usersDueForSearch([fresh, yesterday, never, failed, killed], db, now);
+    // Never (successfully) searched first, in id order; then the oldest search first.
+    expect(due.slice(0, 2)).toEqual([never, killed].sort());
+    expect(due.slice(2)).toEqual([failed, yesterday]);
+    expect(await usersDueForSearch([], db, now)).toEqual([]);
   });
 });
 
@@ -110,6 +142,42 @@ describe("runJobSearch", () => {
     expect(listed.some((m) => m.job.locationRaw === "Chicago, IL")).toBe(true);
   });
 
+  it("closes hosted-board postings missing from a full fetch, and reopens them when they return", async () => {
+    const [base] = mockJobs();
+    const board = (n: number) => ({
+      label: "greenhouse:acme",
+      source: "greenhouse" as const,
+      run: async () =>
+        Array.from({ length: n }, (_, i) => ({ ...base, source: "greenhouse" as const, company: "Acme", externalId: `gh-${i}`, title: `Backend Engineer ${i}`, dedupeKey: `acme-${i}` })),
+    });
+    const closedAt = async () =>
+      Object.fromEntries((await db.select({ t: schema.jobs.title, c: schema.jobs.closedAt }).from(schema.jobs)).map((r) => [r.t, r.c]));
+    await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [board(2)] });
+    await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [board(1)] });
+    expect(await closedAt()).toMatchObject({ "Backend Engineer 0": null, "Backend Engineer 1": expect.any(Date) });
+    expect((await listMatches(userId, db)).some((m) => m.job.title === "Backend Engineer 1")).toBe(false);
+    await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [board(2)] });
+    expect(await closedAt()).toMatchObject({ "Backend Engineer 0": null, "Backend Engineer 1": null });
+  });
+
+  it("leaves Workday sites the nightly crawler covered recently to it", async () => {
+    await db.insert(schema.targetCompanies).values([
+      { userId, ats: "workday", slug: "acme.wd5/Careers" },
+      { userId, ats: "workday", slug: "other.wd1/Jobs" },
+    ]);
+    await db.insert(schema.workdayCrawlState).values({ userId, slug: "acme.wd5/Careers", lastCrawledAt: new Date(), status: "ok" });
+    let searched: string[] = [];
+    await runJobSearch(userId, {
+      trigger: "manual",
+      db,
+      buildTasks: (_p, targets) => {
+        searched = targets.filter((t) => t.ats === "workday").map((t) => t.slug);
+        return [];
+      },
+    });
+    expect(searched).toEqual(["other.wd1/Jobs"]);
+  });
+
   it("reports total failure as an error status", async () => {
     const summary = await runJobSearch(userId, { trigger: "cron", db, buildTasks: () => [brokenTask] });
     expect(summary.status).toBe("error");
@@ -172,17 +240,32 @@ describe("scoring pipeline", () => {
 
   describe("with Gemini configured", () => {
     let aiCalls = 0;
+    /** The score a strong on-target evaluation from the stub works out to (see overallScore). */
+    const STRONG = overallScore({ roleFit: "on_target", seniorityFit: "fits", skillsCoverage: "strong", locationFit: "ok", blockers: [], score: 91, verdict: "apply" });
+    const body = (call: number) => JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[call][1]!.body));
     beforeEach(() => {
       aiCalls = 0;
       vi.stubEnv("GEMINI_API_KEY", "test-key");
-      // Answers every job id in the prompt with a fixed score, like the real batch endpoint would.
+      // Answers every job id in the prompt with a strong evaluation, like the real batch endpoint would.
       vi.stubGlobal(
         "fetch",
         vi.fn(async (_url: string, init: RequestInit) => {
           aiCalls++;
           const prompt: string = JSON.parse(String(init.body)).contents[0].parts[0].text;
           const ids = [...prompt.matchAll(/<job id="([^"]+)">/g)].map((m) => m[1]);
-          const results = ids.map((id) => ({ id, score: 91, reason: "Strong backend payments fit" }));
+          const results = ids.map((id) => ({
+            id,
+            roleFit: "on_target",
+            seniorityFit: "fits",
+            skillsCoverage: "strong",
+            locationFit: "ok",
+            matchedSkills: ["TypeScript", "Kafka"],
+            missingSkills: [],
+            blockers: [],
+            verdict: "apply",
+            score: 91,
+            reason: "Strong backend payments fit",
+          }));
           return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ results }) }] }, finishReason: "STOP" }] }));
         }),
       );
@@ -197,7 +280,7 @@ describe("scoring pipeline", () => {
       expect(first.aiScored).toBe(3);
       const rows = await matchTitles();
       expect(rows.filter((r) => r.aiScored)).toHaveLength(3);
-      expect(rows[0]).toMatchObject({ score: 91, aiScored: true });
+      expect(rows[0]).toMatchObject({ score: STRONG, aiScored: true });
 
       const callsAfterFirst = aiCalls;
       const second = await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [sampleTask], maxAiScores: 3 });
@@ -222,7 +305,44 @@ describe("scoring pipeline", () => {
       const prompt: string = JSON.parse(String(fetchSpy.mock.calls[0][1]!.body)).contents[0].parts[0].text;
       expect([...prompt.matchAll(/<job id=/g)]).toHaveLength(1);
       expect(summary.aiScored).toBe(3);
-      expect((await matchTitles()).every((m) => m.aiScored && m.score === 91)).toBe(true);
+      expect((await matchTitles()).every((m) => m.aiScored && m.score === STRONG)).toBe(true);
+    });
+
+    it("puts the redacted resume in the stable system prefix and only jobs, with short ids, in the turn", async () => {
+      await db.update(schema.users).set({ name: "Jordan Example" }).where(eq(schema.users.id, userId));
+      await setProfile({ resumeText: "Jordan Example\njordan@example.com\nBuilt Kafka payment pipelines in TypeScript." });
+      await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [sampleTask], maxAiScores: 2 });
+      const { systemInstruction, contents } = body(0);
+      const system: string = systemInstruction.parts[0].text;
+      const turn: string = contents[0].parts[0].text;
+      expect(system).toContain("Built Kafka payment pipelines");
+      expect(system).not.toMatch(/Jordan|jordan@example\.com/);
+      expect(turn).not.toContain("Built Kafka payment pipelines");
+      expect([...turn.matchAll(/<job id="(j\d+)">/g)].map((m) => m[1])).toEqual(["j1", "j2"]);
+    });
+
+    it("never sends a job a fixed rule rules out, and marks it skip", async () => {
+      // An entry-level profile: "Senior Backend Engineer" is two levels up by its title.
+      await setProfile({ experienceLevels: ["entry"], seniority: "entry" });
+      await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [sampleTask] });
+      for (let i = 0; i < aiCalls; i++) expect(body(i).contents[0].parts[0].text).not.toContain("Senior Backend Engineer at");
+      const [senior] = await db
+        .select({ verdict: schema.jobMatches.verdict, score: schema.jobMatches.score, evaluation: schema.jobMatches.evaluation, aiScored: schema.jobMatches.aiScored })
+        .from(schema.jobMatches)
+        .innerJoin(schema.jobs, eq(schema.jobs.id, schema.jobMatches.jobId))
+        .where(eq(schema.jobs.title, "Senior Backend Engineer"));
+      expect(senior).toMatchObject({ verdict: "skip", aiScored: false, evaluation: { source: "rule", blockers: ["Senior-level title"] } });
+      expect(senior.score).toBeLessThanOrEqual(30);
+    });
+
+    it("evaluates the stored backlog without fetching, and leaves fresh evaluations alone", async () => {
+      await runJobSearch(userId, { trigger: "manual", db, buildTasks: () => [sampleTask], maxAiScores: 2 });
+      const before = (await matchTitles()).filter((r) => r.aiScored).length;
+      const r = await scoreBacklog(userId, { db, deadline: Date.now() + 30_000, cap: 3 });
+      expect(r.aiScored).toBeGreaterThan(0);
+      expect((await matchTitles()).filter((m) => m.aiScored).length).toBe(before + r.aiScored);
+      // Only Gemini was called: nothing was fetched from job boards.
+      expect(vi.mocked(globalThis.fetch).mock.calls.every(([url]) => String(url).includes("generativelanguage"))).toBe(true);
     });
 
     it("falls back to keyword scores when Gemini is busy", async () => {

@@ -7,16 +7,18 @@ import { loadMorningRunStatus, type MorningRunState } from "@/lib/email/health";
 import { env, featureStatus } from "@/lib/env";
 import { DEFAULT_COLUMN_MAP, SHEET_FIELD_LABELS } from "@/lib/google/sheets";
 import { EXPERIENCE_LABELS } from "@/lib/jobs/experience";
+import { formatDateTime } from "@/lib/format";
 import { lastSearchRun } from "@/lib/jobs/results";
 import { MAX_WORKDAY_SITES_PER_SEARCH } from "@/lib/jobs/sources";
 import { findWorkdayEmployer } from "@/lib/jobs/sources/workday-employers";
-import { listTargetCompanies } from "@/lib/profile";
+import { listTargetCompanies, listWorkdayCrawls } from "@/lib/profile";
 import { requireUser } from "@/lib/session";
 import { addTargetCompany, savePreferences, saveSheetSettings } from "./actions";
 import { CompanySuggestions } from "./company-suggestions";
 import { SheetTest } from "./sheet-test";
 import { TargetCompanyRow } from "./target-company-row";
 import { WorkdayEmployers } from "./workday-employers";
+import { WorkdayTest } from "./workday-test";
 
 export const metadata: Metadata = { title: "Settings · Job Finder" };
 
@@ -38,12 +40,15 @@ const SECTIONS = [
 
 export default async function SettingsPage() {
   const { profile } = await requireUser();
-  const [companies, lastRun, morning] = await Promise.all([
+  const [companies, lastRun, morning, crawlRows] = await Promise.all([
     listTargetCompanies(profile.userId),
     lastSearchRun(profile.userId),
     loadMorningRunStatus(profile.userId),
+    listWorkdayCrawls(profile.userId),
   ]);
   const lastResults = new Map((lastRun?.sourceResults ?? []).map((r) => [r.source, r]));
+  // Only recent crawls are listed; for the rest the search's own result shows.
+  const crawls = new Map(crawlRows.map((c) => [c.slug, { ...c, crawledAtLabel: formatDateTime(c.lastCrawledAt) }]));
   const features = featureStatus();
   const columnMap = profile.sheetColumnMap ?? DEFAULT_COLUMN_MAP;
   const googleConfigured = env.googleConfigured;
@@ -144,6 +149,15 @@ export default async function SettingsPage() {
           </p>
 
           <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="avoidMilitary" defaultChecked={profile.avoidMilitary} className="size-4 accent-accent" />
+            Skip jobs with military branches
+          </label>
+          <p className="-mt-2 text-xs text-muted">
+            Marks jobs at the Army, Navy, Air Force, Marine Corps, Coast Guard, Space Force and National Guard (civilian roles
+            included) as &ldquo;do not apply&rdquo;. Civilian defense agencies such as DFAS or DISA aren&apos;t affected.
+          </p>
+
+          <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" name="emailEnabled" defaultChecked={profile.emailEnabled} className="size-4 accent-accent" />
             Email me the top new matches every morning (7:00 AM Central)
           </label>
@@ -174,6 +188,7 @@ export default async function SettingsPage() {
           addedSlugs={companies.filter((c) => c.ats === "workday").map((c) => c.slug)}
           perSearch={MAX_WORKDAY_SITES_PER_SEARCH}
         />
+        <WorkdayTest />
         {companies.length === 0 ? (
           <p className="mb-4 rounded-control border border-dashed border-border-strong px-3 py-4 text-center text-sm text-muted">
             No target companies yet.
@@ -189,6 +204,7 @@ export default async function SettingsPage() {
                 name={c.ats === "workday" ? findWorkdayEmployer(c.slug)?.name : undefined}
                 enabled={c.enabled}
                 lastResult={lastResults.get(`${c.ats}:${c.slug}`)}
+                crawl={c.ats === "workday" ? crawls.get(c.slug) : undefined}
               />
             ))}
           </ul>

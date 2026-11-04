@@ -1,11 +1,12 @@
 import { render } from "@react-email/components";
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or } from "drizzle-orm";
 import { createElement } from "react";
 import { getDb, type Db } from "@/db";
 import { applications, emailLog, jobMatches, jobs, profiles, searchRuns, users } from "@/db/schema";
 import { MorningDigestEmail, type DigestFollowUp, type DigestJob } from "@/emails/morning-digest";
 import { FOLLOW_UP_AFTER_DAYS } from "@/lib/applications";
 import { env } from "@/lib/env";
+import { checkLiveness } from "@/lib/jobs/liveness";
 import { formatLocation } from "@/lib/jobs/location";
 import { inTargetCountry } from "@/lib/jobs/results";
 import { runJobSearch, type RunSummary } from "@/lib/jobs/search";
@@ -23,6 +24,12 @@ export const DIGEST_PREPARE_HOUR = DIGEST_HOUR - 1;
 /** 7 and 8 AM retry a 6 AM run that failed or was cut off, sending right away. */
 export const DIGEST_RETRY_HOUR = DIGEST_HOUR + 1;
 export const DIGEST_MAX_JOBS = 10;
+/** Extra candidates picked, so postings found closed can be replaced. */
+const LIVENESS_SPARES = 5;
+/** Time for checking that the picked Workday postings are still open, when the run has it to spare. */
+const LIVENESS_BUDGET_MS = 8_000;
+/** The liveness check never runs past this long after the user's run started (Vercel stops at 60 s). */
+const LIVENESS_DEADLINE_MS = 48_000;
 /** A claim older than this belongs to a run that died: Vercel stops a function after 60 s. */
 export const DIGEST_LEASE_MS = 5 * 60_000;
 /** A search this recent (normally the early search cron) counts as this morning's; the email doesn't search again. */
@@ -94,6 +101,9 @@ export async function pickDigestJobs(userId: string, db: Db, limit = DIGEST_MAX_
       and(
         eq(jobMatches.userId, userId),
         gte(jobMatches.score, DIGEST_MIN_SCORE),
+        // Never email a job marked "do not apply" (by the AI or a fixed rule), or one known to be closed.
+        or(isNull(jobMatches.verdict), ne(jobMatches.verdict, "skip")),
+        isNull(jobs.closedAt),
         gt(jobs.lastSeenAt, recent),
         inTargetCountry,
         isNull(emailLog.id),
@@ -154,6 +164,8 @@ type DigestOptions = {
   search?: boolean;
   runSearch?: typeof runJobSearch;
   send?: typeof sendEmail;
+  /** For tests: replaces the check that picked postings are still open. */
+  checkLive?: typeof checkLiveness;
 };
 
 /**
@@ -165,6 +177,7 @@ type DigestOptions = {
  * retry skips the search (the likely thing that ran out of time) and sends what's already matched.
  */
 export async function runDigestForUser(userId: string, opts: DigestOptions = {}): Promise<DigestOutcome> {
+  const runStarted = Date.now();
   const db = opts.db ?? (await getDb());
   const now = opts.now ?? new Date();
   try {
@@ -213,7 +226,19 @@ export async function runDigestForUser(userId: string, opts: DigestOptions = {})
       }
     }
 
-    const picked = await pickDigestJobs(userId, db);
+    // Confirm Workday postings are still open before emailing them (a few spares cover the closed ones).
+    const candidates = await pickDigestJobs(userId, db, DIGEST_MAX_JOBS + LIVENESS_SPARES);
+    const livenessBudget = Math.min(LIVENESS_BUDGET_MS, runStarted + LIVENESS_DEADLINE_MS - Date.now());
+    const liveness =
+      livenessBudget >= 1_000
+        ? await (opts.checkLive ?? checkLiveness)(
+            candidates.map((c) => c.job),
+            { budgetMs: livenessBudget },
+          )
+        : new Map<string, never>();
+    const closedIds = [...liveness].filter(([, s]) => s === "closed").map(([id]) => id);
+    if (closedIds.length) await db.update(jobs).set({ closedAt: now }).where(inArray(jobs.id, closedIds));
+    const picked = candidates.filter((c) => liveness.get(c.job.id) !== "closed").slice(0, DIGEST_MAX_JOBS);
     const followUps = await pickFollowUps(userId, db, now);
     if (picked.length === 0 && followUps.length === 0) {
       await finishDay();
@@ -276,9 +301,13 @@ export async function runDigestForUser(userId: string, opts: DigestOptions = {})
   }
 }
 
-/** Every user with the morning email turned on. */
+/** Every user with the morning email turned on, in a fixed order (the crons rotate through it). */
 export async function digestRecipients(db?: Db) {
   db ??= await getDb();
-  const rows = await db.select({ userId: profiles.userId }).from(profiles).where(eq(profiles.emailEnabled, true));
+  const rows = await db
+    .select({ userId: profiles.userId })
+    .from(profiles)
+    .where(eq(profiles.emailEnabled, true))
+    .orderBy(asc(profiles.userId));
   return rows.map((r) => r.userId);
 }

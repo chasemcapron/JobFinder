@@ -29,7 +29,22 @@ Each phase is committed only after lint, typecheck, tests, and build pass.
 - **AI (Gemini free tier), 2026-10-19**: resume reading with real posting titles and suggested exclusions, AI scoring of the top 40 matches per search, "Check my fit" per job, and "Suggest companies" with live board checks. All verified live against Gemini and real Greenhouse/Lever/Ashby boards: an end-to-end run in headless Edge (demo account, throwaway PGlite) fetched 2,343 postings and AI-scored 40 in ~23 s; resume reading took ~8 s, suggestions ~20 s and fit checks 7-28 s (the slow case is a busy 3.8 Flash falling back to Flash-Lite). Also fixed: stale scores after profile edits, credit/sales roles leaking in on shared words, sample jobs in production, and Greenhouse "Hybrid"-only locations.
 - **Workday, 2026-10-20**: Workday career sites as target companies (paste the careers URL). Verified live against nine employers; a run with Cloudflare (Greenhouse) plus Leidos, CrowdStrike and Booz Allen (Workday) for an entry-level security profile fetched in 8.9 s, and 11 of the top 12 keyword matches came from Workday (Leidos SOC Analyst, Booz Allen Cybersecurity Analyst Junior, …). Not yet run through the UI or the morning cron.
 
+## Upgrade: better matches, Workday coverage, tailoring (2026-11-03, branch `feat/matching-upgrade`)
+
+Phases committed one by one, each after lint, typecheck, tests, build and `/code-review high` (all confirmed findings fixed). Nothing pushed.
+
+- **Phase 0, eval harness**: `scripts/eval-matching.ts` freezes the user's matches and ~40 labeled roles (labels stay in git-ignored `eval-data/`) and replays today's ranking with AI answers cached on disk. Baseline: 14 bad roles in the top 20, nDCG@20 0.432.
+- **Phase 1, matching**: the AI sees the redacted resume and a structured, career-ops-style evaluation per job (role, seniority, skills, location, blockers, verdict); the score is computed in code. Fixed skip rules (active clearance, internships, military branches, too senior), signal extraction instead of a blind description cut, IT/data/business families in the keyword matcher, a title reserve for the AI's picks, a daily backlog run. "Do not apply" jobs are hidden with a count and a toggle; cards show matches and gaps. Bad in the top 20: 14 → 13 (cap 40: 12); shown by default: 25 bad → 3.
+- **Phase 2, Workday**: a nightly GitHub Actions crawler (`scripts/crawl-workday.ts`) pages deep with a shared 60-page budget per site, fetches only new postings and marks every listing seen; liveness checks hide closed postings; Settings can test any Workday URL. All 70 built-in employers answered. One crawl of 5 sites stored 304 Workday postings (from 0), covering about 80-90% of their relevant non-senior listings. With 15 Workday roles labeled (55 in all): 6 bad in the top 20, nDCG@20 0.766.
+- **Phase 2.5, other users**: the AI judges "off target" against each user's own field, a user's own title words count as related outside tech, and three daily search slots rotate through users. Owner's eval unchanged or better (nDCG@20 0.769, 5 bad in the top 20).
+- **Phase 3, tailoring**: `/jobs/[id]/tailor` makes a tailored resume and a 250-350 word cover letter per job, editable, with a "Changes from your resume" view and PDF/Word downloads built in the browser. The AI answers by ids into the parsed resume and a fact gate undoes anything the resume doesn't support (`tests/tailor-fact-check.test.ts`). Versions are stored per job, linked to the application when marked applied, and can go in the Sheet. Run read-only against the real resume and two real postings: ~5-18 s per resume, ~17 s per letter, letters 255 and 313 words; the gate dropped two invented details.
+
 ## Not verified (needs keys or a deploy)
+
+- **Tailor page in a browser**: the steps, downloads and fact gate were run against the real resume from a script, and the PDF and Word files were checked, but nobody has clicked through `/jobs/[id]/tailor` yet. Needs migration 0009 (`npm run db:migrate`).
+- **Workday crawl on GitHub Actions**: run locally only (5 sites). Whether Cloudflare lets GitHub's runner IPs through shows on the first run from the Actions tab after the branch is merged to `main`.
+- **Three search slots and the daily rotation**: unit-tested; only one user exists, so the multi-user rotation hasn't happened for real.
+- **The morning email's liveness check**: unit-tested; not yet seen in a real send.
 
 - ~~**Database on Neon**~~: migrated and in use locally since 2026-10-19.
 

@@ -57,6 +57,21 @@ describe("titleSimilarity", () => {
     expect(titleSimilarity("SOC Analyst", "Credit Analyst")).toBeLessThanOrEqual(0.15);
   });
 
+  it("gives IT, data and systems titles credit for related words in the same field", () => {
+    // Federal "IT Specialist" roles were labeled good for a systems/IT analyst profile (2026-11-03).
+    expect(titleSimilarity("Systems Analyst", "IT Specialist (Systems Admin)")).toBeGreaterThanOrEqual(0.5);
+    expect(titleSimilarity("Systems Analyst", "Information Technology Specialist")).toBeCloseTo(0.4);
+    expect(titleSimilarity("IT Project Analyst", "Help Desk Technician")).toBeGreaterThan(0.25);
+    expect(titleSimilarity("Help Desk Technician", "Service Desk Analyst")).toBeGreaterThanOrEqual(0.5);
+    expect(titleSimilarity("Data Analyst", "Business Intelligence Analyst")).toBeGreaterThanOrEqual(0.5);
+    // A different profession still barely registers.
+    expect(titleSimilarity("Data Analyst", "Financial Analyst")).toBeLessThanOrEqual(0.15);
+    expect(titleSimilarity("Business Systems Analyst", "Budget Analyst")).toBeLessThanOrEqual(0.15);
+    // Broad words don't count as the field: they name other professions too.
+    expect(titleSimilarity("Data Analyst", "Financial Reporting Analyst")).toBeLessThanOrEqual(0.15);
+    expect(titleSimilarity("IT Specialist", "Customer Support Specialist")).toBeLessThanOrEqual(0.15);
+  });
+
   it("still scores a generic-only profile title by its words", () => {
     expect(titleSimilarity("Engineer", "Software Engineer")).toBe(1);
   });
@@ -148,6 +163,16 @@ describe("keywordScore", () => {
       expect(held.score).toBeGreaterThan(keywordScore(soc(), entry).score);
       expect(held.reason).toContain("Uses your clearance");
     });
+  });
+
+  it("doesn't mark a federal job down for a level that comes only from its pay grade", () => {
+    const itProfile: MatchProfile = { ...profile, titles: ["Systems Analyst"], experienceLevels: ["entry"], seniority: "entry" };
+    const federal = job({ title: "IT Specialist (Systems Admin)", experienceLevel: "lead", source: "usajobs" });
+    const fromGrade = keywordScore(federal, itProfile).score;
+    expect(fromGrade).toBe(keywordScore({ ...federal, experienceLevel: null }, itProfile).score);
+    // The title or stated years still count, federal or not.
+    expect(keywordScore({ ...federal, title: "Supervisory IT Specialist" }, itProfile).score).toBeLessThan(fromGrade);
+    expect(keywordScore({ ...federal, source: "greenhouse" }, itProfile).score).toBeLessThan(fromGrade);
   });
 
   it("returns 0 with guidance when the profile is empty", () => {

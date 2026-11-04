@@ -50,3 +50,6 @@ next-env.d.ts
 /.claude/skills/
 /.claude/settings.local.json
 /.claude/worktrees/
+
+# matching eval data: the user's resume, postings and labels (scripts/eval-matching.ts)
+/eval-data/

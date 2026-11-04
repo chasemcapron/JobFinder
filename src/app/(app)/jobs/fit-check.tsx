@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Alert, Badge, Button, Icon, matchTone, ScoreBadge, type IconName } from "@/components/ui";
-import type { FitVerdict } from "@/db/schema";
+import type { FitVerdict, RequirementRow } from "@/db/schema";
 import { formatDateTime } from "@/lib/format";
 import type { FitCheckView } from "@/lib/jobs/fit-checks";
 import { checkFitAction } from "./fit-actions";
@@ -83,6 +83,8 @@ function FitPanel({ id, view, pending, onRecheck }: { id: string; view: FitCheck
         <FitList title="Gaps" icon="alert-triangle" iconClass="text-warning-fg" items={result.gaps} empty="No real gaps found." />
       </div>
 
+      {result.requirements?.length ? <RequirementsList rows={result.requirements} /> : null}
+
       {result.missingKeywords.length ? (
         <div>
           <h4 className="text-sm font-semibold">Keywords from the posting your resume doesn&apos;t use</h4>
@@ -117,6 +119,38 @@ function FitPanel({ id, view, pending, onRecheck }: { id: string; view: FitCheck
         </Button>
       </div>
     </section>
+  );
+}
+
+const MATCH_ICON: Record<RequirementRow["match"], { icon: IconName; className: string; label: string }> = {
+  strong: { icon: "check-circle", className: "text-success-fg", label: "Met" },
+  partial: { icon: "alert-triangle", className: "text-warning-fg", label: "Partly met" },
+  missing: { icon: "alert-triangle", className: "text-danger-fg", label: "Missing" },
+};
+const IMPORTANCE_LABELS: Record<RequirementRow["importance"], string> = { critical: "Must have", high: "Important", preferred: "Preferred" };
+
+/** The posting's requirements, importance first (judged from the posting alone), each with the resume evidence. */
+function RequirementsList({ rows }: { rows: RequirementRow[] }) {
+  return (
+    <div>
+      <h4 className="text-sm font-semibold">Requirements vs your resume</h4>
+      <ul className="mt-1.5 divide-y divide-border text-sm">
+        {rows.map((r) => {
+          const m = MATCH_ICON[r.match];
+          return (
+            <li key={r.requirement} className="flex gap-2 py-1.5">
+              <Icon name={m.icon} className={`mt-0.5 size-4 shrink-0 ${m.className}`} title={m.label} />
+              <div className="min-w-0">
+                <p>
+                  {r.requirement} <span className="text-xs text-muted">· {IMPORTANCE_LABELS[r.importance]}</span>
+                </p>
+                <p className="text-xs text-muted">{r.evidence}</p>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 

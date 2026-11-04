@@ -5,10 +5,10 @@
  * location fit and identify no one on their own.
  */
 
-const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
-const URL = /\b(?:https?:\/\/|www\.)\S+|\b(?:linkedin\.com|github\.com|gitlab\.com|twitter\.com|x\.com)\/\S*/gi;
+export const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+export const URL = /\b(?:https?:\/\/|www\.)\S+|\b(?:linkedin\.com|github\.com|gitlab\.com|twitter\.com|x\.com)\/\S*/gi;
 // US-style numbers: (312) 555-0100, 312.555.0100, +1 312 555 0100
-const PHONE = /(?<!\d)(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}(?!\d)/g;
+export const PHONE = /(?<!\d)(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}(?!\d)/g;
 const STREET =
   /\b\d{1,6}\s+(?:[NSEW]\.?\s+)?(?:[A-Z][a-z]+\.?\s+){1,4}(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Court|Ct|Way|Place|Pl|Terrace|Ter|Circle|Cir|Parkway|Pkwy|Highway|Hwy)\b\.?(?:,?\s*(?:Apt|Apartment|Unit|Suite|Ste|#)\.?\s*[\w-]+)?/g;
 // "Chicago, IL 60601" -> "Chicago, IL"
@@ -22,7 +22,7 @@ const NOT_A_NAME =
   /\b(resume|curriculum|summary|profile|objective|experience|engineer|analyst|developer|manager|specialist|consultant|intern|security|software|data)\b/i;
 
 /** A resume's first line is usually the person's name: 2-4 capitalized words, nothing else. */
-function looksLikeName(line: string): boolean {
+export function looksLikeName(line: string): boolean {
   const words = line.trim().split(/\s+/);
   return (
     words.length >= 2 &&

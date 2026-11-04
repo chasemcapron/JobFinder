@@ -11,6 +11,7 @@ export const SHEET_FIELD_LABELS: Record<SheetField, string> = {
   status: "Status",
   source: "Source",
   score: "Match score",
+  tailored: "Tailored resume",
 };
 
 /** Used until the user saves their own mapping. Matches the example in the brief. */

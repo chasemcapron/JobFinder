@@ -81,7 +81,7 @@ export type ClearanceRequirement = (typeof CLEARANCE_REQUIREMENTS)[number];
 
 /** Maps a sheet field to a column letter, e.g. { company: "A", title: "B" }. */
 export type SheetColumnMap = Partial<Record<SheetField, string>>;
-export const SHEET_FIELDS = ["company", "title", "dateApplied", "link", "location", "status", "source", "score"] as const;
+export const SHEET_FIELDS = ["company", "title", "dateApplied", "link", "location", "status", "source", "score", "tailored"] as const;
 export type SheetField = (typeof SHEET_FIELDS)[number];
 
 export const profiles = pgTable("profiles", {
@@ -104,6 +104,8 @@ export const profiles = pgTable("profiles", {
   remotePreference: text("remote_preference").$type<RemotePreference>().notNull().default("any"),
   /** Holds an active security clearance, so jobs that need one aren't marked down. */
   hasClearance: boolean("has_clearance").notNull().default(false),
+  /** Won't work for a military branch (Army, Navy, Air Force, Marine Corps, Coast Guard…), civilian roles included. */
+  avoidMilitary: boolean("avoid_military").notNull().default(false),
   adzunaCountry: text("adzuna_country").notNull().default("us"),
   // Google Sheets
   sheetId: text("sheet_id"),
@@ -153,12 +155,75 @@ export const jobs = pgTable(
     salaryCurrency: text("salary_currency"),
     firstSeenAt: timestamp("first_seen_at", { mode: "date" }).notNull().defaultNow(),
     lastSeenAt: timestamp("last_seen_at", { mode: "date" }).notNull().defaultNow(),
+    /**
+     * Workday only: "{tenant}/{site}{externalPath}", the key a search listing carries (listings have
+     * no posting id), so a crawl can tell which postings it already has and mark them seen.
+     */
+    listingKey: text("listing_key"),
+    /** Set when the posting is confirmed gone (liveness check, or missing from a full board); cleared when seen again. */
+    closedAt: timestamp("closed_at", { mode: "date" }),
   },
   (t) => [
     uniqueIndex("jobs_dedupe_key_idx").on(t.dedupeKey),
     index("jobs_source_external_idx").on(t.source, t.externalId),
+    index("jobs_listing_key_idx").on(t.listingKey),
   ],
 );
+
+export const CRAWL_STATUSES = ["ok", "partial", "not_found", "rate_limited", "error"] as const;
+export type CrawlStatus = (typeof CRAWL_STATUSES)[number];
+
+/**
+ * The last crawl of each Workday site a user follows (scripts/crawl-workday.ts, run nightly by
+ * GitHub Actions). The Vercel search skips sites crawled recently and falls back to its own
+ * shallow search when the crawler hasn't run.
+ */
+export const workdayCrawlState = pgTable(
+  "workday_crawl_state",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    slug: text("slug").notNull(),
+    lastCrawledAt: timestamp("last_crawled_at", { mode: "date" }).notNull(),
+    status: text("status").$type<CrawlStatus>().notNull(),
+    listingsSeen: integer("listings_seen").notNull().default(0),
+    detailsFetched: integer("details_fetched").notNull().default(0),
+    /** Workday's own total per search term, US filter. */
+    totals: jsonb("totals").$type<Record<string, number>>().notNull().default({}),
+    error: text("error"),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.slug] })],
+);
+
+export const MATCH_VERDICTS = ["apply", "maybe", "skip"] as const;
+export type MatchVerdict = (typeof MATCH_VERDICTS)[number];
+export const ROLE_FITS = ["on_target", "adjacent", "off_target"] as const;
+export const SENIORITY_FITS = ["fits", "stretch", "too_senior", "too_junior"] as const;
+export const SKILL_COVERAGES = ["strong", "partial", "weak"] as const;
+export const LOCATION_FITS = ["ok", "unknown", "mismatch"] as const;
+
+/**
+ * Why a job got its verdict. "ai": the batch scorer read the posting against the resume and
+ * rated each part. "rule": a fixed rule decided it without AI (needs an active clearance the user
+ * doesn't hold, an internship, a military branch, clearly too senior), and only `blockers` is set.
+ */
+export type MatchEvaluation = {
+  version: number;
+  source: "ai" | "rule";
+  roleFit?: (typeof ROLE_FITS)[number];
+  seniorityFit?: (typeof SENIORITY_FITS)[number];
+  skillsCoverage?: (typeof SKILL_COVERAGES)[number];
+  locationFit?: (typeof LOCATION_FITS)[number];
+  /** Skills the posting asks for that the resume shows. */
+  matchedSkills: string[];
+  /** Skills the posting requires that the resume doesn't show. */
+  missingSkills: string[];
+  /** Hard stops: clearance, years, degree, licence, internship, military. */
+  blockers: string[];
+  /** The model's own 0-100 number, kept for comparison; `job_matches.score` is computed from the parts. */
+  holistic?: number;
+};
 
 export const jobMatches = pgTable(
   "job_matches",
@@ -176,6 +241,9 @@ export const jobMatches = pgTable(
     aiScored: boolean("ai_scored").notNull().default(false),
     reasons: text("reasons").notNull().default(""),
     matchedKeywords: jsonb("matched_keywords").$type<string[]>().notNull().default([]),
+    /** apply / maybe / skip; null when only the keyword matcher has seen the job. Skips are hidden by default. */
+    verdict: text("verdict").$type<MatchVerdict | null>(),
+    evaluation: jsonb("evaluation").$type<MatchEvaluation | null>(),
     scoredAt: timestamp("scored_at", { mode: "date" }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("job_matches_user_job_idx").on(t.userId, t.jobId), index("job_matches_user_score_idx").on(t.userId, t.score)],
@@ -183,6 +251,22 @@ export const jobMatches = pgTable(
 
 export const FIT_VERDICTS = ["strong", "good", "stretch", "poor"] as const;
 export type FitVerdict = (typeof FIT_VERDICTS)[number];
+
+export const REQUIREMENT_IMPORTANCE = ["critical", "high", "preferred"] as const;
+export const REQUIREMENT_MATCH = ["strong", "partial", "missing"] as const;
+
+/**
+ * One posting requirement against the resume. Importance is judged from the posting alone,
+ * before the resume is read, so a strong match can't make a requirement look more important
+ * (career-ops' two-pass requirements table, github.com/career-ops-hq/career-ops, MIT).
+ */
+export type RequirementRow = {
+  requirement: string;
+  importance: (typeof REQUIREMENT_IMPORTANCE)[number];
+  match: (typeof REQUIREMENT_MATCH)[number];
+  /** The resume line that shows it, or why it's missing. */
+  evidence: string;
+};
 
 /** An AI comparison of the user's resume with one posting ("Check my fit"). */
 export type FitCheckResult = {
@@ -194,6 +278,8 @@ export type FitCheckResult = {
   /** Terms from the posting the resume doesn't use; worth adding only if they're true. */
   missingKeywords: string[];
   resumeTips: string[];
+  /** Added 2026-11-03; older checks don't have it. */
+  requirements?: RequirementRow[];
 };
 
 /** Cached fit checks. Stale once the profile changes after `createdAt` (the resume was edited). */
@@ -212,6 +298,44 @@ export const fitChecks = pgTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.jobId] })],
 );
+
+/** A resume as sections, entries and bullets (src/lib/tailor/structure.ts), with stable ids like "s2.e1.b3". */
+export const RESUME_SECTION_KINDS = ["experience", "education", "projects", "skills", "certifications", "other"] as const;
+export type ResumeSectionKind = (typeof RESUME_SECTION_KINDS)[number];
+export type ResumeBullet = { id: string; text: string };
+export type ResumeEntry = { id: string; title?: string; org?: string; location?: string; dates?: string; bullets: ResumeBullet[] };
+export type ResumeSection = { id: string; heading: string; kind: ResumeSectionKind; entries: ResumeEntry[]; items: string[] };
+export type ResumeStructure = {
+  summary: string | null;
+  sections: ResumeSection[];
+  /** What the parse couldn't confirm against the resume text (and so left out). */
+  warnings: string[];
+  /** The redacted resume text it was parsed from: the fact check's source for summaries and letters. */
+  source?: string;
+};
+
+/**
+ * A resume tailored to one posting. It only points at the base resume (sections, entries,
+ * bullets by id): employers, titles, dates and schools are always the base's, never the AI's.
+ */
+export type TailoredBullet = { sourceId: string; text: string };
+export type TailoredResume = {
+  summary: string | null;
+  sections: { id: string; entries: { id: string; bullets: TailoredBullet[] }[]; items: string[] }[];
+};
+export type CoverLetter = { paragraphs: string[] };
+export type FactCheckReport = { warnings: string[] };
+
+/** The parsed base resume, redone when the resume text changes (`sourceHash`). */
+export const resumeStructures = pgTable("resume_structures", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  sourceHash: text("source_hash").notNull(),
+  data: jsonb("data").$type<ResumeStructure>().notNull(),
+  model: text("model").notNull(),
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+});
 
 export const APPLICATION_STATUSES = ["applied", "interviewing", "offer", "rejected", "withdrawn"] as const;
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
@@ -237,6 +361,35 @@ export const applications = pgTable(
     followUpSentAt: timestamp("follow_up_sent_at", { mode: "date" }),
   },
   (t) => [uniqueIndex("applications_user_job_idx").on(t.userId, t.jobId)],
+);
+
+/** Each tailored resume and cover letter for a job, numbered per job; edits update a version in place. */
+export const tailoredDocuments = pgTable(
+  "tailored_documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    /** Set when the job is marked applied: the version sent. */
+    applicationId: uuid("application_id").references(() => applications.id, { onDelete: "set null" }),
+    /** The resume_structures source hash it was made from. */
+    baseHash: text("base_hash").notNull(),
+    /** That base itself, so a version stays readable (and editable) after the resume changes. */
+    base: jsonb("base").$type<ResumeStructure>().notNull(),
+    resume: jsonb("resume").$type<TailoredResume>().notNull(),
+    coverLetter: jsonb("cover_letter").$type<CoverLetter>(),
+    factCheck: jsonb("fact_check").$type<FactCheckReport>().notNull().default({ warnings: [] }),
+    model: text("model").notNull(),
+    edited: boolean("edited").notNull().default(false),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("tailored_documents_user_job_version_idx").on(t.userId, t.jobId, t.version)],
 );
 
 export const ATS_TYPES = ["greenhouse", "lever", "ashby", "workday"] as const;

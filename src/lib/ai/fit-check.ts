@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FIT_VERDICTS, type FitCheckResult, type Profile } from "@/db/schema";
+import { FIT_VERDICTS, REQUIREMENT_IMPORTANCE, REQUIREMENT_MATCH, type FitCheckResult, type Profile } from "@/db/schema";
 import { EXPERIENCE_LABELS } from "@/lib/jobs/experience";
 import { formatLocation } from "@/lib/jobs/location";
 import type { ScoredJob } from "@/lib/jobs/scoring";
@@ -19,6 +19,16 @@ const FitSchema = z.object({
   gaps: z.array(z.string()).describe("Up to 5 requirements the resume doesn't show, most important first"),
   missingKeywords: z.array(z.string()).describe("Up to 12 important terms from the posting that the resume never uses"),
   resumeTips: z.array(z.string()).describe("3-5 concrete edits to tailor the resume to this posting"),
+  requirements: z
+    .array(
+      z.object({
+        requirement: z.string().describe("A requirement from the posting, under 80 characters"),
+        importance: z.enum(REQUIREMENT_IMPORTANCE).describe("From the posting alone: critical (must-have), high, or preferred"),
+        match: z.enum(REQUIREMENT_MATCH).describe("strong, partial or missing on the resume"),
+        evidence: z.string().describe("The resume line that shows it, or what's missing; under 140 characters"),
+      }),
+    )
+    .describe("Up to 10 of the posting's requirements, most important first, unmet before met within the same importance"),
 });
 
 const SYSTEM = `You are a candid career coach comparing one candidate's resume with one US job posting.
@@ -27,6 +37,7 @@ Rules:
 - Be specific and honest. Quote or paraphrase the resume and the posting; no generic advice ("tailor your resume", "show passion").
 - Treat "required" or "minimum" qualifications as far more important than "preferred" or "nice to have". Years of experience and required certifications or clearances are hard gaps.
 - missingKeywords: exact terms from the posting (tools, frameworks, certifications, methods) that applicant tracking systems would look for and that the resume never mentions. No soft skills, no company names.
+- requirements: work in two passes. First list the posting's requirements and set each one's importance from the posting alone ("required", "minimum", "must" = critical; repeated or central duties = high; "preferred", "nice to have", "a plus" = preferred), before you look at the resume. Then match each against the resume and quote the evidence. Don't change an importance because the candidate does or doesn't meet it. (Adapted from career-ops, github.com/career-ops-hq/career-ops, MIT.)
 - resumeTips: concrete edits, e.g. "Move the Splunk alert-triage bullet to the top of the internship entry and add the alert volume". Never suggest claiming experience the resume doesn't support; for a missing skill, suggest how to show adjacent evidence or say it's a real gap to close.
 - Everything is short: each list item under 160 characters.`;
 
@@ -65,7 +76,7 @@ Location: ${formatLocation(job, job.locationRaw)}${level}
 ${posting}
 </posting>`,
     tier: "quality",
-    maxTokens: 4_000,
+    maxTokens: 6_000,
     // 3.8 Flash answers in ~5-9 s when healthy but can take minutes on a busy free tier;
     // past 10 s, Flash-Lite (~1-3 s) is asked too and the first answer wins.
     hedgeAfterMs: 10_000,
@@ -84,6 +95,12 @@ ${posting}
       gaps: clean(data.gaps, 5),
       missingKeywords: clean(data.missingKeywords, 12),
       resumeTips: clean(data.resumeTips, 5),
+      requirements: data.requirements.slice(0, 10).map((r) => ({
+        requirement: r.requirement.trim().slice(0, 120),
+        importance: r.importance,
+        match: r.match,
+        evidence: r.evidence.trim().slice(0, 200),
+      })),
     },
   };
 }
