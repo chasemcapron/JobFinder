@@ -39,6 +39,17 @@ Phases committed one by one, each after lint, typecheck, tests, build and `/code
 - **Phase 2.5, other users**: the AI judges "off target" against each user's own field, a user's own title words count as related outside tech, and three daily search slots rotate through users. Owner's eval unchanged or better (nDCG@20 0.769, 5 bad in the top 20).
 - **Phase 3, tailoring**: `/jobs/[id]/tailor` makes a tailored resume and a 250-350 word cover letter per job, editable, with a "Changes from your resume" view and PDF/Word downloads built in the browser. The AI answers by ids into the parsed resume and a fact gate undoes anything the resume doesn't support (`tests/tailor-fact-check.test.ts`). Versions are stored per job, linked to the application when marked applied, and can go in the Sheet. Run read-only against the real resume and two real postings: ~5-18 s per resume, ~17 s per letter, letters 255 and 313 words; the gate dropped two invented details.
 
+## Polish (2026-11-04, branch `feat/polish`, on top of `fix/digest-roles-and-crawl-budget`)
+
+- **Not interested**: hide a role (every city, now and later) or a whole company, from the list, the email and AI scoring; undo in place, a filter to list them, hidden companies in Settings. Migration 0010.
+- **Daily AI limits** for invited users (the owner, first in `ALLOWED_EMAILS`, has none); past a limit Refresh and resume upload work without AI. Migration 0011.
+- **Setup guide** on Jobs for new users (migration 0012) and **application notes** with a next step (migration 0013).
+- **Delete my account** in Settings (cascade, Google grant revoked, stale sessions signed out).
+- **Mobile and accessibility pass**: axe-core and keyboard at 390 and 1280 px, all violations fixed; re-run clean.
+- **Dependencies**: npm audit 24 → 19; the rest accepted in DECISIONS.
+
+Checked in a local browser (demo account, sample jobs, throwaway database): the setup guide, Not interested and Undo, the notes form, the delete card. Not checked live: limits on a real invited account, deleting a real Google account (the revoke call), the Settings usage line with a real AI key.
+
 ## Not verified (needs keys or a deploy)
 
 - **Tailor page in a browser**: the steps, downloads and fact gate were run against the real resume from a script, and the PDF and Word files were checked, but nobody has clicked through `/jobs/[id]/tailor` yet. Needs migration 0009 (`npm run db:migrate`).

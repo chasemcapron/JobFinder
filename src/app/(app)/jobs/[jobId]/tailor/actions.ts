@@ -3,9 +3,10 @@
 import { getDb } from "@/db";
 import type { TailoredResume } from "@/db/schema";
 import { AiRequestError, AiUnavailableError } from "@/lib/ai/gemini";
+import { AiLimitError, assertAllowance, withAllowance, type Who } from "@/lib/ai/limits";
 import { aiProvider } from "@/lib/ai/provider";
-import { currentUserId } from "@/lib/session";
-import { addCoverLetter, createTailoredResume, ensureStructure, jobForUser, saveEdits, TailorError } from "@/lib/tailor/service";
+import { currentUser, currentUserId } from "@/lib/session";
+import { addCoverLetter, createTailoredResume, currentStructure, ensureStructure, jobForUser, saveEdits, TailorError } from "@/lib/tailor/service";
 import { toVersionView, type VersionView } from "./view";
 
 /**
@@ -17,34 +18,49 @@ import { toVersionView, type VersionView } from "./view";
 
 export type StepResult<T = null> = { ok: true; data: T } | { ok: false; message: string };
 
-async function run<T>(fn: (userId: string) => Promise<T>): Promise<StepResult<T>> {
+async function run<T>(fn: (userId: string, who: Who) => Promise<T>): Promise<StepResult<T>> {
   try {
-    const userId = await currentUserId();
-    if (!userId) return { ok: false, message: "You're signed out. Sign in again." };
+    const who = await currentUser();
+    if (!who) return { ok: false, message: "You're signed out. Sign in again." };
     if (!aiProvider()) return { ok: false, message: "AI isn't set up on this deployment (GEMINI_API_KEY)." };
-    return { ok: true, data: await fn(userId) };
+    return { ok: true, data: await fn(who.userId, who) };
   } catch (err) {
-    if (err instanceof TailorError || err instanceof AiUnavailableError || err instanceof AiRequestError) return { ok: false, message: err.message };
+    if (err instanceof TailorError || err instanceof AiUnavailableError || err instanceof AiRequestError || err instanceof AiLimitError) {
+      return { ok: false, message: err.message };
+    }
     console.error("Tailoring failed", err);
     return { ok: false, message: "Something went wrong. Try again in a minute." };
   }
 }
 
 export async function prepareResumeAction(jobId: string): Promise<StepResult> {
-  return run(async (userId) => {
+  return run(async (userId, who) => {
     const db = await getDb();
     if (!(await jobForUser(userId, jobId, db))) throw new TailorError("That job isn't in your list anymore.");
-    await ensureStructure(userId, { db });
+    // At the tailoring limit, stop before any AI call.
+    await assertAllowance(who, "tailor", db);
+    // Reading the resume into sections is an AI call only when the resume changed; it counts as an
+    // AI resume reading then, so editing the resume and re-running this can't bypass the limits.
+    if (await currentStructure(userId, db)) return null;
+    await withAllowance(who, "resume", db, () => ensureStructure(userId, { db }));
     return null;
   });
 }
 
 export async function tailorResumeAction(jobId: string): Promise<StepResult<number>> {
-  return run(async (userId) => (await createTailoredResume(userId, jobId, { db: await getDb() })).version);
+  // Each tailored resume counts once toward the daily limit (reading the resume is part of it).
+  return run(async (userId, who) => {
+    const db = await getDb();
+    return (await withAllowance(who, "tailor", db, () => createTailoredResume(userId, jobId, { db }))).version;
+  });
 }
 
 export async function coverLetterAction(jobId: string, version: number): Promise<StepResult<VersionView>> {
-  return run(async (userId) => toVersionView(await addCoverLetter(userId, jobId, version, { db: await getDb() })));
+  // Cover letters have their own daily limit, so rewriting one again and again can't drain the shared quota.
+  return run(async (userId, who) => {
+    const db = await getDb();
+    return toVersionView(await withAllowance(who, "letter", db, () => addCoverLetter(userId, jobId, version, { db })));
+  });
 }
 
 /** Saving edits needs no AI, so it skips `run`'s AI check. */

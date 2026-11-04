@@ -123,7 +123,7 @@ export function ChipField({
       type="button"
       onClick={() => remove(index)}
       aria-label={`Remove ${value}`}
-      className="grid size-5 shrink-0 place-items-center rounded-full opacity-75 transition-[opacity,background-color] hover:bg-current/15 hover:opacity-100"
+      className="grid size-6 shrink-0 place-items-center rounded-full opacity-75 transition-[opacity,background-color] hover:bg-current/15 hover:opacity-100"
     >
       <Icon name="x" className="size-3" />
     </button>

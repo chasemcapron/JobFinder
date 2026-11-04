@@ -1,7 +1,9 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth, signIn } from "@/auth";
 import { SubmitButton } from "@/components/action-form";
 import { Alert, Divider, Icon, type IconName } from "@/components/ui";
+import { DELETED_COOKIE } from "@/lib/confirm-email";
 import { env } from "@/lib/env";
 import { getUser } from "@/lib/profile";
 
@@ -39,6 +41,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   // A session whose user is gone (database reset, account removed) shows sign-in: /jobs would send it back here, in a loop.
   if (session?.user?.id && (await getUser(session.user.id))) redirect("/jobs");
   const { error } = await searchParams;
+  const deleted = (await cookies()).has(DELETED_COOKIE);
 
   async function signInWithGoogle() {
     "use server";
@@ -95,6 +98,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
           <Divider className="my-6" />
 
           <div className="flex flex-col gap-3">
+            {deleted ? <Alert tone="success">Your account and its data were deleted.</Alert> : null}
             {error === "AccessDenied" ? (
               <Alert tone="error">This Google account isn&apos;t allowed to use this app.</Alert>
             ) : error ? (

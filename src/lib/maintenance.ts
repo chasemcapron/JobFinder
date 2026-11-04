@@ -1,10 +1,13 @@
 import { and, eq, lt, notExists } from "drizzle-orm";
 import type { Db } from "@/db";
-import { applications, jobs, searchRuns } from "@/db/schema";
+import { aiUsage, applications, jobs, searchRuns } from "@/db/schema";
+import { localDate } from "@/lib/time";
 
 /** Postings no source has listed for this long are gone; they're already hidden after 21 days. */
 export const PRUNE_JOBS_UNSEEN_DAYS = 60;
 export const PRUNE_SEARCH_RUNS_DAYS = 90;
+/** Only today's AI use is ever read (the daily limits). */
+export const PRUNE_AI_USAGE_DAYS = 7;
 const DAY_MS = 86_400_000;
 
 /**
@@ -27,5 +30,6 @@ export async function pruneOldData(db: Db, now: Date): Promise<{ jobs: number; s
     .delete(searchRuns)
     .where(lt(searchRuns.startedAt, new Date(now.getTime() - PRUNE_SEARCH_RUNS_DAYS * DAY_MS)))
     .returning({ id: searchRuns.id });
+  await db.delete(aiUsage).where(lt(aiUsage.day, localDate(new Date(now.getTime() - PRUNE_AI_USAGE_DAYS * DAY_MS))));
   return { jobs: goneJobs.length, searchRuns: goneRuns.length };
 }

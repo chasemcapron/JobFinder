@@ -53,11 +53,11 @@ export function resumeForAi(resumeText: string, names: (string | null | undefine
   return redactPersonalInfo(resumeText, { names });
 }
 
-export async function analyzeResume(resumeText: string, opts: { names?: (string | null | undefined)[] } = {}): Promise<ResumeAnalysis> {
+export async function analyzeResume(resumeText: string, opts: { names?: (string | null | undefined)[]; useAi?: boolean } = {}): Promise<ResumeAnalysis> {
   if (resumeText.length > MAX_RESUME_CHARS) {
     throw new Error(`That resume is ${resumeText.length.toLocaleString()} characters; the limit is ${MAX_RESUME_CHARS.toLocaleString()}.`);
   }
-  if (!aiProvider()) return analyzeResumeHeuristically(resumeText);
+  if (!aiProvider() || opts.useAi === false) return analyzeResumeHeuristically(resumeText);
   try {
     const { data, provider } = await aiJson({
       schema: AnalysisSchema,

@@ -53,6 +53,24 @@ export const MAX_DETAILS_PER_SITE = 100;
 export const CRAWL_SPACING_MS = 300;
 /** A site crawled this recently is left to the crawler by the Vercel search, and its crawl is shown in Settings. */
 export const CRAWLED_RECENTLY_MS = 30 * 3_600_000;
+/** The nightly run ends by then: the workflow allows 90 minutes, less a margin. */
+export const CRAWL_RUN_MS = 85 * 60_000;
+/** One user's crawl stops starting sites after this, even with the night to themselves. */
+export const MAX_CRAWL_PER_USER_MS = 45 * 60_000;
+
+/**
+ * When one user's crawl stops starting new sites. Each user still to go (this one included) has
+ * `tailMs` reserved for what follows their crawl (the last sites finishing, liveness, AI scoring);
+ * the rest of the night is split evenly between them. Worked out as each user starts, so time an
+ * earlier user didn't need goes to the ones after. Users run one after another, so before this the
+ * first could take the whole crawl budget and leave the others none.
+ */
+export function crawlShareEnd(opts: { now: number; runEnd: number; usersLeft: number; tailMs: number }): number {
+  const users = Math.max(1, opts.usersLeft);
+  const spare = opts.runEnd - opts.now - users * opts.tailMs;
+  return opts.now + Math.min(MAX_CRAWL_PER_USER_MS, Math.max(0, spare / users));
+}
+
 /** No single request waits longer than this (a hung connection would otherwise stall the whole crawl). */
 const REQUEST_TIMEOUT_MS = 15_000;
 /** 429 backoff: tries after the first, with these base delays (plus up to 50% jitter). */

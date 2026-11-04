@@ -5,6 +5,7 @@ import { createPglite, schema, type Db } from "@/db";
 import { GET as cronGET } from "@/app/api/cron/morning/route";
 import { GET as searchCronGET } from "@/app/api/cron/search/route";
 import { digestDeliveryTime, pickDigestJobs, renderDigest, runDigestForUser, shouldSendNow } from "@/lib/email/digest";
+import { alsoInLabel } from "@/emails/morning-digest";
 import { loadMorningRunStatus } from "@/lib/email/health";
 import type { EmailMessage } from "@/lib/email/send";
 import { ABANDONED_RUN_ERROR, closeAbandonedRuns } from "@/lib/jobs/search";
@@ -126,6 +127,7 @@ describe("runDigestForUser", () => {
     const logged = await db.select().from(schema.emailLog).where(eq(schema.emailLog.userId, userId));
     expect(new Set(logged.map((l) => l.sentAt.toISOString()))).toEqual(new Set(["2026-07-01T12:00:00.000Z"]));
 
+    await db.update(schema.jobs).set({ lastSeenAt: new Date("2026-12-01T00:00:00Z") }); // still listed in December
     const winter = await runDigestForUser(userId, { db, now: new Date("2026-12-01T12:31:00Z"), runSearch: noSearch, send });
     expect(winter).toMatchObject({ status: "sent", scheduledFor: "2026-12-01T13:00:00.000Z" });
     expect(sent[1].scheduledAt).toEqual(new Date("2026-12-01T13:00:00Z"));
@@ -184,6 +186,68 @@ describe("runDigestForUser", () => {
     // 14 matches above threshold, 10 already sent -> 4 left
     expect(next).toMatchObject({ status: "sent", jobs: 4 });
     expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  /** The same role (company and title) as job `i`, posted in another city. */
+  async function addCopy(i: number, score: number, city: string, state: string) {
+    const [job] = await db
+      .insert(schema.jobs)
+      .values({
+        source: "workday",
+        externalId: `j${i}-${city}`,
+        dedupeKey: `k${i}-${city}`,
+        title: `Engineer ${i}`,
+        company: `Co ${i}`,
+        city,
+        state,
+        country: "US",
+        applyUrl: `https://example.com/${i}/${city}`,
+      })
+      .returning();
+    await db.insert(schema.jobMatches).values({ userId, jobId: job.id, score, keywordScore: score, reasons: `Reason ${i} ${city}` });
+    return job.id;
+  }
+
+  it("emails one entry per role, naming its other cities, and logs every copy", async () => {
+    const austin = await addCopy(1, 95, "Austin", "TX");
+    const denver = await addCopy(1, 90, "Denver", "CO");
+    const sent: EmailMessage[] = [];
+    const outcome = await runDigestForUser(userId, { db, now: SUMMER_7AM, runSearch: noSearch, send: async (m) => (sent.push(m), { channel: "console", id: null }) });
+    // Ten different roles, not Engineer 1 three times.
+    expect(outcome).toMatchObject({ status: "sent", jobs: 10 });
+    expect(sent[0].text).toContain("Engineer 10");
+    expect(sent[0].text.match(/Engineer 1\b/g)).toHaveLength(1);
+    expect(sent[0].html).toContain("Also in Austin, TX and Denver, CO");
+    const logged = await db.select({ jobId: schema.emailLog.jobId }).from(schema.emailLog).where(eq(schema.emailLog.userId, userId));
+    expect(logged.map((l) => l.jobId)).toEqual(expect.arrayContaining([jobIds[0], austin, denver]));
+    expect(logged).toHaveLength(12);
+    // Settings counts the roles the email listed, not the rows logged.
+    await db.insert(schema.searchRuns).values({ userId, trigger: "cron", startedAt: SUMMER_7AM, status: "ok", jobsFetched: 50 });
+    expect((await loadMorningRunStatus(userId, db, SUMMER_8AM)).note).toMatch(/emailed 10 matches/);
+  });
+
+  it("doesn't email a role again when it shows up in a new city, or one applied to elsewhere", async () => {
+    const send = vi.fn(async () => ({ channel: "console" as const, id: null }));
+    await runDigestForUser(userId, { db, now: SUMMER_7AM, runSearch: noSearch, send });
+    await addCopy(1, 99, "Boston", "MA"); // emailed yesterday as Chicago
+    await addCopy(12, 99, "Boston", "MA"); // applied to in Chicago
+    await db.insert(schema.applications).values({ userId, jobId: jobIds[11] });
+    const picked = await pickDigestJobs(userId, db, undefined, new Date("2026-07-02T12:00:00Z"));
+    expect(picked.map((p) => p.job.title)).toEqual(["Engineer 11", "Engineer 13", "Engineer 14"]);
+  });
+
+  it("leads with the next copy of a role whose best posting closed, and drops a role with every copy closed", async () => {
+    const austin = await addCopy(1, 95, "Austin", "TX");
+    const closed = new Set([jobIds[0], jobIds[1]]); // Engineer 1 in Chicago; Engineer 2's only posting
+    const send = vi.fn(async () => ({ channel: "console" as const, id: null }));
+    const checkLive = vi.fn(async (postings: { id: string }[]) => new Map(postings.map((p) => [p.id, closed.has(p.id) ? ("closed" as const) : ("live" as const)])));
+    await runDigestForUser(userId, { db, now: SUMMER_7AM, runSearch: noSearch, send, checkLive });
+    const html = (send.mock.calls[0] as unknown as [EmailMessage])[0].html;
+    expect(html).toContain("https://example.com/1/Austin");
+    expect(html).not.toContain("Engineer 2<");
+    const logged = await db.select({ jobId: schema.emailLog.jobId }).from(schema.emailLog).where(eq(schema.emailLog.userId, userId));
+    expect(logged.map((l) => l.jobId)).toContain(austin);
+    expect(logged.map((l) => l.jobId)).not.toContain(jobIds[0]);
   });
 
   it("excludes jobs already applied to", async () => {
@@ -320,6 +384,12 @@ describe("renderDigest", () => {
       expect(html).toContain(s);
     }
     expect(text).toContain("Backend Engineer");
+  });
+
+  it("names a role's other places briefly", () => {
+    expect(alsoInLabel(["Austin, TX"])).toBe("Also in Austin, TX");
+    expect(alsoInLabel(["Austin, TX", "Denver, CO"])).toBe("Also in Austin, TX and Denver, CO");
+    expect(alsoInLabel(["Austin, TX", "Denver, CO", "Remote", "Boston, MA", "Reston, VA"])).toBe("Also in Austin, TX, Denver, CO and 3 more");
   });
 });
 

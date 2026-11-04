@@ -71,6 +71,34 @@
       "when": 1793742697363,
       "tag": "0009_tailoring",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793806584155,
+      "tag": "0010_dismissed_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793807461512,
+      "tag": "0011_ai_usage",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793808687638,
+      "tag": "0012_setup_guide",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793808689884,
+      "tag": "0013_application_notes",
+      "breakpoints": true
     }
   ]
 }

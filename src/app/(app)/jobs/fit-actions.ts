@@ -5,6 +5,7 @@ import { getDb } from "@/db";
 import { applications, fitChecks, jobMatches, jobs } from "@/db/schema";
 import { checkFit } from "@/lib/ai/fit-check";
 import { AiRequestError, AiUnavailableError } from "@/lib/ai/gemini";
+import { AiLimitError, withAllowance } from "@/lib/ai/limits";
 import { aiProvider } from "@/lib/ai/provider";
 import { hardBlockers } from "@/lib/jobs/blockers";
 import { evaluationFromFit } from "@/lib/jobs/evaluation";
@@ -52,7 +53,9 @@ export async function checkFitAction(jobId: string, force = false): Promise<FitC
     }
 
     const user = await getUser(userId, db);
-    const { result, model } = await checkFit({ resumeText: profile.resumeText, names: [user?.name], profile, job });
+    // Only a real check counts toward the daily limit, not a cached one.
+    const resumeText = profile.resumeText;
+    const { result, model } = await withAllowance({ userId, email: user?.email ?? null }, "fit", db, () => checkFit({ resumeText, names: [user?.name], profile, job }));
     const now = new Date();
     await db
       .insert(fitChecks)
@@ -76,7 +79,7 @@ export async function checkFitAction(jobId: string, force = false): Promise<FitC
     }
     return { ok: true, view: { result, model, checkedAt: now.toISOString(), stale: false } };
   } catch (err) {
-    if (err instanceof AiUnavailableError || err instanceof AiRequestError) return { ok: false, message: err.message };
+    if (err instanceof AiUnavailableError || err instanceof AiRequestError || err instanceof AiLimitError) return { ok: false, message: err.message };
     console.error("Fit check failed", err);
     return { ok: false, message: "Couldn't check this job right now. Try again in a minute." };
   }

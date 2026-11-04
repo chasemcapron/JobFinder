@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Alert, Icon, linkClass, PageHeader } from "@/components/ui";
 import { getDb } from "@/db";
+import { usageNoun, usageToday } from "@/lib/ai/limits";
 import { aiProvider } from "@/lib/ai/provider";
 import { requireUser } from "@/lib/session";
 import { APP_TIME_ZONE } from "@/lib/time";
@@ -23,7 +24,9 @@ export default async function TailorPage({ params, searchParams }: PageProps<"/j
   // Only a job this user has a match or an application for; every query is scoped by their id.
   const found = /^[0-9a-f-]{36}$/i.test(jobId) ? await jobForUser(profile.userId, jobId, db) : null;
   if (!found) notFound();
-  const versions = (await listVersions(profile.userId, jobId, db)).map(toVersionView);
+  const [rows, usage] = await Promise.all([listVersions(profile.userId, jobId, db), usageToday({ userId: profile.userId, email: user.email }, db)]);
+  const versions = rows.map(toVersionView);
+  const used = aiProvider() ? usage?.filter((u) => u.kind === "tailor" || u.kind === "letter") : null;
   const wanted = Number(Array.isArray(v) ? v[0] : v);
   const current = versions.find((x) => x.version === wanted) ?? versions[0] ?? null;
   const hasResume = Boolean(profile.resumeText?.trim());
@@ -48,6 +51,7 @@ export default async function TailorPage({ params, searchParams }: PageProps<"/j
             </a>
             . Tailoring only reorders, rephrases or leaves out what your resume already says; anything it can&apos;t back up is put back
             as you wrote it.
+            {used?.length ? <> Used today: {used.map((u) => `${u.used} of ${u.limit} ${usageNoun(u.kind, u.limit)}`).join(", ")}.</> : null}
           </>
         }
       />
