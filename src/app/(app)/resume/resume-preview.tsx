@@ -75,7 +75,7 @@ export async function ResumePreview({
           className="h-[75vh] min-h-96 w-full rounded-control border border-border bg-white"
         />
       ) : (
-        <div className="max-h-[75vh] overflow-y-auto rounded-control border border-border bg-surface-subtle p-4 text-sm leading-relaxed whitespace-pre-wrap sm:p-6">
+        <div tabIndex={0} role="region" aria-label="Resume text" className="max-h-[75vh] overflow-y-auto rounded-control border border-border bg-surface-subtle p-4 text-sm leading-relaxed whitespace-pre-wrap sm:p-6">
           {resumeText}
         </div>
       )}

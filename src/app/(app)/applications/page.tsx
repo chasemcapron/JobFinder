@@ -52,7 +52,7 @@ function ApplicationCard({ row: { app, job }, index }: { row: Row; index: number
       <article
         className={cx(
           "flex flex-col gap-2 rounded-control border border-border bg-surface p-3 shadow-card transition-colors hover:border-border-strong",
-          closed && "opacity-75",
+          closed && "opacity-85",
         )}
       >
         <div>

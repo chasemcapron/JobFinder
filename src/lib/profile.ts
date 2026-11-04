@@ -1,4 +1,4 @@
-import { and, asc, count, eq, gt } from "drizzle-orm";
+import { and, asc, eq, gt } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
 import { profiles, targetCompanies, users, workdayCrawlState, type AtsType, type Profile } from "@/db/schema";
 import { CRAWLED_RECENTLY_MS } from "@/lib/jobs/sources/workday-crawl";
@@ -45,13 +45,15 @@ export async function listTargetCompanies(userId: string, db?: Db) {
     .orderBy(asc(targetCompanies.ats), asc(targetCompanies.slug));
 }
 
-export async function countEnabledTargetCompanies(userId: string, db?: Db): Promise<number> {
+/** Enabled employers the user chose, not counting the examples every new account starts with. */
+export async function countChosenTargetCompanies(userId: string, db?: Db): Promise<number> {
   db ??= await getDb();
-  const [row] = await db
-    .select({ n: count() })
+  const rows = await db
+    .select({ ats: targetCompanies.ats, slug: targetCompanies.slug })
     .from(targetCompanies)
     .where(and(eq(targetCompanies.userId, userId), eq(targetCompanies.enabled, true)));
-  return row?.n ?? 0;
+  const seeded = new Set(SEED_TARGET_COMPANIES.map((c) => `${c.ats}:${c.slug}`));
+  return rows.filter((r) => !seeded.has(`${r.ats}:${r.slug}`)).length;
 }
 
 export async function listEnabledTargetCompanies(userId: string, db?: Db) {

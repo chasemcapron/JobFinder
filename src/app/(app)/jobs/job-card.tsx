@@ -143,7 +143,7 @@ export function JobCard({
           padding="none"
           interactive
           outline={ranked ? scoreTier(match.score) : undefined}
-          className={cx("overflow-hidden", application && "opacity-70 transition-opacity focus-within:opacity-100 hover:opacity-100")}
+          className={cx("overflow-hidden", application && "opacity-85 transition-opacity focus-within:opacity-100 hover:opacity-100")}
         >
           <div className="flex items-start gap-3.5 p-4">
             <ScoreBadge

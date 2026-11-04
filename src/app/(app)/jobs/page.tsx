@@ -7,7 +7,7 @@ import { formatDateTime } from "@/lib/format";
 import { activeFilterCount, filterMatches, filtersToSearchParams, groupByRole, locationFacets, paginate, parseFilters, sourceFacets, summarizeMatches } from "@/lib/jobs/filters";
 import { listFitChecks } from "@/lib/jobs/fit-checks";
 import { countHiddenRoles, lastSearchRun, listMatches } from "@/lib/jobs/results";
-import { countEnabledTargetCompanies } from "@/lib/profile";
+import { countChosenTargetCompanies } from "@/lib/profile";
 import { requireUser } from "@/lib/session";
 import { setupComplete, setupSteps } from "@/lib/setup";
 import { ApplyActions } from "./apply-actions";
@@ -39,7 +39,7 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
       ? null
       : setupSteps({
           ...profile,
-          enabledCompanies: await countEnabledTargetCompanies(profile.userId),
+          enabledCompanies: await countChosenTargetCompanies(profile.userId),
           searched: lastRun?.status === "ok" || lastRun?.status === "partial",
         });
   const showSetup = steps !== null && !setupComplete(steps);
@@ -152,7 +152,10 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
             </FiltersToggle>
           </aside>
 
-          <section className="min-w-0 flex-1" aria-label="Results">
+          <section className="min-w-0 flex-1" aria-labelledby="results-heading">
+            <h2 id="results-heading" className="sr-only">
+              Results
+            </h2>
             <p className="mb-3 text-sm text-muted" aria-live="polite">
               <span className="font-semibold text-foreground">{total.toLocaleString()}</span>
               {activeCount === 0 ? ` role${total === 1 ? "" : "s"} worth a look` : ` role${total === 1 ? "" : "s"} match these filters`}

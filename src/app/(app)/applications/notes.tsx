@@ -30,7 +30,7 @@ export function ApplicationNotes({ app }: { app: Notes }) {
         <Icon name="file" className="size-3.5" />
         {app.notes || app.contact || app.nextStep || app.nextStepAt ? "Notes" : "Add notes"}
         {preview ? <span className="min-w-0 truncate font-normal text-muted">· {preview}</span> : null}
-        <Icon name="chevron-down" className="ml-auto size-3.5 shrink-0 transition-transform group-open/notes:rotate-180" />
+        <Icon name="chevron-down" className="size-3.5 shrink-0 transition-transform group-open/notes:rotate-180" />
       </summary>
       <ActionForm action={saveNotesAction} submitLabel="Save notes" className="mt-2 gap-3">
         <input type="hidden" name="applicationId" value={app.id} />
