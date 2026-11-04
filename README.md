@@ -186,7 +186,7 @@ Matching runs entirely on each person's own profile (resume, target titles, seni
 3. For the morning email to reach them, `EMAIL_FROM` must be on a domain verified in Resend: `onboarding@resend.dev` only delivers to you.
 4. They sign in, upload a resume, check their titles and seniority, and add employers in Settings (the Workday list, or **Suggest companies**).
 
-Limits: US jobs only. Everyone shares the one free Gemini key's daily quota. The keyword matcher knows related titles best in tech fields (security, data, IT, business analysis); for other fields it relates the words of the person's own target titles to each other, and the AI evaluation does the rest.
+Limits: US jobs only. Everyone shares the one free Gemini key's daily quota, so each invited user has daily limits on the AI actions they start: 10 tailored resumes, 10 cover letters, 25 fit checks, 6 AI-scored Refreshes, 5 company suggestions and 5 AI resume readings, resetting at midnight Central (Settings → Integrations shows their use). Past a limit, Refresh still fetches and keyword-ranks new jobs and a resume upload uses the built-in extractor. The owner, the **first** address in `ALLOWED_EMAILS`, has none; with no `ALLOWED_EMAILS` (local development) nobody does. Scheduled searches, the nightly crawl and cached fit checks never count, and a use is given back when the AI didn't do the work (failed, fell back, or found nothing). The keyword matcher knows related titles best in tech fields (security, data, IT, business analysis); for other fields it relates the words of the person's own target titles to each other, and the AI evaluation does the rest.
 
 ---
 

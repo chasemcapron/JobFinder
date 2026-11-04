@@ -14,6 +14,13 @@ export async function requireUser() {
   return { user, profile };
 }
 
+/** The signed-in user's id and email (from the session, no lookup), or null. */
+export async function currentUser(): Promise<{ userId: string; email: string | null } | null> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  return userId ? { userId, email: session.user?.email ?? null } : null;
+}
+
 /** For API routes: returns the user id or null (caller responds 401). */
 export async function currentUserId(): Promise<string | null> {
   const session = await auth();

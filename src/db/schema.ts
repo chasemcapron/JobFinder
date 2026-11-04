@@ -306,6 +306,24 @@ export const dismissedRoles = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.roleKey] })],
 );
 
+export const AI_USAGE_KINDS = ["tailor", "letter", "fit", "refresh", "suggest", "resume"] as const;
+export type AiUsageKind = (typeof AI_USAGE_KINDS)[number];
+
+/** AI actions a user started per day (Chicago time), for the daily limits in src/lib/ai/limits.ts. */
+export const aiUsage = pgTable(
+  "ai_usage",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** YYYY-MM-DD in the app's time zone. */
+    day: text("day").notNull(),
+    kind: text("kind").$type<AiUsageKind>().notNull(),
+    count: integer("count").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.day, t.kind] })],
+);
+
 /** Cached fit checks. Stale once the profile changes after `createdAt` (the resume was edited). */
 export const fitChecks = pgTable(
   "fit_checks",

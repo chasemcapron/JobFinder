@@ -78,6 +78,13 @@
       "when": 1793806584155,
       "tag": "0010_dismissed_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793807461512,
+      "tag": "0011_ai_usage",
+      "breakpoints": true
     }
   ]
 }

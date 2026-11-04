@@ -32,6 +32,8 @@ type Options = {
   /** For tests: replace the real source adapters. */
   buildTasks?: (profile: Profile, targets: TargetCompanyRow[]) => SourceTask[];
   maxAiScores?: number;
+  /** false: keyword scores only (no AI work at all), e.g. a manual refresh past the daily limit. */
+  useAi?: boolean;
   /** Epoch ms by which AI scoring must finish. Defaults to 42 s after the run starts (Vercel allows 60 s). */
   deadline?: number;
 };
@@ -222,7 +224,7 @@ export async function runJobSearch(userId: string, opts: Options): Promise<RunSu
     }
     const scored = await scoreAndSaveMatches(userId, profile, db, {
       fetched: fetchedById,
-      useAi: true,
+      useAi: opts.useAi ?? true,
       maxAiScores: opts.maxAiScores,
       deadline: opts.deadline ?? started + 42_000,
       now,

@@ -6,6 +6,7 @@ import { getDb } from "@/db";
 import { profiles } from "@/db/schema";
 import { ClaudeRefusalError } from "@/lib/ai/claude";
 import { AiRequestError } from "@/lib/ai/gemini";
+import { withAllowanceOr } from "@/lib/ai/limits";
 import { aiProvider } from "@/lib/ai/provider";
 import { coerceExperienceLevel } from "@/lib/jobs/experience";
 import { rescoreStoredMatches } from "@/lib/jobs/search";
@@ -50,7 +51,20 @@ export async function analyzeResumeAction(_prev: AnalyzeState, formData: FormDat
 
     // The account name is stripped from the text before it goes to the AI (see redactPersonalInfo).
     const user = await getUser(userId);
-    const analysis = await analyzeResume(text, { names: [user?.name] });
+    // Only an AI reading counts toward the daily limit (one the built-in extractor stood in for
+    // doesn't). Past it, or without a key, the built-in extractor reads the resume, so an upload
+    // never fails for want of AI.
+    const names = [user?.name];
+    const analysis = aiProvider()
+      ? await withAllowanceOr(
+          { userId, email: user?.email ?? null },
+          "resume",
+          await getDb(),
+          () => analyzeResume(text, { names }),
+          async (notice) => ({ ...(await analyzeResume(text, { names, useAi: false })), notice: `${notice} Used the built-in extractor instead.` }),
+          (a) => a.source !== "heuristic",
+        )
+      : await analyzeResume(text, { names });
     return { ok: true, text, fileName, analysis };
   } catch (err) {
     console.error("Resume analysis failed", err);

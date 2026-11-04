@@ -18,6 +18,7 @@ import {
   type SheetField,
 } from "@/db/schema";
 import { AiRequestError, AiUnavailableError } from "@/lib/ai/gemini";
+import { AiLimitError, withAllowance } from "@/lib/ai/limits";
 import { aiProvider } from "@/lib/ai/provider";
 import { suggestCompanies, type CompanySuggestion } from "@/lib/ai/suggest-companies";
 import { inspectSheet, SHEET_FIELD_LABELS } from "@/lib/google/sheets";
@@ -27,7 +28,7 @@ import { parseWorkdaySlug, probeWorkdaySite, workdayCompanyName, workdaySiteUrl 
 import { findWorkdayEmployer } from "@/lib/jobs/sources/workday-employers";
 import { parseColumnLetter, parseList, parseSheetId, parseTargetCompany } from "@/lib/parse-input";
 import { ensureProfile, listTargetCompanies } from "@/lib/profile";
-import { currentUserId } from "@/lib/session";
+import { currentUser, currentUserId } from "@/lib/session";
 
 async function userIdOrThrow() {
   const id = await currentUserId();
@@ -171,11 +172,18 @@ export async function suggestCompaniesAction(): Promise<SuggestState> {
     const profile = await ensureProfile(userId, db);
     if (profile.titles.length === 0) return { ok: false, message: "Save your target titles on the Resume page first." };
     const existing = await listTargetCompanies(userId, db);
-    const suggestions = await suggestCompanies({ profile, existing, deadline: Date.now() + 45_000 });
+    // A run that found no readable boards is given back: the user is told to try again.
+    const suggestions = await withAllowance(
+      { userId, email: (await currentUser())?.email ?? null },
+      "suggest",
+      db,
+      () => suggestCompanies({ profile, existing, deadline: Date.now() + 45_000 }),
+      (found) => found.length > 0,
+    );
     if (suggestions.length === 0) return { ok: false, message: "None of the suggested companies had a job board that could be read. Try again." };
     return { ok: true, suggestions };
   } catch (err) {
-    if (err instanceof AiUnavailableError || err instanceof AiRequestError) return { ok: false, message: err.message };
+    if (err instanceof AiUnavailableError || err instanceof AiRequestError || err instanceof AiLimitError) return { ok: false, message: err.message };
     return errorState(err) as SuggestState;
   }
 }
