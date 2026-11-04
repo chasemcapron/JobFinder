@@ -8,6 +8,8 @@ import { daysWithoutReply, listApplications, summarizeApplications } from "@/lib
 import { formatRelativeDate } from "@/lib/format";
 import { formatLocation } from "@/lib/jobs/location";
 import { requireUser } from "@/lib/session";
+import { localDate } from "@/lib/time";
+import { ApplicationNotes, NextStepBadge } from "./notes";
 import { ApplicationRowActions } from "./row-actions";
 
 export const metadata: Metadata = { title: "Applications · Job Finder" };
@@ -15,9 +17,9 @@ export const metadata: Metadata = { title: "Applications · Job Finder" };
 export const maxDuration = 30;
 
 /** The pipeline, left to right. Rejected and withdrawn share the last column. */
-const COLUMNS: { title: string; hue: Hue; statuses: ApplicationStatus[]; empty: string }[] = [
+const COLUMNS: { title: string; hue: Hue; statuses: ApplicationStatus[]; empty: string; sort?: (a: Row, b: Row) => number }[] = [
   { title: "Applied", hue: "orange", statuses: ["applied"], empty: "Mark jobs applied from the Jobs page." },
-  { title: "Interviewing", hue: "pink", statuses: ["interviewing"], empty: "Move an application here when you hear back." },
+  { title: "Interviewing", hue: "pink", statuses: ["interviewing"], empty: "Move an application here when you hear back.", sort: byNextStep },
   { title: "Offer", hue: "green", statuses: ["offer"], empty: "Offers land here." },
   { title: "Closed", hue: "blue", statuses: ["rejected", "withdrawn"], empty: "Rejected and withdrawn applications." },
 ];
@@ -26,15 +28,31 @@ const dateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "nume
 
 type Row = Awaited<ReturnType<typeof listApplications>>[number];
 
+/**
+ * Interviews by their next step: upcoming ones soonest first, then ones whose day has passed (most
+ * recent first: likely done, waiting for an update), then those without a date.
+ */
+function byNextStep(a: Row, b: Row): number {
+  const today = localDate(new Date());
+  const rank = (r: Row) => (!r.app.nextStepAt ? 2 : localDate(r.app.nextStepAt) >= today ? 0 : 1);
+  const ra = rank(a);
+  const rb = rank(b);
+  if (ra !== rb) return ra - rb;
+  if (ra === 2) return 0;
+  const d = a.app.nextStepAt!.getTime() - b.app.nextStepAt!.getTime();
+  return ra === 0 ? d : -d;
+}
+
 function ApplicationCard({ row: { app, job }, index }: { row: Row; index: number }) {
   const waiting = daysWithoutReply(app);
   const closed = app.status === "rejected" || app.status === "withdrawn";
+  const showNext = !closed && Boolean(app.nextStep || app.nextStepAt);
   return (
     <li className="rise-in" style={{ "--i": index } as CSSProperties}>
       <article
         className={cx(
           "flex flex-col gap-2 rounded-control border border-border bg-surface p-3 shadow-card transition-colors hover:border-border-strong",
-          closed && "opacity-75",
+          closed && "opacity-85",
         )}
       >
         <div>
@@ -57,8 +75,9 @@ function ApplicationCard({ row: { app, job }, index }: { row: Row; index: number
             Tailored resume and cover letter
           </Link>
         </div>
-        {waiting || app.sheetSyncStatus !== "not_configured" ? (
+        {waiting || app.sheetSyncStatus !== "not_configured" || showNext ? (
           <div className="flex flex-wrap items-center gap-1.5">
+            {showNext ? <NextStepBadge app={app} /> : null}
             {waiting ? (
               <Badge tone="warning" title="Still marked Applied a week on: a short follow-up email often gets a reply">
                 No reply in {waiting} days
@@ -69,6 +88,7 @@ function ApplicationCard({ row: { app, job }, index }: { row: Row; index: number
             ) : null}
           </div>
         ) : null}
+        <ApplicationNotes app={app} />
         <ApplicationRowActions applicationId={app.id} status={app.status} compact />
       </article>
     </li>
@@ -121,7 +141,9 @@ export default async function ApplicationsPage() {
           </div>
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             {COLUMNS.map((col) => {
+              // Newest applications first, unless the column has its own order.
               const items = rows.filter((r) => col.statuses.includes(r.app.status));
+              if (col.sort) items.sort(col.sort);
               return (
                 <section key={col.title} aria-label={col.title} className="flex min-w-0 flex-col gap-3">
                   <BarHeading hue={col.hue} count={items.length}>

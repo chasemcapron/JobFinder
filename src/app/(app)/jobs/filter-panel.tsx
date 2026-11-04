@@ -31,7 +31,7 @@ function toQuery(form: HTMLFormElement): string {
   for (const [k, v] of new FormData(form)) {
     const value = String(v).trim();
     // Drop empty values and defaults so URLs stay readable.
-    if (!value || (k === "remote" && value === "any") || (k === "posted" && value === "any") || (k === "applied" && value === "dim") || (k === "skip" && value === "hide") || (k === "sort" && value === "score") || (k === "minScore" && value === String(HIDE_BELOW_SCORE))) continue;
+    if (!value || (k === "remote" && value === "any") || (k === "posted" && value === "any") || (k === "applied" && value === "dim") || (k === "skip" && value === "hide") || (k === "hidden" && value === "hide") || (k === "sort" && value === "score") || (k === "minScore" && value === String(HIDE_BELOW_SCORE))) continue;
     params.append(k, value);
   }
   return params.toString();
@@ -197,6 +197,13 @@ export function FilterPanel({
           <select id="skip" name="skip" defaultValue={filters.skip} key={`sk-${filters.skip}`} className={selectClass}>
             <option value="hide">Hide</option>
             <option value="show">Show</option>
+            <option value="only">Only these</option>
+          </select>
+        </div>
+        <div>
+          <Label htmlFor="hidden">Not interested</Label>
+          <select id="hidden" name="hidden" defaultValue={filters.hidden} key={`h-${filters.hidden}`} className={selectClass}>
+            <option value="hide">Hide</option>
             <option value="only">Only these</option>
           </select>
         </div>

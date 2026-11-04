@@ -4,6 +4,7 @@ import { jobMatches, jobs, searchRuns, workdayCrawlState, type Profile, type Sou
 import { env } from "@/lib/env";
 import { redactPersonalInfo } from "@/lib/ai/redact";
 import { ensureProfile, getUser, listEnabledTargetCompanies } from "@/lib/profile";
+import { hiddenState, loadHidden } from "./dismissals";
 import { isCurrentEvaluation } from "./evaluation";
 import { isInTargetCountry } from "./location";
 import { dedupeJobs, dedupeKey } from "./normalize";
@@ -31,6 +32,8 @@ type Options = {
   /** For tests: replace the real source adapters. */
   buildTasks?: (profile: Profile, targets: TargetCompanyRow[]) => SourceTask[];
   maxAiScores?: number;
+  /** false: keyword scores only (no AI work at all), e.g. a manual refresh past the daily limit. */
+  useAi?: boolean;
   /** Epoch ms by which AI scoring must finish. Defaults to 42 s after the run starts (Vercel allows 60 s). */
   deadline?: number;
 };
@@ -221,7 +224,7 @@ export async function runJobSearch(userId: string, opts: Options): Promise<RunSu
     }
     const scored = await scoreAndSaveMatches(userId, profile, db, {
       fetched: fetchedById,
-      useAi: true,
+      useAi: opts.useAi ?? true,
       maxAiScores: opts.maxAiScores,
       deadline: opts.deadline ?? started + 42_000,
       now,
@@ -361,8 +364,10 @@ export async function scoreAndSaveMatches(
     const m = existing.get(id);
     return Boolean(m?.aiScored && m.scoredAt >= profile.matchingUpdatedAt && isCurrentEvaluation(m.evaluation));
   };
+  const hidden = opts.useAi ? await loadHidden(userId, db) : null;
   const { candidates, excluded, aiScores, errors: rankErrors } = await rankCandidates(profile, all, {
     isFresh,
+    skipAi: hidden ? (job) => Boolean(hiddenState(job, hidden)) : undefined,
     cap: opts.maxAiScores ?? env.maxAiScoresPerRun,
     useAi: opts.useAi,
     hideMock: env.isProduction && !mockJobsForced(),

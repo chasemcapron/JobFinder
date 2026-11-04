@@ -97,6 +97,10 @@ export const profiles = pgTable("profiles", {
   keywords: jsonb("keywords").$type<string[]>().notNull().default([]),
   /** Jobs whose title contains any of these are skipped (e.g. "credit" for a security analyst). */
   excludeKeywords: jsonb("exclude_keywords").$type<string[]>().notNull().default([]),
+  /** Employers the user marked "Not interested" as a whole: their jobs are hidden from the list and the email. */
+  hiddenCompanies: jsonb("hidden_companies").$type<string[]>().notNull().default([]),
+  /** When the user closed the setup guide on the Jobs page before finishing it. */
+  setupDismissedAt: timestamp("setup_dismissed_at", { mode: "date" }),
   // Preferences
   searchKeywords: jsonb("search_keywords").$type<string[]>().notNull().default([]),
   preferredLocations: jsonb("preferred_locations").$type<string[]>().notNull().default([]),
@@ -282,6 +286,46 @@ export type FitCheckResult = {
   requirements?: RequirementRow[];
 };
 
+export const DISMISS_REASONS = ["not_relevant", "too_senior", "location", "other"] as const;
+export type DismissReason = (typeof DISMISS_REASONS)[number];
+
+/**
+ * Roles the user marked "Not interested", by role (company + title, `roleKey`), so copies posted
+ * later in other cities stay hidden too. Hiding a whole company is `profiles.hiddenCompanies`.
+ */
+export const dismissedRoles = pgTable(
+  "dismissed_roles",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    roleKey: text("role_key").notNull(),
+    company: text("company").notNull(),
+    title: text("title").notNull(),
+    reason: text("reason").$type<DismissReason>().notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.roleKey] })],
+);
+
+export const AI_USAGE_KINDS = ["tailor", "letter", "fit", "refresh", "suggest", "resume"] as const;
+export type AiUsageKind = (typeof AI_USAGE_KINDS)[number];
+
+/** AI actions a user started per day (Chicago time), for the daily limits in src/lib/ai/limits.ts. */
+export const aiUsage = pgTable(
+  "ai_usage",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** YYYY-MM-DD in the app's time zone. */
+    day: text("day").notNull(),
+    kind: text("kind").$type<AiUsageKind>().notNull(),
+    count: integer("count").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.day, t.kind] })],
+);
+
 /** Cached fit checks. Stale once the profile changes after `createdAt` (the resume was edited). */
 export const fitChecks = pgTable(
   "fit_checks",
@@ -359,6 +403,13 @@ export const applications = pgTable(
     sheetSyncedAt: timestamp("sheet_synced_at", { mode: "date" }),
     /** When the morning email suggested following up (once per application). */
     followUpSentAt: timestamp("follow_up_sent_at", { mode: "date" }),
+    /** The user's own notes, not synced to the sheet. */
+    notes: text("notes").notNull().default(""),
+    /** Recruiter or hiring manager: name, email, whatever helps. */
+    contact: text("contact").notNull().default(""),
+    /** What happens next ("Phone screen") and when (a day, stored as 9 AM Chicago). */
+    nextStep: text("next_step").notNull().default(""),
+    nextStepAt: timestamp("next_step_at", { mode: "date" }),
   },
   (t) => [uniqueIndex("applications_user_job_idx").on(t.userId, t.jobId)],
 );

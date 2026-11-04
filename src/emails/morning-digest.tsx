@@ -6,6 +6,8 @@ export type DigestJob = {
   title: string;
   company: string;
   location: string;
+  /** Other places the same role is posted (one entry per company and title). */
+  alsoIn?: string[];
   score: number;
   reason: string;
   applyUrl: string;
@@ -108,6 +110,12 @@ function Card({ children }: { children: ReactNode }) {
   );
 }
 
+/** "Also in Austin, TX and Denver, CO", or "Also in Austin, TX, Denver, CO and 3 more". */
+export function alsoInLabel(places: string[]): string {
+  if (places.length <= 2) return `Also in ${places.join(" and ")}`;
+  return `Also in ${places.slice(0, 2).join(", ")} and ${places.length - 2} more`;
+}
+
 export function MorningDigestEmail({
   jobs,
   followUps = [],
@@ -187,6 +195,9 @@ export function MorningDigestEmail({
                     <Text style={{ margin: "2px 0 0", fontSize: 14, lineHeight: "20px", color: c.muted }}>
                       <span style={{ color: s.text, fontWeight: 700 }}>{`${score}% match`}</span> · {job.company} · {job.location}
                     </Text>
+                    {job.alsoIn?.length ? (
+                      <Text style={{ margin: "2px 0 0", fontSize: 13, lineHeight: "18px", color: c.muted }}>{alsoInLabel(job.alsoIn)}</Text>
+                    ) : null}
                     <Text style={{ margin: "10px 0 14px", fontSize: 14, lineHeight: "21px", color: c.foreground }}>{job.reason}</Text>
                     <Link
                       href={job.applyUrl}

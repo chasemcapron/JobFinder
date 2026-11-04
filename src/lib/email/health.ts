@@ -1,6 +1,6 @@
-import { and, count, desc, eq } from "drizzle-orm";
+import { and, countDistinct, desc, eq, sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
-import { emailLog, profiles, searchRuns } from "@/db/schema";
+import { emailLog, jobs, profiles, searchRuns } from "@/db/schema";
 import { formatDateTime } from "@/lib/format";
 import { localDate, localHour } from "@/lib/time";
 import { ABANDONED_RUN_ERROR, ABANDONED_RUN_MS } from "@/lib/jobs/search";
@@ -80,10 +80,11 @@ export async function loadMorningRunStatus(userId: string, db?: Db, now = new Da
       orderBy: desc(searchRuns.startedAt),
       columns: { startedAt: true, status: true, jobsFetched: true, error: true },
     }),
-    // Every job in one digest is logged with the same sentAt.
+    // Every job in one digest is logged with the same sentAt, including each role's other cities: count roles.
     db
-      .select({ sentAt: emailLog.sentAt, jobs: count() })
+      .select({ sentAt: emailLog.sentAt, jobs: countDistinct(sql`lower(${jobs.company}) || '|' || lower(${jobs.title})`) })
       .from(emailLog)
+      .innerJoin(jobs, eq(jobs.id, emailLog.jobId))
       .where(eq(emailLog.userId, userId))
       .groupBy(emailLog.sentAt)
       .orderBy(desc(emailLog.sentAt))

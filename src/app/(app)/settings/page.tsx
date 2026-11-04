@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ActionForm } from "@/components/action-form";
 import { Alert, Badge, Card, CardHeader, FieldHint, Icon, inputClass, Label, linkClass, PageHeader, selectClass } from "@/components/ui";
 import { EXPERIENCE_LEVELS, SHEET_FIELDS } from "@/db/schema";
+import { usageNoun, usageToday } from "@/lib/ai/limits";
 import { aiLabel } from "@/lib/ai/provider";
 import { loadMorningRunStatus, type MorningRunState } from "@/lib/email/health";
 import { env, featureStatus } from "@/lib/env";
@@ -15,6 +16,8 @@ import { listTargetCompanies, listWorkdayCrawls } from "@/lib/profile";
 import { requireUser } from "@/lib/session";
 import { addTargetCompany, savePreferences, saveSheetSettings } from "./actions";
 import { CompanySuggestions } from "./company-suggestions";
+import { DeleteAccount } from "./delete-account";
+import { HiddenCompanies } from "./hidden-companies";
 import { SheetTest } from "./sheet-test";
 import { TargetCompanyRow } from "./target-company-row";
 import { WorkdayEmployers } from "./workday-employers";
@@ -36,15 +39,17 @@ const SECTIONS = [
   ["companies", "Target companies"],
   ["sheet", "Google Sheet"],
   ["integrations", "Integrations"],
+  ["account", "Account"],
 ] as const;
 
 export default async function SettingsPage() {
-  const { profile } = await requireUser();
-  const [companies, lastRun, morning, crawlRows] = await Promise.all([
+  const { user, profile } = await requireUser();
+  const [companies, lastRun, morning, crawlRows, usage] = await Promise.all([
     listTargetCompanies(profile.userId),
     lastSearchRun(profile.userId),
     loadMorningRunStatus(profile.userId),
     listWorkdayCrawls(profile.userId),
+    usageToday({ userId: profile.userId, email: user.email }),
   ]);
   const lastResults = new Map((lastRun?.sourceResults ?? []).map((r) => [r.source, r]));
   // Only recent crawls are listed; for the rest the search's own result shows.
@@ -62,7 +67,7 @@ export default async function SettingsPage() {
         className="sticky top-(--header-h) z-30 -mx-4 mb-6 overflow-x-auto bg-background/85 px-4 py-2.5 backdrop-blur [scrollbar-width:none] sm:mx-0 sm:px-0"
       >
         <ul className="flex gap-2">
-          {SECTIONS.map(([id, label]) => (
+          {SECTIONS.filter(([id]) => id !== "account" || user.email).map(([id, label]) => (
             <li key={id}>
               <a
                 href={`#${id}`}
@@ -221,6 +226,7 @@ export default async function SettingsPage() {
             />
           </div>
         </ActionForm>
+        <HiddenCompanies companies={profile.hiddenCompanies} />
       </Card>
 
       <Card id="sheet" className="scroll-mt-16">
@@ -303,6 +309,14 @@ export default async function SettingsPage() {
               <Badge tone={MORNING_BADGE[morning.state].tone} dot>{MORNING_BADGE[morning.state].label}</Badge>
             </span>
           </li>
+          {usage && ai ? (
+            <li className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
+              <span className="font-medium">Your AI use today</span>
+              <span className="text-muted">
+                {usage.map((u) => `${u.used} of ${u.limit} ${usageNoun(u.kind, u.limit)}`).join(" · ")}. Resets at midnight Central.
+              </span>
+            </li>
+          ) : null}
           {features.map((f) => (
             <li key={f.key} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
               <span className="font-medium">{f.label}</span>
@@ -324,6 +338,7 @@ export default async function SettingsPage() {
           </div>
         ) : null}
       </Card>
+      {user.email ? <DeleteAccount email={user.email} /> : null}
       </div>
     </>
   );

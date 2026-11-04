@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildCrawlQueries, crawlWorkdaySite, MAX_OFFSET, MAX_PAGES_PER_SITE, type CrawlOptions } from "./workday-crawl";
+import { buildCrawlQueries, crawlShareEnd, crawlWorkdaySite, MAX_CRAWL_PER_USER_MS, MAX_OFFSET, MAX_PAGES_PER_SITE, type CrawlOptions } from "./workday-crawl";
 
 const detail = JSON.parse(readFileSync(path.join(process.cwd(), "tests/fixtures/workday-job.json"), "utf8"));
 const SLUG = "acme.wd5/Careers";
@@ -163,5 +163,31 @@ describe("crawlWorkdaySite", () => {
     expect((await crawlWorkdaySite(SLUG, options())).status).toBe("rate_limited");
     site({}, { status: 422 });
     expect(await crawlWorkdaySite(SLUG, options())).toMatchObject({ status: "not_found", jobs: [] });
+  });
+});
+
+describe("crawlShareEnd", () => {
+  const MIN = 60_000;
+  const runEnd = 85 * MIN;
+  const tailMs = 12 * MIN;
+
+  it("splits the night fairly between users, so the first can't take every user's crawl time", () => {
+    // 3 users: 85 min less 3 x 12 reserved = 49 min, so about 16 min each.
+    const first = crawlShareEnd({ now: 0, runEnd, usersLeft: 3, tailMs });
+    expect(first / MIN).toBeCloseTo(49 / 3, 5);
+    // The first used its whole share and tail: the second gets the same share of what's left.
+    const second = crawlShareEnd({ now: first + tailMs, runEnd, usersLeft: 2, tailMs });
+    expect((second - first - tailMs) / MIN).toBeCloseTo(49 / 3, 5);
+  });
+
+  it("gives time an earlier user didn't need to the users after", () => {
+    const share = crawlShareEnd({ now: 0, runEnd, usersLeft: 3, tailMs }) / MIN;
+    const afterQuickUser = crawlShareEnd({ now: 5 * MIN, runEnd, usersLeft: 2, tailMs }) / MIN - 5;
+    expect(afterQuickUser).toBeGreaterThan(share);
+  });
+
+  it("caps one user's crawl, and never goes negative when time is short", () => {
+    expect(crawlShareEnd({ now: 0, runEnd, usersLeft: 1, tailMs })).toBe(MAX_CRAWL_PER_USER_MS);
+    expect(crawlShareEnd({ now: 80 * MIN, runEnd, usersLeft: 2, tailMs })).toBe(80 * MIN);
   });
 });

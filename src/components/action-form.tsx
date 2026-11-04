@@ -45,6 +45,7 @@ export function SubmitButton({
   size = "md",
   icon,
   className,
+  disabled = false,
 }: {
   label: string;
   pendingLabel?: string;
@@ -53,10 +54,12 @@ export function SubmitButton({
   /** Shown before the label; replaced by a spinner while pending. */
   icon?: ReactNode;
   className?: string;
+  /** Can't be submitted yet (e.g. a confirmation not typed). */
+  disabled?: boolean;
 }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" variant={variant} size={size} loading={pending} className={className}>
+    <Button type="submit" variant={variant} size={size} loading={pending} disabled={disabled} className={className}>
       {pending ? null : icon}
       {pending ? (pendingLabel ?? "Saving…") : label}
     </Button>

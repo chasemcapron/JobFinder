@@ -1,6 +1,7 @@
-import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { and, countDistinct, desc, eq, gt, isNotNull, isNull, not, or, sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
 import { applications, jobMatches, jobs, searchRuns, type ApplicationStatus, type JobRow, type MatchEvaluation, type MatchVerdict, type SheetSyncStatus } from "@/db/schema";
+import { hiddenState, isHiddenSql, loadHidden, type HiddenState } from "./dismissals";
 import { TARGET_COUNTRY } from "./location";
 
 /** Postings not seen by any search in this long are treated as closed and hidden. */
@@ -47,15 +48,23 @@ export type MatchResult = {
     sheetSyncStatus: SheetSyncStatus;
     sheetSyncError: string | null;
   } | null;
+  /** Marked "Not interested" (the role, or its whole company); hidden by default. */
+  hidden?: HiddenState | null;
 };
 
 /** SQL twin of `isInTargetCountry`: US jobs plus jobs with no parsed country. Hides older non-US rows too. */
 export const inTargetCountry = or(isNull(jobs.country), eq(jobs.country, TARGET_COUNTRY));
 
-export async function listMatches(userId: string, db?: Db): Promise<MatchResult[]> {
+/**
+ * The user's open matches, best first. "Not interested" jobs are left out in SQL (so they can't
+ * take the row limit), except ones applied to; `hidden: "only"` lists just them instead.
+ */
+export async function listMatches(userId: string, db?: Db, opts: { hidden?: "hide" | "only" } = {}): Promise<MatchResult[]> {
   db ??= await getDb();
   const staleBefore = new Date(Date.now() - STALE_AFTER_DAYS * 86_400_000);
-  const rows = await db
+  const hiddenRows = opts.hidden === "only" ? isHiddenSql(userId) : or(not(isHiddenSql(userId)), isNotNull(applications.id));
+  const [rows, hidden] = await Promise.all([
+    db
     .select({
       job: {
         id: jobs.id,
@@ -94,12 +103,15 @@ export async function listMatches(userId: string, db?: Db): Promise<MatchResult[
     .from(jobMatches)
     .innerJoin(jobs, eq(jobs.id, jobMatches.jobId))
     .leftJoin(applications, and(eq(applications.jobId, jobs.id), eq(applications.userId, userId)))
-    .where(and(eq(jobMatches.userId, userId), gt(jobs.lastSeenAt, staleBefore), inTargetCountry, isNull(jobs.closedAt)))
+    .where(and(eq(jobMatches.userId, userId), gt(jobs.lastSeenAt, staleBefore), inTargetCountry, isNull(jobs.closedAt), hiddenRows))
     .orderBy(desc(jobMatches.score), desc(jobs.postedAt))
-    .limit(MAX_RESULTS);
+    .limit(MAX_RESULTS),
+    loadHidden(userId, db),
+  ]);
 
   return rows.map((r) => ({
     job: r.job,
+    hidden: hiddenState(r.job, hidden),
     score: r.score,
     aiScored: r.aiScored,
     reasons: r.reasons,
@@ -117,6 +129,19 @@ export async function listMatches(userId: string, db?: Db): Promise<MatchResult[
           }
         : null,
   }));
+}
+
+/** Roles (company + title) marked "Not interested" among the user's open matches, not applied to. */
+export async function countHiddenRoles(userId: string, db?: Db): Promise<number> {
+  db ??= await getDb();
+  const staleBefore = new Date(Date.now() - STALE_AFTER_DAYS * 86_400_000);
+  const [row] = await db
+    .select({ n: countDistinct(sql`lower(${jobs.company}) || '|' || lower(${jobs.title})`) })
+    .from(jobMatches)
+    .innerJoin(jobs, eq(jobs.id, jobMatches.jobId))
+    .leftJoin(applications, and(eq(applications.jobId, jobs.id), eq(applications.userId, userId)))
+    .where(and(eq(jobMatches.userId, userId), gt(jobs.lastSeenAt, staleBefore), inTargetCountry, isNull(jobs.closedAt), isNull(applications.id), isHiddenSql(userId)));
+  return row?.n ?? 0;
 }
 
 export async function lastSearchRun(userId: string, db?: Db) {

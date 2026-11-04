@@ -1,5 +1,5 @@
 import { render } from "@react-email/components";
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, not, or } from "drizzle-orm";
 import { createElement } from "react";
 import { getDb, type Db } from "@/db";
 import { applications, emailLog, jobMatches, jobs, profiles, searchRuns, users } from "@/db/schema";
@@ -8,6 +8,9 @@ import { FOLLOW_UP_AFTER_DAYS } from "@/lib/applications";
 import { env } from "@/lib/env";
 import { checkLiveness } from "@/lib/jobs/liveness";
 import { formatLocation } from "@/lib/jobs/location";
+import { hiddenState, isHiddenSql, loadHidden } from "@/lib/jobs/dismissals";
+import { groupByRole } from "@/lib/jobs/filters";
+import { roleKey } from "@/lib/jobs/normalize";
 import { inTargetCountry } from "@/lib/jobs/results";
 import { runJobSearch, type RunSummary } from "@/lib/jobs/search";
 import { adzunaHomepage } from "@/lib/jobs/sources/adzuna";
@@ -26,6 +29,14 @@ export const DIGEST_RETRY_HOUR = DIGEST_HOUR + 1;
 export const DIGEST_MAX_JOBS = 10;
 /** Extra candidates picked, so postings found closed can be replaced. */
 const LIVENESS_SPARES = 5;
+/** Postings read to find the top roles: a defense contractor can post one role in 20+ cities. */
+const CANDIDATE_POSTINGS = 400;
+/** Postings not seen in this long aren't emailed. */
+const RECENT_DAYS = 21;
+/** A role emailed this recently (in any city) isn't emailed again: as long as jobs are kept (pruneOldData). */
+const EMAILED_ROLE_DAYS = 60;
+/** After each role's best posting, this many of its other copies are checked too, to stand in if it closed. */
+const LIVENESS_COPIES = 2;
 /** Time for checking that the picked Workday postings are still open, when the run has it to spare. */
 const LIVENESS_BUDGET_MS = 8_000;
 /** The liveness check never runs past this long after the user's run started (Vercel stops at 60 s). */
@@ -88,11 +99,22 @@ async function searchedRecently(userId: string, db: Db, now: Date): Promise<bool
   return Boolean(recent);
 }
 
-/** Top matches that haven't been emailed or applied to yet. */
-export async function pickDigestJobs(userId: string, db: Db, limit = DIGEST_MAX_JOBS) {
-  const recent = new Date(Date.now() - 21 * 86_400_000);
-  return db
-    .select({ job: jobs, score: jobMatches.score, reasons: jobMatches.reasons })
+type DigestPosting = { job: typeof jobs.$inferSelect; score: number; reasons: string };
+/** One role (company + title) in the email: its best-ranked posting, and the same role elsewhere. */
+export type DigestRole = DigestPosting & { others: DigestPosting[] };
+
+/**
+ * The top roles that haven't been emailed or applied to yet, one per company and title: employers
+ * like defense contractors post one role once per city, and each copy used to take its own slot.
+ * A role emailed in the last 60 days in any city, or applied to in any city, is left out, and so
+ * is anything marked "Not interested" (the role, or its whole company).
+ */
+export async function pickDigestJobs(userId: string, db: Db, limit = DIGEST_MAX_JOBS, now = new Date()): Promise<DigestRole[]> {
+  const recent = new Date(now.getTime() - RECENT_DAYS * DAY_MS);
+  const emailedSince = new Date(now.getTime() - EMAILED_ROLE_DAYS * DAY_MS);
+  // Light rows first (no descriptions), grouped by role; full rows only for the roles picked.
+  const rows = await db
+    .select({ job: { id: jobs.id, company: jobs.company, title: jobs.title } })
     .from(jobMatches)
     .innerJoin(jobs, eq(jobs.id, jobMatches.jobId))
     .leftJoin(emailLog, and(eq(emailLog.jobId, jobs.id), eq(emailLog.userId, userId)))
@@ -108,10 +130,71 @@ export async function pickDigestJobs(userId: string, db: Db, limit = DIGEST_MAX_
         inTargetCountry,
         isNull(emailLog.id),
         isNull(applications.id),
+        not(isHiddenSql(userId)),
       ),
     )
-    .orderBy(desc(jobMatches.score), desc(jobs.postedAt))
-    .limit(limit);
+    .orderBy(desc(jobMatches.score), desc(jobs.postedAt), asc(jobs.id))
+    .limit(CANDIDATE_POSTINGS);
+  if (rows.length === 0) return [];
+
+  const [emailed, applied, hidden] = await Promise.all([
+    db
+      .select({ company: jobs.company, title: jobs.title })
+      .from(emailLog)
+      .innerJoin(jobs, eq(jobs.id, emailLog.jobId))
+      .where(and(eq(emailLog.userId, userId), gt(emailLog.sentAt, emailedSince))),
+    db.select({ company: jobs.company, title: jobs.title }).from(applications).innerJoin(jobs, eq(jobs.id, applications.jobId)).where(eq(applications.userId, userId)),
+    loadHidden(userId, db),
+  ]);
+  const done = new Set([...emailed, ...applied].map(roleKey));
+  const groups = groupByRole(rows)
+    .filter((role) => !done.has(roleKey(role.job)) && !hiddenState(role.job, hidden))
+    .slice(0, limit)
+    .map((role) => [role, ...role.others].map((r) => r.job.id));
+  if (groups.length === 0) return [];
+
+  const full = await db
+    .select({ job: jobs, score: jobMatches.score, reasons: jobMatches.reasons })
+    .from(jobMatches)
+    .innerJoin(jobs, eq(jobs.id, jobMatches.jobId))
+    .where(and(eq(jobMatches.userId, userId), inArray(jobs.id, groups.flat())));
+  const byId = new Map(full.map((f) => [f.job.id, f]));
+  return groups.flatMap((group) => {
+    const [lead, ...others] = group.map((id) => byId.get(id)).filter((p): p is DigestPosting => Boolean(p));
+    return lead ? [{ ...lead, others }] : [];
+  });
+}
+
+/**
+ * Drops postings known to be closed: a role whose best posting closed is led by its next copy, and
+ * one with every copy closed is left out.
+ */
+export function withoutClosed(roles: DigestRole[], isClosed: (id: string) => boolean): DigestRole[] {
+  return roles.flatMap((role) => {
+    const [lead, ...others] = [role, ...role.others].filter((p) => !isClosed(p.job.id));
+    return lead ? [{ job: lead.job, score: lead.score, reasons: lead.reasons, others }] : [];
+  });
+}
+
+/** Distinct places the role is also posted, besides the one shown. */
+function alsoIn(role: DigestRole): string[] {
+  const shown = formatLocation(role.job, role.job.locationRaw);
+  const places = role.others.map((o) => formatLocation(o.job, o.job.locationRaw)).filter((p) => p && p !== shown);
+  return [...new Set(places)];
+}
+
+export function toDigestJob(role: DigestRole): DigestJob {
+  const { job } = role;
+  return {
+    title: job.title,
+    company: job.company,
+    location: formatLocation(job, job.locationRaw),
+    alsoIn: alsoIn(role),
+    score: role.score,
+    reason: role.reasons,
+    applyUrl: job.applyUrl,
+    adzunaAttributionUrl: job.source === "adzuna" ? adzunaHomepage(job.country) : null,
+  };
 }
 
 /**
@@ -227,35 +310,27 @@ export async function runDigestForUser(userId: string, opts: DigestOptions = {})
     }
 
     // Confirm Workday postings are still open before emailing them (a few spares cover the closed ones).
-    const candidates = await pickDigestJobs(userId, db, DIGEST_MAX_JOBS + LIVENESS_SPARES);
+    const candidates = await pickDigestJobs(userId, db, DIGEST_MAX_JOBS + LIVENESS_SPARES, now);
     const livenessBudget = Math.min(LIVENESS_BUDGET_MS, runStarted + LIVENESS_DEADLINE_MS - Date.now());
     const liveness =
       livenessBudget >= 1_000
         ? await (opts.checkLive ?? checkLiveness)(
-            candidates.map((c) => c.job),
+            // Each role's best posting first, then the copies that would stand in for it.
+            [...candidates.map((c) => c.job), ...candidates.flatMap((c) => c.others.slice(0, LIVENESS_COPIES).map((o) => o.job))],
             { budgetMs: livenessBudget },
           )
         : new Map<string, never>();
     const closedIds = [...liveness].filter(([, s]) => s === "closed").map(([id]) => id);
     if (closedIds.length) await db.update(jobs).set({ closedAt: now }).where(inArray(jobs.id, closedIds));
-    const picked = candidates.filter((c) => liveness.get(c.job.id) !== "closed").slice(0, DIGEST_MAX_JOBS);
+    const picked = withoutClosed(candidates, (id) => liveness.get(id) === "closed").slice(0, DIGEST_MAX_JOBS);
     const followUps = await pickFollowUps(userId, db, now);
     if (picked.length === 0 && followUps.length === 0) {
       await finishDay();
       return { userId, status: "skipped", reason: "No new matches to send" };
     }
 
-    const digestJobs: DigestJob[] = picked.map(({ job, score, reasons }) => ({
-      title: job.title,
-      company: job.company,
-      location: formatLocation(job, job.locationRaw),
-      score,
-      reason: reasons,
-      applyUrl: job.applyUrl,
-      adzunaAttributionUrl: job.source === "adzuna" ? adzunaHomepage(job.country) : null,
-    }));
     const message = await renderDigest(
-      digestJobs,
+      picked.map(toDigestJob),
       now,
       followUps.map((f) => toDigestFollowUp(f, now)),
     );
@@ -278,9 +353,11 @@ export async function runDigestForUser(userId: string, opts: DigestOptions = {})
     // Logged as sent when it arrives, which is what Settings reports.
     const sentAt = deliverAt ?? now;
     if (picked.length) {
+      // Every copy of an emailed role is logged, so none comes back in a later email.
+      const sentJobIds = picked.flatMap((role) => [role.job.id, ...role.others.map((o) => o.job.id)]);
       await db
         .insert(emailLog)
-        .values(picked.map(({ job }) => ({ userId, jobId: job.id, channel: result.channel, sentAt })))
+        .values(sentJobIds.map((jobId) => ({ userId, jobId, channel: result.channel, sentAt })))
         .onConflictDoNothing();
     }
     if (followUps.length) {

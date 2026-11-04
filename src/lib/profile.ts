@@ -45,6 +45,17 @@ export async function listTargetCompanies(userId: string, db?: Db) {
     .orderBy(asc(targetCompanies.ats), asc(targetCompanies.slug));
 }
 
+/** Enabled employers the user chose, not counting the examples every new account starts with. */
+export async function countChosenTargetCompanies(userId: string, db?: Db): Promise<number> {
+  db ??= await getDb();
+  const rows = await db
+    .select({ ats: targetCompanies.ats, slug: targetCompanies.slug })
+    .from(targetCompanies)
+    .where(and(eq(targetCompanies.userId, userId), eq(targetCompanies.enabled, true)));
+  const seeded = new Set(SEED_TARGET_COMPANIES.map((c) => `${c.ats}:${c.slug}`));
+  return rows.filter((r) => !seeded.has(`${r.ats}:${r.slug}`)).length;
+}
+
 export async function listEnabledTargetCompanies(userId: string, db?: Db) {
   db ??= await getDb();
   return db
