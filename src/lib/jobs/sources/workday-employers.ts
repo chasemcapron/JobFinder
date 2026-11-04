@@ -8,6 +8,17 @@
  *   only; the employers added then had at least one US 50+ match (TransUnion, Kemper, Abbott, Gartner,
  *   IQVIA and UChicago had two or more). 3M, Labcorp, J&J and Baxter answered too, but their matches
  *   were abroad.
+ * - 2026-11-04: Fortune 500 companies. Each one's Workday tenant was found from robots.txt (company-name
+ *   guesses across the wdN data centers; 88 of about 250 answered), then its sites were searched for
+ *   "Data Analyst", "Systems Analyst", "IT Project Analyst" and "Business Analyst" (first page, US
+ *   filter where offered). Added when the main US site had two or more US postings whose title matched
+ *   one of the user's titles at 0.5+ and wasn't too senior for entry level. Left out despite answering:
+ *   Target, J&J, Morgan Stanley, Coca-Cola, FedEx, Micron, Qualcomm, American Airlines and others with
+ *   one match or none; Thomson Reuters and TD Synnex, whose matches weren't analyst roles; Truist,
+ *   Huntington and Nordstrom, whose sites answered HTTP 500 that day.
+ * - 2026-11-04, asked for by the user: Caterpillar (an entry-level IT Analyst opening that day) and
+ *   PwC (its US entry-level site, pwc.wd3/US_Entry_Level_Careers, lists only campus audit and tax
+ *   roles, so it's left out). Deloitte (Avature), EY (SuccessFactors), KPMG and Google don't use a board the app can read.
  */
 export const WORKDAY_SECTORS = [
   "Security companies",
@@ -15,6 +26,8 @@ export const WORKDAY_SECTORS = [
   "Tech & telecom",
   "Finance & insurance",
   "Health",
+  "Industrial & energy",
+  "Retail & consumer",
   "Education",
 ] as const;
 export type WorkdaySector = (typeof WORKDAY_SECTORS)[number];
@@ -67,6 +80,8 @@ export const WORKDAY_EMPLOYERS: WorkdayEmployer[] = [
     ["Unisys", "unisys.wd5/External"],
     ["Workday", "workday.wd5/Workday"],
     ["Zebra Technologies", "zebra.wd501/Zebra_careers"],
+    ["Applied Materials", "amat.wd1/External"],
+    ["Jabil", "jabil.wd5/Jabil_Careers"],
   ]),
   ...employers("Finance & insurance", [
     ["Allstate", "allstate.wd5/allstate_careers"],
@@ -82,6 +97,7 @@ export const WORKDAY_EMPLOYERS: WorkdayEmployer[] = [
     ["Mastercard", "mastercard.wd1/CorporateCareers"],
     ["Northwestern Mutual", "northwesternmutual.wd5/CORPORATE-CAREERS"],
     ["PNC", "pnc.wd5/External"],
+    ["PwC", "pwc.wd3/US_Experienced_Careers", "Big 4: tech and consulting associates"],
     ["State Street", "statestreet.wd1/Global"],
     ["TransUnion", "transunion.wd5/TransUnion", "Data operations analysts"],
     ["Travelers", "travelers.wd5/External"],
@@ -91,6 +107,18 @@ export const WORKDAY_EMPLOYERS: WorkdayEmployer[] = [
     ["Visa", "visa.wd5/Visa"],
     ["Wells Fargo", "wf.wd1/WellsFargoJobs"],
     ["Wintrust", "wintrust.wd1/Search"],
+    ["American Family Insurance", "amfam.wd1/Careers"],
+    ["Ameriprise Financial", "ameriprise.wd5/Ameriprise"],
+    ["Broadridge", "broadridge.wd5/Careers"],
+    ["First American", "firstam.wd1/firstamericancareers"],
+    ["Nasdaq", "nasdaq.wd1/Global_External_Site"],
+    ["Nationwide", "nationwide.wd1/Nationwide_Career"],
+    ["Northern Trust", "ntrs.wd1/northerntrust"],
+    ["Prudential", "pru.wd5/Careers"],
+    ["Raymond James", "raymondjames.wd1/RaymondJamesCareers"],
+    ["S&P Global", "spgi.wd5/SPGI_Careers"],
+    ["TD Bank", "td.wd3/TD_Bank_Careers"],
+    ["The Hartford", "thehartford.wd5/Careers_External"],
   ]),
   ...employers("Health", [
     ["Abbott", "abbott.wd5/abbottcareers"],
@@ -103,6 +131,31 @@ export const WORKDAY_EMPLOYERS: WorkdayEmployer[] = [
     ["IQVIA", "iqvia.wd1/IQVIA"],
     ["McKesson", "mckesson.wd3/External_Careers"],
     ["Medtronic", "medtronic.wd1/MedtronicCareers"],
+    ["Advocate Health", "aah.wd5/External"],
+    ["Amgen", "amgen.wd1/Careers"],
+    ["Bristol Myers Squibb", "bristolmyerssquibb.wd5/BMS"],
+    ["Cleveland Clinic", "ccf.wd1/ClevelandClinicCareers"],
+    ["Danaher", "danaher.wd1/DanaherJobs"],
+    ["DaVita", "davita.wd1/DKC_External"],
+    ["Medline", "medline.wd5/Medline"],
+    ["Merck", "msd.wd5/SearchJobs"],
+    ["Pfizer", "pfizer.wd1/PfizerCareers"],
+  ]),
+  ...employers("Industrial & energy", [
+    ["Carrier", "carrier.wd5/jobs"],
+    ["Caterpillar", "cat.wd5/CaterpillarCareers"],
+    ["Chevron", "chevron.wd5/jobs"],
+    ["Dow", "dow.wd1/ExternalCareers"],
+    ["GE Vernova", "gevernova.wd5/Vernova_ExternalSite"],
+    ["General Motors", "generalmotors.wd5/Careers_GM"],
+    ["Johnson Controls", "jci.wd5/JCI"],
+    ["Marathon Petroleum", "mpc.wd1/MPCCareers"],
+  ]),
+  ...employers("Retail & consumer", [
+    ["Dollar Tree", "dollartree.wd5/dollartreeus"],
+    ["Genuine Parts", "genpt.wd1/Careers", "NAPA"],
+    ["O'Reilly Auto Parts", "oreillyauto.wd1/oreilly"],
+    ["Procter & Gamble", "pg.wd5/1000"],
   ]),
   ...employers("Education", [
     ["University of Chicago", "uchicago.wd5/External"],

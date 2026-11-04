@@ -141,7 +141,7 @@ To check a Workday URL before adding it, use **Test a Workday site** in Settings
 
 Run it locally the same way: `npx tsx --env-file-if-exists=.env.local scripts/crawl-workday.ts [--sites acme.wd5/Careers] [--dry-run]`.
 
-Workday URLs can't be guessed, so Settings → Target companies has a **Workday employers** list: 70 US career sites in security, defense, tech, finance, health and education (including employers hiring entry-level data, IT and systems analysts) that were found and checked live, each added with one click (`src/lib/jobs/sources/workday-employers.ts`). Listed employers get their proper names; for any other Workday site the name is guessed from the site name, so some read as acronyms.
+Workday URLs can't be guessed, so Settings → Target companies has a **Workday employers** list: 106 US career sites in security, defense, tech, finance, health, industry, retail and education (including employers hiring entry-level data, IT and systems analysts) that were found and checked live, each added with one click (`src/lib/jobs/sources/workday-employers.ts`). Listed employers get their proper names; for any other Workday site the name is guessed from the site name, so some read as acronyms.
 
 ---
 
