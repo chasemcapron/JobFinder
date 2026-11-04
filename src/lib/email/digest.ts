@@ -1,5 +1,5 @@
 import { render } from "@react-email/components";
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, not, or } from "drizzle-orm";
 import { createElement } from "react";
 import { getDb, type Db } from "@/db";
 import { applications, emailLog, jobMatches, jobs, profiles, searchRuns, users } from "@/db/schema";
@@ -8,6 +8,7 @@ import { FOLLOW_UP_AFTER_DAYS } from "@/lib/applications";
 import { env } from "@/lib/env";
 import { checkLiveness } from "@/lib/jobs/liveness";
 import { formatLocation } from "@/lib/jobs/location";
+import { hiddenState, isHiddenSql, loadHidden } from "@/lib/jobs/dismissals";
 import { groupByRole } from "@/lib/jobs/filters";
 import { roleKey } from "@/lib/jobs/normalize";
 import { inTargetCountry } from "@/lib/jobs/results";
@@ -105,7 +106,8 @@ export type DigestRole = DigestPosting & { others: DigestPosting[] };
 /**
  * The top roles that haven't been emailed or applied to yet, one per company and title: employers
  * like defense contractors post one role once per city, and each copy used to take its own slot.
- * A role emailed in the last 60 days in any city, or applied to in any city, is left out.
+ * A role emailed in the last 60 days in any city, or applied to in any city, is left out, and so
+ * is anything marked "Not interested" (the role, or its whole company).
  */
 export async function pickDigestJobs(userId: string, db: Db, limit = DIGEST_MAX_JOBS, now = new Date()): Promise<DigestRole[]> {
   const recent = new Date(now.getTime() - RECENT_DAYS * DAY_MS);
@@ -128,23 +130,25 @@ export async function pickDigestJobs(userId: string, db: Db, limit = DIGEST_MAX_
         inTargetCountry,
         isNull(emailLog.id),
         isNull(applications.id),
+        not(isHiddenSql(userId)),
       ),
     )
     .orderBy(desc(jobMatches.score), desc(jobs.postedAt), asc(jobs.id))
     .limit(CANDIDATE_POSTINGS);
   if (rows.length === 0) return [];
 
-  const [emailed, applied] = await Promise.all([
+  const [emailed, applied, hidden] = await Promise.all([
     db
       .select({ company: jobs.company, title: jobs.title })
       .from(emailLog)
       .innerJoin(jobs, eq(jobs.id, emailLog.jobId))
       .where(and(eq(emailLog.userId, userId), gt(emailLog.sentAt, emailedSince))),
     db.select({ company: jobs.company, title: jobs.title }).from(applications).innerJoin(jobs, eq(jobs.id, applications.jobId)).where(eq(applications.userId, userId)),
+    loadHidden(userId, db),
   ]);
   const done = new Set([...emailed, ...applied].map(roleKey));
   const groups = groupByRole(rows)
-    .filter((role) => !done.has(roleKey(role.job)))
+    .filter((role) => !done.has(roleKey(role.job)) && !hiddenState(role.job, hidden))
     .slice(0, limit)
     .map((role) => [role, ...role.others].map((r) => r.job.id));
   if (groups.length === 0) return [];

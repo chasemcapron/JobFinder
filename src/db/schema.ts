@@ -97,6 +97,8 @@ export const profiles = pgTable("profiles", {
   keywords: jsonb("keywords").$type<string[]>().notNull().default([]),
   /** Jobs whose title contains any of these are skipped (e.g. "credit" for a security analyst). */
   excludeKeywords: jsonb("exclude_keywords").$type<string[]>().notNull().default([]),
+  /** Employers the user marked "Not interested" as a whole: their jobs are hidden from the list and the email. */
+  hiddenCompanies: jsonb("hidden_companies").$type<string[]>().notNull().default([]),
   // Preferences
   searchKeywords: jsonb("search_keywords").$type<string[]>().notNull().default([]),
   preferredLocations: jsonb("preferred_locations").$type<string[]>().notNull().default([]),
@@ -281,6 +283,28 @@ export type FitCheckResult = {
   /** Added 2026-11-03; older checks don't have it. */
   requirements?: RequirementRow[];
 };
+
+export const DISMISS_REASONS = ["not_relevant", "too_senior", "location", "other"] as const;
+export type DismissReason = (typeof DISMISS_REASONS)[number];
+
+/**
+ * Roles the user marked "Not interested", by role (company + title, `roleKey`), so copies posted
+ * later in other cities stay hidden too. Hiding a whole company is `profiles.hiddenCompanies`.
+ */
+export const dismissedRoles = pgTable(
+  "dismissed_roles",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    roleKey: text("role_key").notNull(),
+    company: text("company").notNull(),
+    title: text("title").notNull(),
+    reason: text("reason").$type<DismissReason>().notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.roleKey] })],
+);
 
 /** Cached fit checks. Stale once the profile changes after `createdAt` (the resume was edited). */
 export const fitChecks = pgTable(

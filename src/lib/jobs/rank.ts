@@ -66,9 +66,13 @@ export function finalMatch(c: Candidate, ai: AiScore | undefined): FinalMatch {
  * federal pay grade made it look senior), which the eval showed the keyword score kept from the
  * AI (2 of 5 good roles reached it, 2026-11-03). Each role is scored once and shared with its copies.
  */
-export function selectForAi(candidates: Candidate[], profile: MatchProfile, opts: { isFresh: (id: string) => boolean; cap: number }) {
+export function selectForAi(
+  candidates: Candidate[],
+  profile: MatchProfile,
+  opts: { isFresh: (id: string) => boolean; cap: number; skipAi?: (job: JobForScoring) => boolean },
+) {
   const groups = new Map<string, Candidate[]>();
-  const open = candidates.filter((c) => !c.blockers.length && !opts.isFresh(c.id));
+  const open = candidates.filter((c) => !c.blockers.length && !opts.isFresh(c.id) && !opts.skipAi?.(c.job));
   for (const c of open) {
     const key = roleKey(c.job);
     const g = groups.get(key);
@@ -118,6 +122,8 @@ export async function rankCandidates(
     isFresh: (id: string) => boolean;
     cap: number;
     useAi: boolean;
+    /** Jobs the AI shouldn't spend free-tier quota on (marked "Not interested"); they keep keyword scores. */
+    skipAi?: (job: JobForScoring) => boolean;
     hideMock?: boolean;
     deadline?: number;
     /** Already redacted (see redactPersonalInfo); goes in the AI's stable prompt prefix. */
@@ -139,7 +145,7 @@ export async function rankCandidates(
 
   const groups =
     opts.useAi && profileHasTerms(profile) && (opts.ai || aiProvider())
-      ? selectForAi(candidates, profile, { isFresh: opts.isFresh, cap: opts.cap })
+      ? selectForAi(candidates, profile, { isFresh: opts.isFresh, cap: opts.cap, skipAi: opts.skipAi })
       : new Map<string, Candidate[]>();
   const representatives = [...groups.values()].map((g) => g[0]);
   const { scores: groupScores, errors: aiErrors } = await scoreWithAi(

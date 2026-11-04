@@ -6,7 +6,7 @@ import { aiProvider } from "@/lib/ai/provider";
 import { formatDateTime } from "@/lib/format";
 import { activeFilterCount, filterMatches, filtersToSearchParams, groupByRole, locationFacets, paginate, parseFilters, sourceFacets, summarizeMatches } from "@/lib/jobs/filters";
 import { listFitChecks } from "@/lib/jobs/fit-checks";
-import { lastSearchRun, listMatches } from "@/lib/jobs/results";
+import { countHiddenRoles, lastSearchRun, listMatches } from "@/lib/jobs/results";
 import { requireUser } from "@/lib/session";
 import { ApplyActions } from "./apply-actions";
 import { FilterPanel } from "./filter-panel";
@@ -22,7 +22,12 @@ export const maxDuration = 60;
 export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
   const { profile } = await requireUser();
   const filters = parseFilters(await searchParams);
-  const [all, lastRun, stats] = await Promise.all([listMatches(profile.userId), lastSearchRun(profile.userId), applicationStats(profile.userId)]);
+  const [all, lastRun, stats, hiddenRoles] = await Promise.all([
+    listMatches(profile.userId, undefined, { hidden: filters.hidden }),
+    lastSearchRun(profile.userId),
+    applicationStats(profile.userId),
+    filters.hidden === "hide" ? countHiddenRoles(profile.userId) : 0,
+  ]);
   const hasProfile = profile.skills.length + profile.titles.length + profile.searchKeywords.length > 0;
   // Before a resume exists every score is 0, so the "hide weak matches" default would hide everything.
   const filtered = groupByRole(filterMatches(all, hasProfile ? filters : { ...filters, minScore: 0 }));
@@ -31,7 +36,13 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
   const activeCount = activeFilterCount(filters);
   const weakHidden =
     hasProfile && filters.minScore === HIDE_BELOW_SCORE ? groupByRole(filterMatches(all, { ...filters, minScore: 0 })).length - filtered.length : 0;
-  const { newToday, strong } = summarizeMatches(all, { ranked: hasProfile, strongAt: SCORE_THRESHOLDS.high });
+  // Jobs marked "Not interested" don't count toward the tiles.
+  const { newToday, strong } = summarizeMatches(
+    all.filter((m) => !m.hidden),
+    { ranked: hasProfile, strongAt: SCORE_THRESHOLDS.high },
+  );
+  const hiddenCount = hiddenRoles;
+  const showHiddenHref = `/jobs?${filtersToSearchParams({ hidden: "only", minScore: 0, skip: "show" }).toString()}`;
   const showWeakHref = `/jobs?${filtersToSearchParams({ ...filters, minScore: 0, page: 1 }).toString()}`;
   // Jobs the AI or a fixed rule marked "do not apply" are hidden by default, with a count to show them.
   const skipHidden = filters.skip === "hide" ? groupByRole(filterMatches(all, { ...filters, skip: "show" })).length - filtered.length : 0;
@@ -144,6 +155,24 @@ export default async function JobsPage({ searchParams }: PageProps<"/jobs">) {
                   {skipHidden.toLocaleString()} marked do not apply hidden.{" "}
                   <Link href={showSkippedHref} className={linkClass}>
                     Show
+                  </Link>
+                </>
+              ) : null}
+              {hiddenCount > 0 ? (
+                <>
+                  {" · "}
+                  {hiddenCount.toLocaleString()} marked not interested.{" "}
+                  <Link href={showHiddenHref} className={linkClass}>
+                    Show
+                  </Link>
+                </>
+              ) : null}
+              {filters.hidden === "only" ? (
+                <>
+                  {" · "}
+                  Jobs you marked not interested.{" "}
+                  <Link href="/jobs" className={linkClass}>
+                    Back to your matches
                   </Link>
                 </>
               ) : null}

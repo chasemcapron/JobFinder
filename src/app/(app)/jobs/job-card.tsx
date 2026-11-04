@@ -8,6 +8,7 @@ import { isNewMatch, type RoleMatch } from "@/lib/jobs/filters";
 import { formatLocation } from "@/lib/jobs/location";
 import type { MatchResult } from "@/lib/jobs/results";
 import { adzunaHomepage } from "@/lib/jobs/sources/adzuna";
+import { DismissibleJob, DismissMenu } from "./dismiss";
 
 const SOURCE_LABELS: Record<string, string> = {
   greenhouse: "Greenhouse",
@@ -137,92 +138,96 @@ export function JobCard({
 
   return (
     <li className="rise-in" style={{ "--i": index } as CSSProperties}>
-      <Card
-        padding="none"
-        interactive
-        outline={ranked ? scoreTier(match.score) : undefined}
-        className={cx("overflow-hidden", application && "opacity-70 transition-opacity focus-within:opacity-100 hover:opacity-100")}
-      >
-        <div className="flex items-start gap-3.5 p-4">
-          <ScoreBadge
-            score={match.score}
-            unranked={!ranked}
-            title={match.aiScored ? "AI match score: the AI read the whole posting" : "Keyword match score: how well this job fits your resume"}
-          />
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <h3 className="min-w-0 text-[15px] leading-snug font-semibold tracking-tight">
-                <a href={job.applyUrl} target="_blank" rel="noreferrer" className="hover:text-section-fg hover:underline">
-                  {job.title}
-                </a>
-              </h3>
-              {isNew && !application ? (
-                <span className="rounded-[4px] bg-blue px-1.5 font-label text-[11px] leading-[18px] font-bold tracking-[0.1em] text-white uppercase">
-                  New
-                </span>
-              ) : null}
-              {application ? (
-                <Badge tone="success" dot>
-                  {application.status === "applied" ? "Applied" : `Applied · ${applicationStatusLabel(application.status)}`}
-                </Badge>
-              ) : null}
-            </div>
-            <MetaLine
-              parts={[
-                <span key="c" className="font-medium text-foreground">
-                  {job.company}
-                </span>,
-                placeOf(job),
-                posted ? `Posted ${posted}` : null,
-                salary ? <span className="text-foreground">{salary}</span> : null,
-              ]}
+      <DismissibleJob jobId={job.id} title={job.title} company={job.company} initial={match.hidden ?? null}>
+        <Card
+          padding="none"
+          interactive
+          outline={ranked ? scoreTier(match.score) : undefined}
+          className={cx("overflow-hidden", application && "opacity-70 transition-opacity focus-within:opacity-100 hover:opacity-100")}
+        >
+          <div className="flex items-start gap-3.5 p-4">
+            <ScoreBadge
+              score={match.score}
+              unranked={!ranked}
+              title={match.aiScored ? "AI match score: the AI read the whole posting" : "Keyword match score: how well this job fits your resume"}
             />
-            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-              {verdict ? (
-                <Badge tone={verdict.tone} dot title={evaluation?.source === "rule" ? "Decided by a fixed rule, without AI" : verdict.title}>
-                  {verdict.label}
-                </Badge>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <h3 className="min-w-0 text-[15px] leading-snug font-semibold tracking-tight">
+                  <a href={job.applyUrl} target="_blank" rel="noreferrer" className="hover:text-section-fg hover:underline">
+                    {job.title}
+                  </a>
+                </h3>
+                {isNew && !application ? (
+                  <span className="rounded-[4px] bg-blue px-1.5 font-label text-[11px] leading-[18px] font-bold tracking-[0.1em] text-white uppercase">
+                    New
+                  </span>
+                ) : null}
+                {application ? (
+                  <Badge tone="success" dot>
+                    {application.status === "applied" ? "Applied" : `Applied · ${applicationStatusLabel(application.status)}`}
+                  </Badge>
+                ) : null}
+              </div>
+              <MetaLine
+                parts={[
+                  <span key="c" className="font-medium text-foreground">
+                    {job.company}
+                  </span>,
+                  placeOf(job),
+                  posted ? `Posted ${posted}` : null,
+                  salary ? <span className="text-foreground">{salary}</span> : null,
+                ]}
+              />
+              <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                {verdict ? (
+                  <Badge tone={verdict.tone} dot title={evaluation?.source === "rule" ? "Decided by a fixed rule, without AI" : verdict.title}>
+                    {verdict.label}
+                  </Badge>
+                ) : null}
+                {blocker ? (
+                  <Badge tone="danger" title="A hard requirement this job has that your profile doesn't meet">
+                    <Icon name="alert-triangle" className="size-3" />
+                    {blocker}
+                  </Badge>
+                ) : null}
+                {needsClearance ? (
+                  <Badge tone="danger" title="The posting asks for a security clearance you already hold. Change this in Settings if you have one.">
+                    <Icon name="alert-triangle" className="size-3" />
+                    Active clearance required
+                  </Badge>
+                ) : null}
+                {job.experienceLevel ? <Badge>{EXPERIENCE_LABELS[job.experienceLevel]}</Badge> : null}
+                {job.minYears ? <Badge title="Smallest years of experience the posting asks for">{job.minYears}+ yrs</Badge> : null}
+                {source}
+              </div>
+              {match.reasons ? (
+                <p className="mt-2.5 line-clamp-2 text-[13px] leading-5 text-muted">
+                  {match.aiScored ? (
+                    <Icon name="sparkles" className="mr-1 inline size-3.5 align-[-2px] text-section-fg" title="AI fit" />
+                  ) : (
+                    <span className="font-medium text-foreground">Why: </span>
+                  )}
+                  {match.reasons}
+                </p>
               ) : null}
-              {blocker ? (
-                <Badge tone="danger" title="A hard requirement this job has that your profile doesn't meet">
-                  <Icon name="alert-triangle" className="size-3" />
-                  {blocker}
-                </Badge>
-              ) : null}
-              {needsClearance ? (
-                <Badge tone="danger" title="The posting asks for a security clearance you already hold. Change this in Settings if you have one.">
-                  <Icon name="alert-triangle" className="size-3" />
-                  Active clearance required
-                </Badge>
-              ) : null}
-              {job.experienceLevel ? <Badge>{EXPERIENCE_LABELS[job.experienceLevel]}</Badge> : null}
-              {job.minYears ? <Badge title="Smallest years of experience the posting asks for">{job.minYears}+ yrs</Badge> : null}
-              {source}
+              {evaluation?.source === "ai" ? <EvaluationLines matched={evaluation.matchedSkills} missing={evaluation.missingSkills} /> : null}
+              {others.length ? <OtherPlaces others={others} /> : null}
             </div>
-            {match.reasons ? (
-              <p className="mt-2.5 line-clamp-2 text-[13px] leading-5 text-muted">
-                {match.aiScored ? (
-                  <Icon name="sparkles" className="mr-1 inline size-3.5 align-[-2px] text-section-fg" title="AI fit" />
-                ) : (
-                  <span className="font-medium text-foreground">Why: </span>
-                )}
-                {match.reasons}
-              </p>
-            ) : null}
-            {evaluation?.source === "ai" ? <EvaluationLines matched={evaluation.matchedSkills} missing={evaluation.missingSkills} /> : null}
-            {others.length ? <OtherPlaces others={others} /> : null}
           </div>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2 border-t border-border bg-surface-subtle/40 px-4 py-2.5">
-          <a href={job.applyUrl} target="_blank" rel="noreferrer" className={buttonClass("primary", "sm")}>
-            Apply
-            <Icon name="external-link" className="size-3.5" />
-          </a>
-          {actions}
-          {fit}
-        </div>
-      </Card>
+          <div className="flex flex-wrap items-center gap-2 border-t border-border bg-surface-subtle/40 px-4 py-2.5">
+            <a href={job.applyUrl} target="_blank" rel="noreferrer" className={buttonClass("primary", "sm")}>
+              Apply
+              <Icon name="external-link" className="size-3.5" />
+            </a>
+            {actions}
+            {fit}
+            {/* Applied jobs stay in the list whatever happens, so there is nothing to hide. */}
+            {!application || match.hidden ? <DismissMenu jobId={job.id} /> : null}
+          </div>
+        </Card>
+      </DismissibleJob>
     </li>
   );
 }

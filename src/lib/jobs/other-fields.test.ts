@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildSystem } from "./ai-score";
-import { finalMatch, rankCandidates, type JobForScoring } from "./rank";
+import { finalMatch, rankCandidates, selectForAi, type JobForScoring } from "./rank";
 import { bestTitleSimilarity, ownFamily, titleSimilarity, type MatchProfile } from "./scoring";
 
 // Matching isn't tuned to one user's field: profiles outside tech (an invited friend's) rank too.
@@ -73,6 +73,16 @@ describe("matching outside tech", () => {
     expect(by.get("senior")!.verdict).toBe("skip");
     expect(by.get("intern")!.verdict).toBe("skip");
     expect(by.get("rn")!.verdict).toBeNull();
+  });
+
+  it("doesn't send jobs marked not interested to the AI", async () => {
+    const all = new Map<string, JobForScoring>([
+      ["rn", job("Registered Nurse, Med-Surg", "Patient care, BLS, Epic.")],
+      ["hidden", job("Registered Nurse, ICU", "Patient care, BLS, Epic.", { company: "Hidden Health" })],
+    ]);
+    const { candidates } = await rankCandidates(nurse, all, { isFresh: () => false, cap: 10, useAi: false });
+    const chosen = selectForAi(candidates, nurse, { isFresh: () => false, cap: 10, skipAi: (j) => j.company === "Hidden Health" });
+    expect([...chosen.values()].flat().map((c) => c.id)).toEqual(["rn"]);
   });
 
   it("doesn't tell the AI that the user's own field is off target", () => {

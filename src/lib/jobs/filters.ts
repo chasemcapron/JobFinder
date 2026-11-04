@@ -21,6 +21,8 @@ export type JobFilters = {
   applied: "dim" | "hide" | "only";
   /** Jobs marked "do not apply" (by the AI or a fixed rule): hidden by default. */
   skip: "hide" | "show" | "only";
+  /** Jobs marked "Not interested" (or from a hidden company): hidden by default, "only" lists them to undo. */
+  hidden: "hide" | "only";
   minScore: number;
   sort: "score" | "date";
   page: number;
@@ -44,6 +46,7 @@ export const DEFAULT_FILTERS: JobFilters = {
   posted: "any",
   applied: "dim",
   skip: "hide",
+  hidden: "hide",
   minScore: DEFAULT_MIN_SCORE,
   sort: "score",
   page: 1,
@@ -80,6 +83,7 @@ export function parseFilters(params: Params): JobFilters {
     posted: pick(one(params.posted), POSTED_WITHIN, "any"),
     applied: pick(one(params.applied), ["dim", "hide", "only"] as const, "dim"),
     skip: pick(one(params.skip), ["hide", "show", "only"] as const, "hide"),
+    hidden: pick(one(params.hidden), ["hide", "only"] as const, "hide"),
     minScore: Number.isFinite(minScore) ? Math.max(0, Math.min(100, Math.round(minScore))) : DEFAULT_MIN_SCORE,
     sort: pick(one(params.sort), ["score", "date"] as const, "score"),
     page: Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1,
@@ -100,6 +104,7 @@ export function filtersToSearchParams(f: Partial<JobFilters>): URLSearchParams {
   if (full.posted !== "any") p.set("posted", full.posted);
   if (full.applied !== "dim") p.set("applied", full.applied);
   if (full.skip !== "hide") p.set("skip", full.skip);
+  if (full.hidden !== "hide") p.set("hidden", full.hidden);
   if (full.minScore !== DEFAULT_MIN_SCORE) p.set("minScore", String(full.minScore));
   if (full.sort !== "score") p.set("sort", full.sort);
   if (full.page > 1) p.set("page", String(full.page));
@@ -129,6 +134,9 @@ export function filterMatches(rows: MatchResult[], f: JobFilters, now = new Date
   const postedCutoff = f.posted === "any" ? null : now.getTime() - Number(f.posted) * 86_400_000;
   const out = rows.filter((m) => {
     const j = m.job;
+    // Applied jobs stay visible even when hidden later: they're the user's own record.
+    if (f.hidden === "hide" && m.hidden && !m.application) return false;
+    if (f.hidden === "only" && !m.hidden) return false;
     if (f.applied === "hide" && m.application) return false;
     if (f.applied === "only" && !m.application) return false;
     // A job already applied to stays visible whatever its verdict.
@@ -244,6 +252,7 @@ export function activeFilterCount(f: JobFilters): number {
     (f.posted !== "any" ? 1 : 0) +
     (f.applied !== "dim" ? 1 : 0) +
     (f.skip !== "hide" ? 1 : 0) +
+    (f.hidden !== "hide" ? 1 : 0) +
     (f.minScore !== DEFAULT_MIN_SCORE ? 1 : 0)
   );
 }

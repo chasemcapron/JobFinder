@@ -17,6 +17,7 @@ import { addTargetCompany, savePreferences, saveSheetSettings } from "./actions"
 import { CompanySuggestions } from "./company-suggestions";
 import { SheetTest } from "./sheet-test";
 import { TargetCompanyRow } from "./target-company-row";
+import { HiddenCompanies } from "./hidden-companies";
 import { WorkdayEmployers } from "./workday-employers";
 import { WorkdayTest } from "./workday-test";
 
@@ -221,6 +222,7 @@ export default async function SettingsPage() {
             />
           </div>
         </ActionForm>
+        <HiddenCompanies companies={profile.hiddenCompanies} />
       </Card>
 
       <Card id="sheet" className="scroll-mt-16">
