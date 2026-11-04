@@ -16,6 +16,9 @@
  *   Target, J&J, Morgan Stanley, Coca-Cola, FedEx, Micron, Qualcomm, American Airlines and others with
  *   one match or none; Thomson Reuters and TD Synnex, whose matches weren't analyst roles; Truist,
  *   Huntington and Nordstrom, whose sites answered HTTP 500 that day.
+ * - 2026-11-04, asked for by the user: Caterpillar (an entry-level IT Analyst opening that day) and
+ *   PwC (its US entry-level site, pwc.wd3/US_Entry_Level_Careers, lists only campus audit and tax
+ *   roles, so it's left out). Deloitte (Avature), EY (SuccessFactors), KPMG and Google don't use a board the app can read.
  */
 export const WORKDAY_SECTORS = [
   "Security companies",
@@ -94,6 +97,7 @@ export const WORKDAY_EMPLOYERS: WorkdayEmployer[] = [
     ["Mastercard", "mastercard.wd1/CorporateCareers"],
     ["Northwestern Mutual", "northwesternmutual.wd5/CORPORATE-CAREERS"],
     ["PNC", "pnc.wd5/External"],
+    ["PwC", "pwc.wd3/US_Experienced_Careers", "Big 4: tech and consulting associates"],
     ["State Street", "statestreet.wd1/Global"],
     ["TransUnion", "transunion.wd5/TransUnion", "Data operations analysts"],
     ["Travelers", "travelers.wd5/External"],
@@ -139,6 +143,7 @@ export const WORKDAY_EMPLOYERS: WorkdayEmployer[] = [
   ]),
   ...employers("Industrial & energy", [
     ["Carrier", "carrier.wd5/jobs"],
+    ["Caterpillar", "cat.wd5/CaterpillarCareers"],
     ["Chevron", "chevron.wd5/jobs"],
     ["Dow", "dow.wd1/ExternalCareers"],
     ["GE Vernova", "gevernova.wd5/Vernova_ExternalSite"],
