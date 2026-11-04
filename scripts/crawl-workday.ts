@@ -19,23 +19,30 @@ import { isInTargetCountry } from "@/lib/jobs/location";
 import { dedupeJobs } from "@/lib/jobs/normalize";
 import type { JobForScoring } from "@/lib/jobs/rank";
 import { markListingsSeen, scoreAndSaveMatches, searchInFlight, storeJobs } from "@/lib/jobs/search";
-import { buildCrawlQueries, crawlWorkdaySite, type CrawlResult } from "@/lib/jobs/sources/workday-crawl";
+import { buildCrawlQueries, CRAWL_RUN_MS, crawlShareEnd, crawlWorkdaySite, type CrawlResult } from "@/lib/jobs/sources/workday-crawl";
 import { parseWorkdaySlug } from "@/lib/jobs/sources/workday";
 
 /** Sites crawled at once. Each site's requests are 300 ms apart, so ~10 requests a second in all. */
 const SITE_CONCURRENCY = 3;
 /** Roles the AI evaluates after a crawl: 25 batches, about two minutes at 4.5 s spacing. */
 const CRAWL_AI_CAP = 200;
-const AI_BUDGET_MS = 10 * 60_000;
+/** Healthy, 25 batches take ~2 minutes; the rest covers busy free-tier models. Unused time goes to the next user. */
+const AI_BUDGET_MS = 8 * 60_000;
+const LIVENESS_BUDGET_MS = 60_000;
 /** Workday postings unseen this long get a liveness check (most are just outside the crawl's search). */
 const RECHECK_AFTER_MS = 3 * 86_400_000;
 const MAX_LIVENESS_CHECKS = 60;
 /**
- * No new site is started after this. A site takes up to ~2 minutes (160 requests 300 ms apart plus
- * Workday's response time), so 70 big sites can't all fit one night; with liveness (1 min) and AI
- * scoring (10 min) it stays inside the workflow's 40 minutes. Sites left over go first next night.
+ * A site takes up to ~2 minutes (160 requests 300 ms apart plus Workday's response time), so the
+ * sites already started when a user's crawl time ends may run this much longer; then they're stopped.
  */
-const CRAWL_BUDGET_MS = 18 * 60_000;
+const SITE_OVERRUN_MS = 3 * 60_000;
+/**
+ * Reserved per user for what follows their crawl. Each user's crawl time is a fair share of what's
+ * left (`crawlShareEnd`), so every user is crawled each night and the run ends inside the workflow's
+ * 90 minutes (`CRAWL_RUN_MS`). 70 big sites can't all fit one night: sites left over go first next night.
+ */
+const AFTER_CRAWL_MS = SITE_OVERRUN_MS + LIVENESS_BUDGET_MS + AI_BUDGET_MS;
 
 const argv = process.argv.slice(2);
 const dryRun = argv.includes("--dry-run");
@@ -43,6 +50,7 @@ const onlySites = argv[argv.indexOf("--sites") + 1]?.split(",").filter(Boolean);
 
 async function main() {
   const started = Date.now();
+  const runEnd = started + CRAWL_RUN_MS;
   const db = await getDb();
   const rows = await db
     .select({ userId: targetCompanies.userId, slug: targetCompanies.slug })
@@ -55,9 +63,19 @@ async function main() {
   }
   if (sitesByUser.size === 0) console.log("No Workday sites to crawl.");
 
+  // Least recently crawled user first (never crawled first), so one a short night left out goes first next.
+  const lastByUser = new Map(
+    (await db
+      .select({ userId: workdayCrawlState.userId, at: sql<string | null>`max(${workdayCrawlState.lastCrawledAt})` })
+      .from(workdayCrawlState)
+      .groupBy(workdayCrawlState.userId)).map((r) => [r.userId, r.at ? new Date(r.at).getTime() : 0]),
+  );
+  const userOrder = [...sitesByUser].sort(([a], [b]) => (lastByUser.get(a) ?? 0) - (lastByUser.get(b) ?? 0));
+
   let userNo = 0;
-  for (const [userId, slugs] of sitesByUser) {
+  for (const [userId, slugs] of userOrder) {
     userNo++;
+    const crawlEnd = crawlShareEnd({ now: Date.now(), runEnd, usersLeft: sitesByUser.size - userNo + 1, tailMs: AFTER_CRAWL_MS });
     const profile = await db.query.profiles.findFirst({ where: eq(profiles.userId, userId) });
     if (!profile || profile.titles.length + profile.searchKeywords.length === 0) {
       console.log(`user ${userNo}: no target titles; skipped`);
@@ -83,17 +101,19 @@ async function main() {
         .where(eq(workdayCrawlState.userId, userId))).map((c) => [c.slug, c.at.getTime()]),
     );
     slugs.sort((a, b) => (lastCrawl.get(a) ?? 0) - (lastCrawl.get(b) ?? 0) || a.localeCompare(b));
-    console.log(`user ${userNo}: ${slugs.length} site(s), ${queries.length} search terms${dryRun ? " (dry run)" : ""}`);
+    console.log(`user ${userNo}: ${slugs.length} site(s), ${queries.length} search terms, ${Math.round((crawlEnd - Date.now()) / 60_000)} min to crawl${dryRun ? " (dry run)" : ""}`);
 
     // Crawl sites a few at a time; store each site's results as it finishes.
     const now = new Date();
     const fetched = new Map<string, JobForScoring>();
     const statusCount: Record<string, number> = {};
+    // Sites still running at the share's end are stopped a little after it, so the night keeps to time.
+    const stopSites = AbortSignal.timeout(Math.max(0, crawlEnd - Date.now()) + SITE_OVERRUN_MS);
     let next = 0;
     const crawlOne = async (slug: string, siteNo: number) => {
       let r: CrawlResult;
       try {
-        r = await crawlWorkdaySite(slug, { queries, profile, knownKeys });
+        r = await crawlWorkdaySite(slug, { queries, profile, knownKeys, signal: stopSites });
       } catch (err) {
         r = { status: "error", jobs: [], seenKeys: [], totals: {}, listingsSeen: 0, detailsFetched: 0, error: err instanceof Error ? err.message : String(err) };
       }
@@ -144,7 +164,7 @@ async function main() {
     };
     await Promise.all(
       Array.from({ length: Math.min(SITE_CONCURRENCY, slugs.length) }, async () => {
-        while (next < slugs.length && Date.now() - started < CRAWL_BUDGET_MS) {
+        while (next < slugs.length && Date.now() < crawlEnd) {
           const i = next++;
           await crawlOne(slugs[i], i + 1);
         }
@@ -174,7 +194,7 @@ async function main() {
       )
       .orderBy(sql`random()`)
       .limit(MAX_LIVENESS_CHECKS);
-    const liveness = await checkLiveness(stale, { budgetMs: 60_000, concurrency: 3 });
+    const liveness = await checkLiveness(stale, { budgetMs: Math.max(0, Math.min(LIVENESS_BUDGET_MS, runEnd - Date.now())), concurrency: 3 });
     const closed = [...liveness].filter(([, s]) => s === "closed").map(([id]) => id);
     const live = [...liveness].filter(([, s]) => s === "live").map(([id]) => id);
     if (closed.length) await db.update(jobs).set({ closedAt: now }).where(inArray(jobs.id, closed));
@@ -189,7 +209,7 @@ async function main() {
       fetched,
       useAi: !searching,
       maxAiScores: CRAWL_AI_CAP,
-      deadline: Date.now() + AI_BUDGET_MS,
+      deadline: Math.min(Date.now() + AI_BUDGET_MS, runEnd),
       now: new Date(),
     });
     console.log(`  scored: ${scored.saved} matches saved, ${scored.aiScored} AI-evaluated${scored.errors.length ? `; ${scored.errors.length} AI error(s)` : ""}`);

@@ -164,8 +164,8 @@ export type RoleMatch = MatchResult & {
  * One card per role: postings with the same company and title (Workday and USAJobs often list a
  * role once per city) collapse into the first one, which is the best ranked. Order is kept.
  */
-export function groupByRole(rows: MatchResult[]): RoleMatch[] {
-  const groups = new Map<string, RoleMatch>();
+export function groupByRole<T extends { job: { company: string; title: string } }>(rows: T[]): (T & { others: T[] })[] {
+  const groups = new Map<string, T & { others: T[] }>();
   for (const m of rows) {
     const key = roleKey(m.job);
     const group = groups.get(key);
