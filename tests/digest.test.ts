@@ -133,6 +133,52 @@ describe("runDigestForUser", () => {
     expect(sent[1].scheduledAt).toEqual(new Date("2026-12-01T13:00:00Z"));
   });
 
+  it("with a provider that can't schedule (Gmail), searches ahead at 6 AM and sends at 7", async () => {
+    const sent: EmailMessage[] = [];
+    const send = async (m: EmailMessage) => (sent.push(m), { channel: "gmail" as const, id: "<m1@gmail.com>" });
+    const search = vi.fn(noSearch);
+    const at6 = await runDigestForUser(userId, { db, now: new Date("2026-12-01T12:31:00Z"), runSearch: search, send, canSchedule: false });
+    expect(at6).toMatchObject({ status: "skipped", reason: "Searched ahead; the email goes out at 7:00" });
+    expect(search).toHaveBeenCalledTimes(1);
+    expect(sent).toHaveLength(0);
+    // Nothing claimed or finished: the 7 AM run does the sending.
+    expect(await db.query.profiles.findFirst({ where: eq(schema.profiles.userId, userId) })).toMatchObject({ lastDigestDate: null, digestClaimedAt: null });
+
+    await db.update(schema.jobs).set({ lastSeenAt: new Date("2026-12-01T00:00:00Z") });
+    await db.insert(schema.searchRuns).values({ userId, trigger: "cron", status: "ok", startedAt: new Date("2026-12-01T12:31:00Z") });
+    const at7 = await runDigestForUser(userId, { db, now: new Date("2026-12-01T13:12:00Z"), runSearch: search, send, canSchedule: false });
+    expect(at7).toMatchObject({ status: "sent", jobs: 10, channel: "gmail", scheduledFor: null });
+    expect(sent).toHaveLength(1);
+    expect(sent[0].scheduledAt).toBeUndefined();
+    // The 6 AM search counts as recent, so 7 AM doesn't search again.
+    expect(search).toHaveBeenCalledTimes(1);
+  });
+
+  it("doesn't start a second search while one is still running (a late 6 AM run overlapping 7 AM)", async () => {
+    await db.update(schema.jobs).set({ lastSeenAt: new Date("2026-12-01T00:00:00Z") });
+    await db.insert(schema.searchRuns).values({ userId, trigger: "cron", status: "running", startedAt: new Date("2026-12-01T12:59:40Z") });
+    const search = vi.fn(noSearch);
+    const send = async () => ({ channel: "gmail" as const, id: null });
+    const at7 = await runDigestForUser(userId, { db, now: new Date("2026-12-01T13:00:20Z"), runSearch: search, send, canSchedule: false });
+    expect(at7).toMatchObject({ status: "sent", search: "skipped" });
+    expect(search).not.toHaveBeenCalled();
+  });
+
+  it("stops an inline search by the cron route's deadline", async () => {
+    const search = vi.fn(noSearch);
+    const deadline = Date.now() + 5_000;
+    await runDigestForUser(userId, { db, now: SUMMER_7AM, runSearch: search, send: async () => ({ channel: "console" as const, id: null }), deadline });
+    expect(search).toHaveBeenCalledWith(userId, expect.objectContaining({ deadline: expect.any(Number) }));
+    const [[, options]] = search.mock.calls as unknown as [string, { deadline: number }][];
+    expect(options.deadline).toBeLessThanOrEqual(deadline);
+  });
+
+  it("says in the 6 AM gate what happens with each kind of provider", () => {
+    const sixAm = new Date("2026-12-01T12:31:00Z");
+    expect(shouldSendNow(sixAm, null).reason).toBe("6 AM in Chicago: scheduled for 7:00");
+    expect(shouldSendNow(sixAm, null, false, false).reason).toBe("6 AM in Chicago: searches ahead, sends at 7");
+  });
+
   it("retries a run that was cut off, at 8 AM, without searching again", async () => {
     // A 7 AM run claimed the day, then Vercel stopped the function before it finished.
     await db.update(schema.profiles).set({ digestClaimedAt: SUMMER_7AM }).where(eq(schema.profiles.userId, userId));

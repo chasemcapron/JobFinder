@@ -15,7 +15,7 @@ import { inTargetCountry } from "@/lib/jobs/results";
 import { runJobSearch, type RunSummary } from "@/lib/jobs/search";
 import { adzunaHomepage } from "@/lib/jobs/sources/adzuna";
 import { APP_TIME_ZONE, atLocalHour, localDate, localHour } from "@/lib/time";
-import { sendEmail, type SendResult } from "./send";
+import { canScheduleEmail, sendEmail, type SendResult } from "./send";
 
 /** The digest arrives at 7:00 AM Chicago time. */
 export const DIGEST_HOUR = 7;
@@ -72,12 +72,14 @@ export type DigestOutcome =
  * Vercel Cron runs in UTC with no DST; 11:00 to 14:00 UTC all fire. The one that's 6 AM in Chicago
  * schedules the digest for 7:00, and the ones that are 7 and 8 AM retry if that run didn't finish.
  */
-export function shouldSendNow(now: Date, lastDigestDate: string | null, force = false): { send: boolean; reason: string } {
+export function shouldSendNow(now: Date, lastDigestDate: string | null, force = false, canSchedule = true): { send: boolean; reason: string } {
   const today = localDate(now);
   if (lastDigestDate === today) return { send: false, reason: `Already sent today (${today})` };
   if (force) return { send: true, reason: "forced" };
   const hour = localHour(now);
-  if (hour === DIGEST_PREPARE_HOUR) return { send: true, reason: "6 AM in Chicago: scheduled for 7:00" };
+  if (hour === DIGEST_PREPARE_HOUR) {
+    return { send: true, reason: canSchedule ? "6 AM in Chicago: scheduled for 7:00" : "6 AM in Chicago: searches ahead, sends at 7" };
+  }
   if (hour === DIGEST_HOUR) return { send: true, reason: "7 AM retry" };
   if (hour === DIGEST_RETRY_HOUR) return { send: true, reason: "8 AM retry" };
   return { send: false, reason: `It's ${hour}:00 in ${APP_TIME_ZONE}; the digest arrives at ${DIGEST_HOUR}:00 (retries until ${DIGEST_RETRY_HOUR + 1}:00)` };
@@ -89,11 +91,23 @@ export function digestDeliveryTime(now: Date): Date | null {
   return at > now ? at : null;
 }
 
-/** True when a search finished recently enough to email from (normally the early search cron). */
+/** A search still marked running this soon after it started is in flight, not dead (a run takes under 60 s). */
+const IN_FLIGHT_SEARCH_MS = 2 * 60_000;
+
+/**
+ * True when a search finished recently enough to email from (normally the early search cron), or one
+ * is running right now: a late 6 AM run can overlap the 7 AM one, which shouldn't start a second.
+ */
 async function searchedRecently(userId: string, db: Db, now: Date): Promise<boolean> {
   const since = new Date(now.getTime() - FRESH_SEARCH_MS);
   const recent = await db.query.searchRuns.findFirst({
-    where: and(eq(searchRuns.userId, userId), gt(searchRuns.startedAt, since), inArray(searchRuns.status, ["ok", "partial"])),
+    where: and(
+      eq(searchRuns.userId, userId),
+      or(
+        and(gt(searchRuns.startedAt, since), inArray(searchRuns.status, ["ok", "partial"])),
+        and(gt(searchRuns.startedAt, new Date(now.getTime() - IN_FLIGHT_SEARCH_MS)), eq(searchRuns.status, "running")),
+      ),
+    ),
     columns: { id: true },
   });
   return Boolean(recent);
@@ -249,6 +263,10 @@ type DigestOptions = {
   send?: typeof sendEmail;
   /** For tests: replaces the check that picked postings are still open. */
   checkLive?: typeof checkLiveness;
+  /** Whether the email provider can hold the message until 7:00 (Resend); defaults to the configured one. */
+  canSchedule?: boolean;
+  /** When the caller's time runs out (the cron route's 60 s); an inline search stops before it. */
+  deadline?: number;
 };
 
 /**
@@ -277,8 +295,23 @@ export async function runDigestForUser(userId: string, opts: DigestOptions = {})
     if (!row) return { userId, status: "skipped", reason: "No profile" };
     if (!row.emailEnabled) return { userId, status: "skipped", reason: "Email turned off" };
     if (!row.email) return { userId, status: "skipped", reason: "No email address on the account" };
-    const gate = shouldSendNow(now, row.lastDigestDate, opts.force);
+    const canSchedule = opts.canSchedule ?? canScheduleEmail();
+    const gate = shouldSendNow(now, row.lastDigestDate, opts.force, canSchedule);
     if (!gate.send) return { userId, status: "skipped", reason: gate.reason };
+    const searchDeadline = () => Math.min(Date.now() + INLINE_SEARCH_BUDGET_MS, opts.deadline ?? Infinity);
+
+    // Gmail can't hold a message until 7:00, so the 6 AM run only gets the search out of the way and
+    // the 7 AM run sends (8 AM retries).
+    if (!canSchedule && !opts.force && localHour(now) === DIGEST_PREPARE_HOUR) {
+      if (opts.search !== false && !(await searchedRecently(userId, db, now))) {
+        try {
+          await (opts.runSearch ?? runJobSearch)(userId, { trigger: "cron", db, deadline: searchDeadline() });
+        } catch (err) {
+          console.error("Morning search failed", err);
+        }
+      }
+      return { userId, status: "skipped", reason: "Searched ahead; the email goes out at 7:00" };
+    }
 
     // Claim today so an overlapping cron invocation can't double-send; a claim past its lease is free to take.
     const today = localDate(now);
@@ -300,8 +333,7 @@ export async function runDigestForUser(userId: string, opts: DigestOptions = {})
     let searchStatus: RunSummary["status"] | "skipped" = "skipped";
     if (opts.search !== false && !earlierRunDied && !(await searchedRecently(userId, db, now))) {
       try {
-        const deadline = Date.now() + INLINE_SEARCH_BUDGET_MS;
-        searchStatus = (await (opts.runSearch ?? runJobSearch)(userId, { trigger: "cron", db, deadline })).status;
+        searchStatus = (await (opts.runSearch ?? runJobSearch)(userId, { trigger: "cron", db, deadline: searchDeadline() })).status;
       } catch (err) {
         // Still email whatever matches exist from earlier searches.
         console.error("Morning search failed", err);
@@ -334,10 +366,11 @@ export async function runDigestForUser(userId: string, opts: DigestOptions = {})
       now,
       followUps.map((f) => toDigestFollowUp(f, now)),
     );
-    const deliverAt = digestDeliveryTime(now);
+    const deliverAt = canSchedule ? digestDeliveryTime(now) : null;
     let result: SendResult;
     try {
-      // Same key all day: if a run is cut off after Resend accepted the email, the retry can't send it twice.
+      // Same key all day: if a run is cut off after Resend accepted the email, the retry can't send it
+      // twice. Gmail (SMTP) has no such key, so for it the day is finished right after the send below.
       result = await (opts.send ?? sendEmail)({
         to: row.email,
         ...message,

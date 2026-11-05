@@ -1,3 +1,4 @@
+import { isResendTestSender, pickEmailChannel, type EmailSettings } from "@/lib/email/channel";
 /**
  * Central, typed access to environment variables. Nothing here has a default
  * that looks like a real secret: when a value is missing the related feature
@@ -54,6 +55,14 @@ export const env = {
   get emailFrom() {
     return read("EMAIL_FROM");
   },
+  /** Sends the morning email through this Gmail account (with GMAIL_APP_PASSWORD); takes priority over Resend. */
+  get gmailUser() {
+    return read("GMAIL_USER");
+  },
+  /** A Google app password for GMAIL_USER (needs 2-Step Verification), not the account password. */
+  get gmailAppPassword() {
+    return read("GMAIL_APP_PASSWORD");
+  },
   get cronSecret() {
     return read("CRON_SECRET");
   },
@@ -100,6 +109,26 @@ export function isEmailAllowed(email: string | null | undefined): boolean {
 }
 
 export type FeatureStatus = { key: string; label: string; configured: boolean; note: string };
+
+/** The current email settings, for pickEmailChannel. */
+export function emailSettings(): EmailSettings {
+  return { gmailUser: env.gmailUser, gmailAppPassword: env.gmailAppPassword, resendApiKey: env.resendApiKey, emailFrom: env.emailFrom };
+}
+
+/** Which provider sends the morning email, and the catch with Resend's shared test sender. */
+function emailStatus(): FeatureStatus {
+  const channel = pickEmailChannel(emailSettings());
+  if (channel === "gmail") return { key: "email", label: "Email", configured: true, note: "Sent from Gmail, between 7 and 8 AM Central" };
+  if (channel === "console") return { key: "email", label: "Email", configured: false, note: "Emails are logged to the server console" };
+  return {
+    key: "email",
+    label: "Email",
+    configured: true,
+    note: isResendTestSender(env.emailFrom)
+      ? "Sent with Resend's test sender (onboarding@resend.dev), which only delivers to the Resend account's own address: other users get nothing. Set GMAIL_USER and GMAIL_APP_PASSWORD, or verify a domain in Resend."
+      : "Sent with Resend, at 7:00 AM Central",
+  };
+}
 
 /** Used by the settings page to show what is live vs mocked. */
 export function featureStatus(): FeatureStatus[] {
@@ -150,12 +179,7 @@ export function featureStatus(): FeatureStatus[] {
           ? "Enabled"
           : "Skipped (no USAJOBS_API_KEY / USAJOBS_USER_AGENT)",
     },
-    {
-      key: "resend",
-      label: "Email (Resend)",
-      configured: Boolean(env.resendApiKey && env.emailFrom),
-      note: env.resendApiKey && env.emailFrom ? "Enabled" : "Emails are logged to the server console",
-    },
+    emailStatus(),
     {
       key: "cron",
       label: "Cron secret",
