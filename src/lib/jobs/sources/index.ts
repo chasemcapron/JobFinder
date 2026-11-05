@@ -1,4 +1,5 @@
 import type { AtsType, Profile, SourceRunResult, TargetCompanyRow } from "@/db/schema";
+import { env } from "@/lib/env";
 import { buildSearchQueries } from "../queries";
 import type { FetchContext, NormalizedJob, SourceTask } from "../types";
 import { adzunaConfigured, fetchAdzuna, MAX_ADZUNA_QUERIES } from "./adzuna";
@@ -20,10 +21,6 @@ const MAX_USAJOBS_QUERIES = 2;
  */
 export const MAX_WORKDAY_SITES_PER_SEARCH = 12;
 
-export function mockJobsForced() {
-  return process.env.MOCK_JOBS === "true";
-}
-
 /**
  * At most `max` items. With more, a window that moves by `max` each day, so every item takes its
  * turn every few days (jobs count as closed only after 21 days unseen).
@@ -40,7 +37,7 @@ export function takeTurns<T>(items: T[], max: number, now: Date): T[] {
  * Vercel's 60 s; with more, they take turns day by day.
  */
 export function buildSourceTasks(profile: Profile, targets: Pick<TargetCompanyRow, "ats" | "slug">[], now = new Date()): SourceTask[] {
-  if (mockJobsForced()) return [{ label: "sample data", source: "mock", run: async () => mockJobs() }];
+  if (env.mockJobs) return [{ label: "sample data", source: "mock", run: async () => mockJobs() }];
   const capped: Partial<Record<AtsType, number>> = { workday: MAX_WORKDAY_SITES_PER_SEARCH, smartrecruiters: MAX_SMARTRECRUITERS_PER_SEARCH };
   const searched = [
     ...targets.filter((t) => capped[t.ats] === undefined),
@@ -88,7 +85,7 @@ export function buildSourceTasks(profile: Profile, targets: Pick<TargetCompanyRo
 
   // Nothing real to query: locally, fall back to sample data so the app still does something.
   // Never in production, where made-up jobs would mix into the real user's matches.
-  if (tasks.length === 0 && process.env.NODE_ENV !== "production") {
+  if (tasks.length === 0 && !env.isProduction) {
     tasks.push({ label: "sample data", source: "mock", run: async () => mockJobs() });
   }
   return tasks;

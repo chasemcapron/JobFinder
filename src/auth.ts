@@ -26,6 +26,8 @@ const DEV_ONLY_SECRET = "dev-only-insecure-secret-set-AUTH_SECRET";
 export const { handlers, auth, signIn, signOut } = NextAuth(async () => {
   const db = await getDb();
 
+  // No email-link (Nodemailer) provider: package.json overrides Auth.js's nodemailer peer (^7 || ^8) with
+  // the app's nodemailer 10 for its security fixes. Adding that provider means testing it against 10 first.
   const providers: NextAuthConfig["providers"] = [];
   if (env.googleConfigured) {
     providers.push(

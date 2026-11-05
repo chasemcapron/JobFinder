@@ -83,6 +83,18 @@ export const env = {
   get isProduction() {
     return process.env.NODE_ENV === "production";
   },
+  /** Local development: sample postings instead of live sources. */
+  get mockJobs() {
+    return read("MOCK_JOBS") === "true";
+  },
+  /** Where the embedded database (PGlite, used without DATABASE_URL) keeps its files. */
+  get pgliteDataDir() {
+    return read("PGLITE_DATA_DIR");
+  },
+  /** Escape hatch: allow the embedded database in a production build (never on Vercel). */
+  get allowPgliteInProduction() {
+    return read("ALLOW_PGLITE_IN_PRODUCTION") === "true";
+  },
   /** The demo sign-in exists so the app is usable before Google OAuth is set up. */
   get demoLoginEnabled() {
     if (read("ENABLE_DEMO_LOGIN") === "true") return true;
@@ -137,7 +149,7 @@ export function featureStatus(): FeatureStatus[] {
       key: "database",
       label: "Database",
       configured: Boolean(env.databaseUrl),
-      note: env.databaseUrl ? "Postgres via DATABASE_URL" : "Local embedded Postgres (PGlite) in .data/",
+      note: env.databaseUrl ? "Postgres via DATABASE_URL" : `Local embedded Postgres (PGlite) in ${env.pgliteDataDir ?? ".data/pglite"}`,
     },
     {
       key: "google",
