@@ -9,6 +9,7 @@ import { AiRequestError } from "@/lib/ai/gemini";
 import { withAllowanceOr } from "@/lib/ai/limits";
 import { aiProvider } from "@/lib/ai/provider";
 import { coerceExperienceLevel } from "@/lib/jobs/experience";
+import { ensureStarterCompanies } from "@/lib/jobs/recommend-companies";
 import { rescoreStoredMatches } from "@/lib/jobs/search";
 import { parseList } from "@/lib/parse-input";
 import { getUser } from "@/lib/profile";
@@ -101,10 +102,14 @@ export async function saveResumeProfile(_prev: SaveState, formData: FormData): P
     await commitResumeFile(userId, { resumeTextChanged, fileName });
     // Re-rank stored matches now so the Jobs page reflects the new profile right away.
     const { saved, removed } = await rescoreStoredMatches(userId, db);
+    // A first resume (or an account with no employers yet) gets employers hiring for these titles.
+    const starters = await ensureStarterCompanies(userId, db).catch((err) => (console.error("Starter employers failed", err), 0));
     revalidatePath("/resume");
     revalidatePath("/jobs");
+    revalidatePath("/settings");
     const ranked = saved || removed ? ` Re-ranked ${saved.toLocaleString()} saved job${saved === 1 ? "" : "s"}${removed ? ` and hid ${removed.toLocaleString()} that no longer fit` : ""}.` : "";
-    return { ok: true, message: `Profile saved.${ranked} Click Refresh jobs to search again${aiProvider() ? " and get AI scores" : ""}.` };
+    const added = starters ? ` Added ${starters} employer${starters === 1 ? "" : "s"} with open roles for your titles (Settings → Target companies).` : "";
+    return { ok: true, message: `Profile saved.${ranked}${added} Click Refresh jobs to search again${aiProvider() ? " and get AI scores" : ""}.` };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : "Couldn't save." };
   }

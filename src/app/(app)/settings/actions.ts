@@ -23,6 +23,7 @@ import { aiProvider } from "@/lib/ai/provider";
 import { suggestCompanies, type CompanySuggestion } from "@/lib/ai/suggest-companies";
 import { inspectSheet, SHEET_FIELD_LABELS } from "@/lib/google/sheets";
 import { getGoogleAccessToken } from "@/lib/google/tokens";
+import { recommendCompanies } from "@/lib/jobs/recommend-companies";
 import { rescoreStoredMatches } from "@/lib/jobs/search";
 import { parseWorkdaySlug, probeWorkdaySite, workdayCompanyName, workdaySiteUrl } from "@/lib/jobs/sources/workday";
 import { findWorkdayEmployer } from "@/lib/jobs/sources/workday-employers";
@@ -257,6 +258,31 @@ export async function addTestedWorkdaySite(slug: string): Promise<ActionState> {
     await db.insert(targetCompanies).values({ userId, ats: "workday", slug: parsed.slug }).onConflictDoNothing();
     revalidatePath("/settings");
     return { ok: true, message: `Added ${workdayCompanyName(parseWorkdaySlug(parsed.slug))}.` };
+  } catch (err) {
+    return errorState(err);
+  }
+}
+
+/**
+ * Adds employers from "Recommended for you". Only ones on the user's current recommendations are
+ * accepted (worked out again here), so the client can't add arbitrary boards through it.
+ */
+export async function addRecommendedCompanies(keys: string[]): Promise<ActionState> {
+  try {
+    const userId = await userIdOrThrow();
+    const db = await getDb();
+    const wanted = new Set(keys.slice(0, 100));
+    const picked = (await recommendCompanies(userId, db, { limit: 100 })).filter((r) => wanted.has(`${r.ats}:${r.slug}`));
+    if (picked.length === 0) {
+      return { ok: false, message: "Nothing added: they're already on your list, or their open roles closed since the page loaded. Reload to see the current list." };
+    }
+    await db
+      .insert(targetCompanies)
+      .values(picked.map((r) => ({ userId, ats: r.ats, slug: r.slug })))
+      .onConflictDoNothing();
+    revalidatePath("/settings");
+    const names = picked.map((r) => r.name);
+    return { ok: true, message: `Added ${names.length > 3 ? `${names.length} employers` : names.join(", ")}. Refresh jobs to search them.` };
   } catch (err) {
     return errorState(err);
   }

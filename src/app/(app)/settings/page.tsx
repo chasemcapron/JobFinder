@@ -12,12 +12,14 @@ import { formatDateTime } from "@/lib/format";
 import { lastSearchRun } from "@/lib/jobs/results";
 import { MAX_WORKDAY_SITES_PER_SEARCH } from "@/lib/jobs/sources";
 import { findWorkdayEmployer } from "@/lib/jobs/sources/workday-employers";
+import { recommendCompanies } from "@/lib/jobs/recommend-companies";
 import { listTargetCompanies, listWorkdayCrawls } from "@/lib/profile";
 import { requireUser } from "@/lib/session";
 import { addTargetCompany, savePreferences, saveSheetSettings } from "./actions";
 import { CompanySuggestions } from "./company-suggestions";
 import { DeleteAccount } from "./delete-account";
 import { HiddenCompanies } from "./hidden-companies";
+import { RecommendedCompanies } from "./recommended-companies";
 import { SheetTest } from "./sheet-test";
 import { canScheduleEmail } from "@/lib/email/send";
 import { TargetCompanyRow } from "./target-company-row";
@@ -45,12 +47,13 @@ const SECTIONS = [
 
 export default async function SettingsPage() {
   const { user, profile } = await requireUser();
-  const [companies, lastRun, morning, crawlRows, usage] = await Promise.all([
+  const [companies, lastRun, morning, crawlRows, usage, recommended] = await Promise.all([
     listTargetCompanies(profile.userId),
     lastSearchRun(profile.userId),
     loadMorningRunStatus(profile.userId),
     listWorkdayCrawls(profile.userId),
     usageToday({ userId: profile.userId, email: user.email }),
+    recommendCompanies(profile.userId, undefined, { limit: 15 }),
   ]);
   const lastResults = new Map((lastRun?.sourceResults ?? []).map((r) => [r.source, r]));
   // Only recent crawls are listed; for the rest the search's own result shows.
@@ -188,6 +191,10 @@ export default async function SettingsPage() {
               (<code>….myworkdayjobs.com/…</code>) or pick from the checked list below; it&apos;s searched for your top target titles.
             </>
           }
+        />
+        <RecommendedCompanies
+          items={recommended}
+          pickedLabel={profile.starterCompaniesAt ? formatDateTime(profile.starterCompaniesAt) : null}
         />
         {ai ? <CompanySuggestions aiLabel={ai} /> : null}
         <WorkdayEmployers

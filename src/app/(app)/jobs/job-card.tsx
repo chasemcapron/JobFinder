@@ -8,18 +8,8 @@ import { isNewMatch, type RoleMatch } from "@/lib/jobs/filters";
 import { formatLocation } from "@/lib/jobs/location";
 import type { MatchResult } from "@/lib/jobs/results";
 import { adzunaHomepage } from "@/lib/jobs/sources/adzuna";
+import { SOURCE_LABELS } from "@/lib/jobs/source-labels";
 import { DismissibleJob, DismissMenu } from "./dismiss";
-
-const SOURCE_LABELS: Record<string, string> = {
-  greenhouse: "Greenhouse",
-  lever: "Lever",
-  ashby: "Ashby",
-  workday: "Workday",
-  smartrecruiters: "SmartRecruiters",
-  adzuna: "Adzuna",
-  usajobs: "USAJobs",
-  mock: "Sample",
-};
 
 // Sources sometimes send a placeholder instead of a location; showing "N/A" adds nothing.
 const PLACEHOLDER_LOCATION = /^(n\/?a|none|tbd|unknown|-+)$/i;
@@ -134,7 +124,7 @@ export function JobCard({
         Jobs by Adzuna
       </a>
     ) : (
-      <SourceBadge source={job.source}>via {SOURCE_LABELS[job.source] ?? job.source}</SourceBadge>
+      <SourceBadge source={job.source}>via {SOURCE_LABELS[job.source]}</SourceBadge>
     );
 
   return (

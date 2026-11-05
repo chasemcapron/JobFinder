@@ -101,6 +101,8 @@ export const profiles = pgTable("profiles", {
   hiddenCompanies: jsonb("hidden_companies").$type<string[]>().notNull().default([]),
   /** When the user closed the setup guide on the Jobs page before finishing it. */
   setupDismissedAt: timestamp("setup_dismissed_at", { mode: "date" }),
+  /** When the starter employers were picked from open roles (recommend-companies.ts); set once. */
+  starterCompaniesAt: timestamp("starter_companies_at", { mode: "date" }),
   // Preferences
   searchKeywords: jsonb("search_keywords").$type<string[]>().notNull().default([]),
   preferredLocations: jsonb("preferred_locations").$type<string[]>().notNull().default([]),

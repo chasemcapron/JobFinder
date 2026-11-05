@@ -3,20 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useTransition, type FormEvent } from "react";
 import { Button, HIDE_BELOW_SCORE, inputClass, Label, selectClass } from "@/components/ui";
-import { EXPERIENCE_LEVELS } from "@/db/schema";
+import { EXPERIENCE_LEVELS, JOB_SOURCES } from "@/db/schema";
 import { EXPERIENCE_LABELS, LEVEL_UNSTATED } from "@/lib/jobs/experience";
 import type { FacetOption, JobFilters } from "@/lib/jobs/filters";
+import { SOURCE_LABELS } from "@/lib/jobs/source-labels";
 
-const SOURCE_OPTIONS = [
-  ["greenhouse", "Greenhouse"],
-  ["lever", "Lever"],
-  ["ashby", "Ashby"],
-  ["workday", "Workday"],
-  ["smartrecruiters", "SmartRecruiters"],
-  ["adzuna", "Adzuna"],
-  ["usajobs", "USAJobs"],
-  ["mock", "Sample data"],
-] as const;
+const SOURCE_OPTIONS = JOB_SOURCES.map((s) => [s, SOURCE_LABELS[s]] as const);
 
 const POSTED_OPTIONS = [
   ["any", "Any time"],
