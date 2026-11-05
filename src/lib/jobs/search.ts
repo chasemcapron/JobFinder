@@ -13,6 +13,7 @@ import { STALE_AFTER_DAYS } from "./results";
 import { buildSourceTasks, runSourceTasks } from "./sources";
 import { CRAWLED_RECENTLY_MS } from "./sources/workday-crawl";
 import type { NormalizedJob, SourceTask } from "./types";
+import { ensureStarterCompanies } from "./recommend-companies";
 
 export type RunSummary = {
   runId: string;
@@ -195,6 +196,8 @@ export async function runJobSearch(userId: string, opts: Options): Promise<RunSu
   const started = Date.now();
   const db = opts.db ?? (await getDb());
   const profile = await ensureProfile(userId, db);
+  // An account without employers of its own gets a starting list first (once), so this search uses it.
+  await ensureStarterCompanies(userId, db).catch((err) => console.error("Starter employers failed", err));
   // Workday sites the nightly crawler covered are left to it; the rest (or all, if it stopped) are searched here.
   const crawled = await recentlyCrawled(userId, db, new Date(started));
   const targets = (await listEnabledTargetCompanies(userId, db)).filter((t) => !(t.ats === "workday" && crawled.has(t.slug)));

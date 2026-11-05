@@ -3,7 +3,10 @@ import { getDb, type Db } from "@/db";
 import { profiles, targetCompanies, users, workdayCrawlState, type AtsType, type Profile } from "@/db/schema";
 import { CRAWLED_RECENTLY_MS } from "@/lib/jobs/sources/workday-crawl";
 
-/** Example target companies (all verified to have live public job boards). Users can edit the list. */
+/**
+ * The example companies new accounts used to start with (until 2026-11-05). They're not counted as the
+ * user's own choice, and are removed when an account gets its starter employers (recommend-companies.ts).
+ */
 export const SEED_TARGET_COMPANIES: { ats: AtsType; slug: string }[] = [
   { ats: "greenhouse", slug: "stripe" },
   { ats: "greenhouse", slug: "figma" },
@@ -12,19 +15,13 @@ export const SEED_TARGET_COMPANIES: { ats: AtsType; slug: string }[] = [
   { ats: "ashby", slug: "linear" },
 ];
 
-/** Creates the profile (and seeds target companies) the first time a user is seen. */
+/** Creates the profile the first time a user is seen. Employers come later, from the resume (ensureStarterCompanies). */
 export async function ensureProfile(userId: string, db?: Db): Promise<Profile> {
   db ??= await getDb();
   const existing = await db.query.profiles.findFirst({ where: eq(profiles.userId, userId) });
   if (existing) return existing;
   const [created] = await db.insert(profiles).values({ userId }).onConflictDoNothing().returning();
-  if (created) {
-    await db
-      .insert(targetCompanies)
-      .values(SEED_TARGET_COMPANIES.map((c) => ({ ...c, userId })))
-      .onConflictDoNothing();
-    return created;
-  }
+  if (created) return created;
   // Lost a race with a concurrent request; read the winner.
   const row = await db.query.profiles.findFirst({ where: eq(profiles.userId, userId) });
   if (!row) throw new Error("Failed to create profile");

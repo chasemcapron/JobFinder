@@ -1,0 +1,1 @@
+ALTER TABLE "profiles" ADD COLUMN "starter_companies_at" timestamp;

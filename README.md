@@ -33,7 +33,7 @@ With no `.env.local` at all:
 | Database | An embedded Postgres (PGlite) is created in `.data/` and migrated automatically |
 | Sign-in | A local demo account (dev only) |
 | Resume parsing / scoring | Built-in keyword extractor and keyword scoring instead of Claude |
-| Greenhouse / Lever / Ashby / Workday / SmartRecruiters | **Live**, no keys needed (5 example companies are pre-seeded) |
+| Greenhouse / Lever / Ashby / Workday / SmartRecruiters | **Live**, no keys needed (employers are picked from your resume once there's something to pick from; locally, with none, Refresh uses sample jobs) |
 | Adzuna / USAJobs | Skipped until keys are set |
 | Google Sheets | Applications are saved in the app, marked "Not synced" |
 | Email | The digest is printed to the server console |
@@ -120,7 +120,11 @@ Sign in with Google. The consent screen will warn that the app is unverified (ex
 
 ## Target companies
 
-Greenhouse, Lever, Ashby, Workday and SmartRecruiters are queried per company. In Settings → Target companies, add `ats:slug` or paste a board URL:
+Greenhouse, Lever, Ashby, Workday and SmartRecruiters are queried per company.
+
+**Starter employers:** new accounts start with none. The first time an account has target titles and no employers of its own (when the resume is saved, or at its next search), the app adds up to 12 employers with open US roles that fit: titles, level, excluded words, places and remote preference, hidden companies and the military setting. They come from postings the app has already stored from everyone's searches and the nightly Workday crawl, so there's no AI call and no fetching. It happens once; Settings → Target companies → **Recommended for you** lists the same ranking afterwards, with Add buttons. Accounts that still had the five old example companies (Stripe, Figma, Spotify, Ramp, Linear) lose them then.
+
+In Settings → Target companies, add `ats:slug` or paste a board URL:
 
 | ATS | Board URL looks like | Entry |
 | --- | --- | --- |

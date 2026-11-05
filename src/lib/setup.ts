@@ -27,7 +27,7 @@ export function setupSteps(p: SetupInput): SetupStep[] {
     {
       id: "companies",
       label: "Add employers to search",
-      hint: "Pick from the Workday list or let the AI suggest some.",
+      hint: "Saving your resume adds employers hiring for your titles; add more under Recommended for you.",
       href: "/settings#companies",
       done: p.enabledCompanies > 0,
     },

@@ -7,7 +7,7 @@ import { listMatches } from "@/lib/jobs/results";
 import { rescoreStoredMatches, runJobSearch, scoreBacklog, usersDueForSearch } from "@/lib/jobs/search";
 import type { SourceTask } from "@/lib/jobs/types";
 import { overallScore } from "@/lib/jobs/evaluation";
-import { ensureProfile, SEED_TARGET_COMPANIES } from "@/lib/profile";
+import { ensureProfile } from "@/lib/profile";
 
 let db: Db;
 let userId: string;
@@ -30,14 +30,6 @@ beforeEach(async () => {
 
 const sampleTask: SourceTask = { label: "sample", source: "mock", run: async () => mockJobs() };
 const brokenTask: SourceTask = { label: "lever:broken", source: "lever", run: async () => Promise.reject(new Error("HTTP 500")) };
-
-describe("ensureProfile", () => {
-  it("seeds target companies once", async () => {
-    await ensureProfile(userId, db);
-    const rows = await db.select().from(schema.targetCompanies).where(eq(schema.targetCompanies.userId, userId));
-    expect(rows).toHaveLength(SEED_TARGET_COMPANIES.length);
-  });
-});
 
 describe("usersDueForSearch", () => {
   it("skips users searched in the last 12 hours and puts the least recently searched first", async () => {
