@@ -472,7 +472,7 @@ export const emailLog = pgTable(
       .notNull()
       .references(() => jobs.id, { onDelete: "cascade" }),
     sentAt: timestamp("sent_at", { mode: "date" }).notNull().defaultNow(),
-    /** "resend" or "console" (mock mode) */
+    /** "gmail", "resend" or "console" (mock mode) */
     channel: text("channel").notNull(),
   },
   (t) => [uniqueIndex("email_log_user_job_idx").on(t.userId, t.jobId)],

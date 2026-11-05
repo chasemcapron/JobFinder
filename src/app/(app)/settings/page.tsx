@@ -19,6 +19,7 @@ import { CompanySuggestions } from "./company-suggestions";
 import { DeleteAccount } from "./delete-account";
 import { HiddenCompanies } from "./hidden-companies";
 import { SheetTest } from "./sheet-test";
+import { canScheduleEmail } from "@/lib/email/send";
 import { TargetCompanyRow } from "./target-company-row";
 import { WorkdayEmployers } from "./workday-employers";
 import { WorkdayTest } from "./workday-test";
@@ -164,7 +165,7 @@ export default async function SettingsPage() {
 
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" name="emailEnabled" defaultChecked={profile.emailEnabled} className="size-4 accent-accent" />
-            Email me the top new matches every morning (7:00 AM Central)
+            Email me the top new matches every morning ({canScheduleEmail() ? "7:00 AM Central" : "7-8 AM Central"})
           </label>
           <p className="-mt-2 text-xs text-muted">
             Up to 10 matches scoring 50+ that haven&apos;t been emailed or applied to, plus a one-time reminder for applications

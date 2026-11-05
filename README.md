@@ -63,7 +63,8 @@ Copy `.env.example` to `.env.local` and fill in what you have. Nothing is requir
 | `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` | Adzuna source (**paid**: leave unset to keep the app free) | https://developer.adzuna.com → Register → your app's ID and key |
 | `USAJOBS_API_KEY` | USAJobs source | https://developer.usajobs.gov/apirequest/ (key arrives by email) |
 | `USAJOBS_USER_AGENT` | USAJobs source | The email address you registered with |
-| `RESEND_API_KEY` | Sending the morning email | https://resend.com → API Keys |
+| `GMAIL_USER`, `GMAIL_APP_PASSWORD` | Sending the morning email (free; used over Resend when set) | A Gmail address and a Google **app password** for it: Google Account → Security → 2-Step Verification (must be on) → App passwords. Recipients see this address as the sender |
+| `RESEND_API_KEY` | Sending the morning email (alternative to Gmail) | https://resend.com → API Keys |
 | `EMAIL_FROM` | Sending the morning email | A sender on a domain verified in Resend, e.g. `Job Finder <jobs@yourdomain.com>` |
 | `CRON_SECRET` | Morning cron | Any long random string (`openssl rand -hex 32`) |
 | `APP_URL` | Optional | Base URL for links in emails. Defaults to the Vercel production URL |
@@ -163,7 +164,7 @@ Workday URLs can't be guessed, so Settings → Target companies has a **Workday 
 | 07:00, 08:00, 09:00 | `/api/cron/search` | Searches every source and scores matches (the slow, Gemini-using part), then prunes jobs unseen for 60 days and search runs older than 90. That's 2-4 AM Central in summer. A search takes ~40 s of the 60 s limit, so each slot reaches about one user: it takes the users not searched in the last 12 hours, least recently searched first. With more than three users, the ones a morning missed go first the next day. A user whose search failed gets one from the morning email run itself. |
 | 05:00 (GitHub Actions) | `scripts/crawl-workday.ts` | The nightly Workday crawl (see below); not a Vercel cron. Two hours before the first search slot, since GitHub often starts scheduled runs late. |
 | 10:00 | `/api/cron/score` | Has the AI evaluate up to 80 stored matches that lack a current evaluation (after a profile change, or ones the search's cap didn't reach), with no fetching. Skips a user whose search is still running. One user can take the whole run, so it starts with a different user each day. Does nothing without `GEMINI_API_KEY`. |
-| 11:00, 12:00, 13:00, 14:00 | `/api/cron/morning` | The invocation that's 6 AM in America/Chicago builds the email and schedules it with Resend for **7:00 AM sharp**; the ones that are 7 and 8 AM retry a run that didn't finish, sending right away. Vercel Cron has no daylight saving, so which UTC hours those are changes twice a year (the fourth cron covers both seasons). |
+| 11:00, 12:00, 13:00, 14:00 | `/api/cron/morning` | With Resend, the invocation that's 6 AM in America/Chicago builds the email and schedules it for **7:00 AM sharp**; the ones that are 7 and 8 AM retry a run that didn't finish, sending right away. With Gmail, which can't schedule, the 6 AM one only runs any search that's due, the 7 AM one sends (so it arrives between 7:00 and 7:59), and 8 AM retries. Vercel Cron has no daylight saving, so which UTC hours those are changes twice a year (the fourth cron covers both seasons). |
 
 Why schedule instead of sending at 7: a Hobby cron fires at some minute within its hour (it was 7:31), and Resend's scheduled sending (free) delivers on the minute. The email only searches itself when the early search didn't succeed. A run that Vercel cuts off at 60 s is retried at 7 or 8 AM, and Resend's idempotency key keeps a retry from sending the same email twice.
 
@@ -181,7 +182,7 @@ To preview the email without sending: Settings → **Preview the email** (or `/a
 
 The email also reminds you, once, about applications still marked **Applied** 7 to 30 days later, with a link to update their status. On days with no new matches but a reminder due, it sends just the reminder.
 
-**Email delivery:** in Resend, verify a domain you own and set `EMAIL_FROM` to an address on it. For a quick test without a domain, `EMAIL_FROM="Job Finder <onboarding@resend.dev>"` works, but Resend only delivers it to the email address of your Resend account. The digest goes to the email of your Google account.
+**Email delivery:** the free way is Gmail: set `GMAIL_USER` and `GMAIL_APP_PASSWORD` (an app password, not your account password), and the email goes out from that address to everyone, up to Gmail's 500 a day. With Resend instead, verify a domain you own and set `EMAIL_FROM` to an address on it. Resend's test sender `onboarding@resend.dev` only delivers to the email of your Resend account, and Settings → Integrations warns when it's in use. Each digest goes to the email of the person's Google account.
 
 ### Inviting someone else
 
@@ -189,7 +190,7 @@ Matching runs entirely on each person's own profile (resume, target titles, seni
 
 1. Add their Google email to `ALLOWED_EMAILS` in Vercel (comma-separated) and redeploy.
 2. If the Google OAuth consent screen is still in **Testing**, add them under **Test users** (Google Cloud console → APIs & Services → OAuth consent screen).
-3. For the morning email to reach them, `EMAIL_FROM` must be on a domain verified in Resend: `onboarding@resend.dev` only delivers to you.
+3. For the morning email to reach them, send it with Gmail (`GMAIL_USER`, `GMAIL_APP_PASSWORD`) or from a domain verified in Resend: `onboarding@resend.dev` only delivers to you.
 4. They sign in, upload a resume, check their titles and seniority, and add employers in Settings (the Workday list, or **Suggest companies**).
 
 Limits: US jobs only. Everyone shares the one free Gemini key's daily quota, so each invited user has daily limits on the AI actions they start: 10 tailored resumes, 10 cover letters, 25 fit checks, 6 AI-scored Refreshes, 5 company suggestions and 5 AI resume readings, resetting at midnight Central (Settings → Integrations shows their use). Past a limit, Refresh still fetches and keyword-ranks new jobs and a resume upload uses the built-in extractor. The owner, the **first** address in `ALLOWED_EMAILS`, has none; with no `ALLOWED_EMAILS` (local development) nobody does. Scheduled searches, the nightly crawl and cached fit checks never count, and a use is given back when the AI didn't do the work (failed, fell back, or found nothing). The keyword matcher knows related titles best in tech fields (security, data, IT, business analysis); for other fields it relates the words of the person's own target titles to each other, and the AI evaluation does the rest.
