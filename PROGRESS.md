@@ -53,18 +53,19 @@ Checked in a local browser (demo account, sample jobs, throwaway database): the 
 ## Not verified (needs keys or a deploy)
 
 - **Tailor page in a browser**: the steps, downloads and fact gate were run against the real resume from a script, and the PDF and Word files were checked, but nobody has clicked through `/jobs/[id]/tailor` yet. Needs migration 0009 (`npm run db:migrate`).
-- **Workday crawl on GitHub Actions**: run locally only (5 sites). Whether Cloudflare lets GitHub's runner IPs through shows on the first run from the Actions tab after the branch is merged to `main`.
-- **Three search slots and the daily rotation**: unit-tested; only one user exists, so the multi-user rotation hasn't happened for real.
-- **The morning email's liveness check**: unit-tested; not yet seen in a real send.
+- ~~**Workday crawl on GitHub Actions**~~: first scheduled run 2026-11-05 succeeded in 25 minutes. GitHub started it at 12:00 UTC instead of 04:00, so expect scheduled runs to drift.
+- ~~**Three search slots and the daily rotation**~~: seen with three users on 2026-11-05 (07:11 and 08:22 UTC slots; the third user, refreshed late the night before, was searched by the email run instead).
+- ~~**The morning email's liveness check**~~: runs in every real send since 2026-11-04.
+- **Morning email through Gmail** (2026-11-05): replaces Resend's test sender, which only ever reached the owner (the invited users never got an email) and whose scheduled sends often ended "failed". Unit-tested; the first real send is the next 7 AM run after `GMAIL_USER` and `GMAIL_APP_PASSWORD` are set in Vercel. `scripts/check-morning-run.ts` shows each user's run.
 
 - ~~**Database on Neon**~~: migrated and in use locally since 2026-10-19.
 
 - **Claude calls** (resume extraction, match scoring): written per the current SDK and type-checked, but never run against the real API. Everything tested so far used the built-in heuristics. Intentionally unused for now: the app is meant to run free, so no API key is set.
 - ~~**Google sign-in and Sheets sync**~~: verified 2026-10-19 against a real tracker sheet (found and fixed: pre-filled Status columns pushed rows far down).
-- ~~**Resend delivery**~~: real digest sent 2026-10-19 via Resend (10 jobs) from `onboarding@resend.dev`.
+- ~~**Resend delivery**~~: real digest sent 2026-10-19 via Resend (10 jobs) from `onboarding@resend.dev`, which only delivers to the Resend account's own address (see Gmail above).
 - ~~**USAJobs**~~: verified live 2026-10-20 (4 searches: every posting parsed, 100% US with salary and posted date; fixes for remote postings, overseas postings, non-GS grades and who-may-apply filtering).
 - **Adzuna**: the adapter follows the official docs, with a fixture built from the documented shape; only bad-credential (401) responses were checked live. It's paid, so it stays unset.
-- **Vercel itself** (cron registration, function limits): nothing was deployed.
+- ~~**Vercel itself**~~: deployed; the crons run daily (search, score and morning runs seen in the database).
 
 ## Morning checklist
 
@@ -77,16 +78,16 @@ All 8 phases. The app runs locally with zero configuration: embedded Postgres, d
 | --- | --- | --- |
 | Sign-in | Demo account (dev only) | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` |
 | Google Sheets sync | Applications saved, marked "Not synced" | Google OAuth + a sheet set in Settings |
-| Resume parsing + scoring | Built-in keyword extractor/scorer | `ANTHROPIC_API_KEY` |
+| Resume parsing + scoring | Built-in keyword extractor/scorer | `GEMINI_API_KEY` (free) |
 | Adzuna / USAJobs | Skipped | `ADZUNA_APP_ID` + `ADZUNA_APP_KEY`; `USAJOBS_API_KEY` + `USAJOBS_USER_AGENT` |
-| Morning email | Printed to the server console | `RESEND_API_KEY` + `EMAIL_FROM` |
+| Morning email | Printed to the server console | `GMAIL_USER` + `GMAIL_APP_PASSWORD` (free), or `RESEND_API_KEY` + `EMAIL_FROM` |
 | Database | Embedded PGlite in `.data/` (local only) | `DATABASE_URL` |
 
 ### Accounts and keys to set up
 1. **Neon** (or Supabase): create a project and copy the connection string → `DATABASE_URL`.
 2. **Google Cloud**: new project → enable the *Google Sheets API* → OAuth consent screen (External, **Testing**, add yourself as a test user, add the `spreadsheets` scope) → OAuth client (Web application) with redirect URIs `http://localhost:3000/api/auth/callback/google` and `https://<vercel-domain>/api/auth/callback/google` → `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`. In Testing mode Google refresh tokens expire after 7 days, so expect to sign in again about weekly for Sheets sync.
-3. **Anthropic**: console.anthropic.com → API key → `ANTHROPIC_API_KEY`. The default model is `claude-opus-5-5`; set `ANTHROPIC_MODEL` to use a cheaper one. Cost is capped by `MAX_AI_SCORES_PER_RUN` (default 20 jobs per search).
-4. **Resend**: API key → `RESEND_API_KEY`; verify a domain and set `EMAIL_FROM` (or use `onboarding@resend.dev`, which only delivers to your Resend account's email).
+3. **Gemini** (free): aistudio.google.com → API key → `GEMINI_API_KEY`. Anthropic (`ANTHROPIC_API_KEY`) also works but is paid, so it stays unset.
+4. **Email**: a Gmail address and an app password (2-Step Verification on) → `GMAIL_USER`, `GMAIL_APP_PASSWORD`. Or Resend with a verified domain → `RESEND_API_KEY`, `EMAIL_FROM` (`onboarding@resend.dev` only delivers to your Resend account's email).
 5. **Adzuna** (optional, **not free**: needs a paid plan, so leave it unset to stay free): developer.adzuna.com → app ID + key. The app makes at most 2 calls per search.
 6. **USAJobs** (optional): developer.usajobs.gov/apirequest → the key arrives by email; `USAJOBS_USER_AGENT` = that email.
 7. Generate secrets: `AUTH_SECRET` (`npx auth secret`) and `CRON_SECRET` (`openssl rand -hex 32`).
