@@ -1,4 +1,5 @@
 import type { AtsType, Profile, SourceRunResult, TargetCompanyRow } from "@/db/schema";
+import { env } from "@/lib/env";
 import { buildSearchQueries } from "../queries";
 import type { FetchContext, NormalizedJob, SourceTask } from "../types";
 import { adzunaConfigured, fetchAdzuna, MAX_ADZUNA_QUERIES } from "./adzuna";
@@ -21,7 +22,7 @@ const MAX_USAJOBS_QUERIES = 2;
 export const MAX_WORKDAY_SITES_PER_SEARCH = 12;
 
 export function mockJobsForced() {
-  return process.env.MOCK_JOBS === "true";
+  return env.mockJobs;
 }
 
 /**

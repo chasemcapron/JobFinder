@@ -70,6 +70,8 @@ Copy `.env.example` to `.env.local` and fill in what you have. Nothing is requir
 | `APP_URL` | Optional | Base URL for links in emails. Defaults to the Vercel production URL |
 | `ENABLE_DEMO_LOGIN` | Optional | `false` hides the demo sign-in; **never set `true` in production** (anyone could sign in as the demo user) |
 | `MOCK_JOBS` | Optional | `true` = sample postings instead of live sources |
+| `PGLITE_DATA_DIR` | Optional, local | Where the embedded database keeps its files without `DATABASE_URL` (default `.data/pglite`) |
+| `ALLOW_PGLITE_IN_PRODUCTION` | Optional, local | `true` lets a local production build (`next start`) use the embedded database; never set it on Vercel |
 
 Your name, email, resume, and sheet ID are never in the code; they live in the database, entered through the app.
 

@@ -35,10 +35,10 @@ async function createDb(): Promise<Db> {
     const client = postgres(url, { prepare: false, max: 5 });
     return drizzlePostgres(client, { schema });
   }
-  if (env.isProduction && process.env.ALLOW_PGLITE_IN_PRODUCTION !== "true") {
+  if (env.isProduction && !env.allowPgliteInProduction) {
     throw new Error("DATABASE_URL is not set. Add a Postgres connection string (Neon or Supabase).");
   }
-  return createPglite(process.env.PGLITE_DATA_DIR ?? path.join(process.cwd(), ".data", "pglite"));
+  return createPglite(env.pgliteDataDir ?? path.join(process.cwd(), ".data", "pglite"));
 }
 
 /** Embedded Postgres; also used by tests with dataDir "memory://". */

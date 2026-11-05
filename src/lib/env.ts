@@ -84,6 +84,18 @@ export const env = {
     return process.env.NODE_ENV === "production";
   },
   /** The demo sign-in exists so the app is usable before Google OAuth is set up. */
+  /** Local development: sample postings instead of live sources. */
+  get mockJobs() {
+    return read("MOCK_JOBS") === "true";
+  },
+  /** Where the embedded database (PGlite, used without DATABASE_URL) keeps its files. */
+  get pgliteDataDir() {
+    return read("PGLITE_DATA_DIR");
+  },
+  /** Escape hatch: allow the embedded database in a production build (never on Vercel). */
+  get allowPgliteInProduction() {
+    return read("ALLOW_PGLITE_IN_PRODUCTION") === "true";
+  },
   get demoLoginEnabled() {
     if (read("ENABLE_DEMO_LOGIN") === "true") return true;
     if (read("ENABLE_DEMO_LOGIN") === "false") return false;
