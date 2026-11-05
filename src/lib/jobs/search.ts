@@ -10,7 +10,7 @@ import { isInTargetCountry } from "./location";
 import { dedupeJobs, dedupeKey } from "./normalize";
 import { finalMatch, rankCandidates, type JobForScoring } from "./rank";
 import { STALE_AFTER_DAYS } from "./results";
-import { buildSourceTasks, mockJobsForced, runSourceTasks } from "./sources";
+import { buildSourceTasks, runSourceTasks } from "./sources";
 import { CRAWLED_RECENTLY_MS } from "./sources/workday-crawl";
 import type { NormalizedJob, SourceTask } from "./types";
 
@@ -370,7 +370,7 @@ export async function scoreAndSaveMatches(
     skipAi: hidden ? (job) => Boolean(hiddenState(job, hidden)) : undefined,
     cap: opts.maxAiScores ?? env.maxAiScoresPerRun,
     useAi: opts.useAi,
-    hideMock: env.isProduction && !mockJobsForced(),
+    hideMock: env.isProduction && !env.mockJobs,
     deadline: opts.deadline,
     resume: opts.useAi ? await redactedResume(userId, profile, db) : null,
   });

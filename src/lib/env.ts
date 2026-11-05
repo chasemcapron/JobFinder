@@ -83,7 +83,6 @@ export const env = {
   get isProduction() {
     return process.env.NODE_ENV === "production";
   },
-  /** The demo sign-in exists so the app is usable before Google OAuth is set up. */
   /** Local development: sample postings instead of live sources. */
   get mockJobs() {
     return read("MOCK_JOBS") === "true";
@@ -96,6 +95,7 @@ export const env = {
   get allowPgliteInProduction() {
     return read("ALLOW_PGLITE_IN_PRODUCTION") === "true";
   },
+  /** The demo sign-in exists so the app is usable before Google OAuth is set up. */
   get demoLoginEnabled() {
     if (read("ENABLE_DEMO_LOGIN") === "true") return true;
     if (read("ENABLE_DEMO_LOGIN") === "false") return false;
@@ -149,7 +149,7 @@ export function featureStatus(): FeatureStatus[] {
       key: "database",
       label: "Database",
       configured: Boolean(env.databaseUrl),
-      note: env.databaseUrl ? "Postgres via DATABASE_URL" : "Local embedded Postgres (PGlite) in .data/",
+      note: env.databaseUrl ? "Postgres via DATABASE_URL" : `Local embedded Postgres (PGlite) in ${env.pgliteDataDir ?? ".data/pglite"}`,
     },
     {
       key: "google",
