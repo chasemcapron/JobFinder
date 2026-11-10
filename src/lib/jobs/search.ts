@@ -188,6 +188,35 @@ export async function closeMissingPostings(db: Db, fetched: StorableJob[], now: 
 }
 
 /**
+ * closeMissingPostings for one board known by slug, for the wide sweep: matching by company name
+ * would let two boards with the same name (sibling boards, or slugs like "acme-inc" and "acme_inc")
+ * close each other's postings. Greenhouse, Lever and Ashby ids are "{slug}:{id}". `onBoard` is the
+ * board's whole current list (dedupe keys); stored postings from it not on the list are closed.
+ * An empty list closes nothing: like closeMissingPostings, an empty answer could be a hiccup.
+ */
+export async function closeMissingOnBoard(
+  db: Db,
+  board: { source: "greenhouse" | "lever" | "ashby"; slug: string },
+  onBoard: string[],
+  now: Date,
+): Promise<number> {
+  if (onBoard.length === 0) return 0;
+  const rows = await db
+    .update(jobs)
+    .set({ closedAt: now })
+    .where(
+      and(
+        eq(jobs.source, board.source),
+        sql`starts_with(${jobs.externalId}, ${`${board.slug}:`})`,
+        isNull(jobs.closedAt),
+        notInArray(jobs.dedupeKey, onBoard),
+      ),
+    )
+    .returning({ id: jobs.id });
+  return rows.length;
+}
+
+/**
  * The one job-search pipeline, shared by the "Refresh jobs" button and the morning cron:
  * fetch all sources in parallel → normalize → dedupe → keep US jobs → store → score (see
  * scoreAndSaveMatches) → save matches.

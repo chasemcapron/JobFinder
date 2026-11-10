@@ -2,7 +2,7 @@
 
 A personal web app that finds job postings matching your resume, lets you filter and track them, logs applications to your own Google Sheet, and emails you the top new matches every morning.
 
-- **Sources (JSON only, no HTML scraping):** Greenhouse, Lever, Ashby and SmartRecruiters public job board APIs and Workday career sites (per target company), plus Adzuna and USAJobs search (with API keys). Workday has no public API; the app calls the same JSON endpoints the career site's own page uses.
+- **Sources (JSON only, no HTML scraping):** Greenhouse, Lever, Ashby and SmartRecruiters public job board APIs and Workday career sites (per target company), plus Adzuna and USAJobs search (with API keys). A nightly **wide sweep** also reads every known public Greenhouse, Lever and Ashby board (~16,000 employers), not only the ones you picked. Workday has no public API; the app calls the same JSON endpoints the career site's own page uses.
 - **Matching:** your resume is parsed into skills, titles, seniority, and keywords (Claude, or a built-in extractor without a key). A cheap keyword score ranks every posting; Claude re-scores only the top candidates each run and writes a one-line reason.
 - **Tracking:** "Mark applied" saves the application and writes a row to your Google Sheet using a column mapping you control.
 - **Notes:** each application card has notes, a contact, and a next step with its day ("Next: Phone screen · Thu, Nov 12"); Interviewing cards sort by it. Notes stay in the app, not the sheet.
@@ -144,9 +144,19 @@ To check a Workday URL before adding it, use **Test a Workday site** in Settings
 
 ### Nightly Workday crawl (GitHub Actions)
 
-`.github/workflows/crawl-workday.yml` runs `scripts/crawl-workday.ts` at 04:00 UTC (and on demand from the Actions tab), with no 60-second limit. It writes to the same database, so add two **repository secrets** (Settings → Secrets and variables → Actions): `DATABASE_URL` (the Neon connection string) and `GEMINI_API_KEY`. The night is shared fairly: users go least recently crawled first, each user's crawl gets an even share of the time left after reserving what follows every user's crawl (liveness checks and up to 8 minutes of AI scoring), and the run ends within the workflow's 90 minutes, well before the 07:00 searches. Sites a short night leaves out go first the next night. Actions minutes are free on a public repository. The workflow never runs for pull requests, so forks can't read the secrets, and it prints counts only because logs on a public repo are public. GitHub pauses scheduled workflows after 60 days without repository activity; re-enable it from the Actions tab.
+`.github/workflows/crawl-workday.yml` runs `scripts/crawl-workday.ts` at 03:00 UTC, after the wide sweep (and on demand from the Actions tab), with no 60-second limit. It writes to the same database, so add two **repository secrets** (Settings → Secrets and variables → Actions): `DATABASE_URL` (the Neon connection string) and `GEMINI_API_KEY`. The night is shared fairly: users go least recently crawled first, each user's crawl gets an even share of the time left after reserving what follows every user's crawl (liveness checks and up to 8 minutes of AI scoring), and the run ends within the workflow's 90 minutes, well before the 07:00 searches. Sites a short night leaves out go first the next night. Actions minutes are free on a public repository. The workflow never runs for pull requests, so forks can't read the secrets, and it prints counts only because logs on a public repo are public. GitHub pauses scheduled workflows after 60 days without repository activity; re-enable it from the Actions tab.
 
 Run it locally the same way: `npx tsx --env-file-if-exists=.env.local scripts/crawl-workday.ts [--sites acme.wd5/Careers] [--dry-run]`.
+
+### Nightly wide sweep (GitHub Actions)
+
+Before the Workday crawl, the same workflow runs `scripts/sweep-boards.ts`: it reads **every known public Greenhouse, Lever and Ashby job board**, not just your target companies, the way sites like Career Hound find "hidden" jobs on company career pages. Each of these boards returns its whole list in one request, so ~12,000 Greenhouse and Ashby boards take about 8 minutes. Lever asks for one request a second (its robots.txt), so its ~4,400 boards are spread over several nights, least recently swept first.
+
+- **Which boards:** the `sweep_boards` table, filled weekly from the public lists in [Riley-Dorrington/job-board-aggregator](https://github.com/Riley-Dorrington/job-board-aggregator) (MIT). Boards stay if a list drops them. A board answering "not found" three nights running is skipped and retried monthly.
+- **What's kept:** only US postings whose title is close to one of a user's **target titles or search keywords** (similarity 0.5, stricter than the Workday crawl's 0.3, which follows a site's own search results), minus excluded words and anything the fixed rules rule out anyway (too senior, internships, military branches). So keep your titles current on the Resume page: they decide what the sweep collects. On the first dry run (2026-11-10), boards held ~150,000 US postings and ~2,000 had entry-level IT or security titles.
+- **Then:** matches are saved with keyword scores; the Workday crawl's AI step that follows (or the 10:00 score cron) has the AI evaluate the best ones, and stored postings that left their board are closed (matched by board, not company name, since sibling boards can share a name). Boards with relevant postings also feed **Recommended for you** in Settings.
+
+Try it locally without writing anything: `npx tsx --env-file-if-exists=.env.local scripts/sweep-boards.ts --dry-run --limit 200 [--ats greenhouse,ashby]`.
 
 Workday URLs can't be guessed, so Settings → Target companies has a **Workday employers** list: 106 US career sites in security, defense, tech, finance, health, industry, retail and education (including employers hiring entry-level data, IT and systems analysts) that were found and checked live, each added with one click (`src/lib/jobs/sources/workday-employers.ts`). Listed employers get their proper names; for any other Workday site the name is guessed from the site name, so some read as acronyms.
 
@@ -168,7 +178,7 @@ Workday URLs can't be guessed, so Settings → Target companies has a **Workday 
 | UTC | Route | What it does |
 | --- | --- | --- |
 | 07:00, 08:00, 09:00 | `/api/cron/search` | Searches every source and scores matches (the slow, Gemini-using part), then prunes jobs unseen for 60 days and search runs older than 90. That's 2-4 AM Central in summer. A search takes ~40 s of the 60 s limit, so each slot reaches about one user: it takes the users not searched in the last 12 hours, least recently searched first. With more than three users, the ones a morning missed go first the next day. A user whose search failed gets one from the morning email run itself. |
-| 05:00 (GitHub Actions) | `scripts/crawl-workday.ts` | The nightly Workday crawl (see below); not a Vercel cron. Two hours before the first search slot, since GitHub often starts scheduled runs late. |
+| 03:00 (GitHub Actions) | `scripts/sweep-boards.ts`, then `scripts/crawl-workday.ts` | The nightly wide sweep and Workday crawl (see below); not a Vercel cron. Two hours before the first search slot, since GitHub often starts scheduled runs late. |
 | 10:00 | `/api/cron/score` | Has the AI evaluate up to 80 stored matches that lack a current evaluation (after a profile change, or ones the search's cap didn't reach), with no fetching. Skips a user whose search is still running. One user can take the whole run, so it starts with a different user each day. Does nothing without `GEMINI_API_KEY`. |
 | 11:00, 12:00, 13:00, 14:00 | `/api/cron/morning` | With Resend, the invocation that's 6 AM in America/Chicago builds the email and schedules it for **7:00 AM sharp**; the ones that are 7 and 8 AM retry a run that didn't finish, sending right away. With Gmail, which can't schedule, the 6 AM one only runs any search that's due, the 7 AM one sends (so it arrives between 7:00 and 7:59), and 8 AM retries. Vercel Cron has no daylight saving, so which UTC hours those are changes twice a year (the fourth cron covers both seasons). |
 
@@ -233,6 +243,7 @@ Each job card has **Tailor resume** (`/jobs/[jobId]/tailor`). One click reads yo
 | `npm run db:migrate` | Apply migrations to `DATABASE_URL` |
 | `npx tsx scripts/try-sources.ts greenhouse:stripe lever:spotify` | Fetch real boards and print a parsing summary (Workday: paste the URL and add `--q "security analyst"`) |
 | `npx tsx --env-file-if-exists=.env.local scripts/crawl-workday.ts` | The nightly Workday crawl (`--dry-run` writes nothing; `--sites` limits it) |
+| `npx tsx --env-file-if-exists=.env.local scripts/sweep-boards.ts` | The nightly wide sweep of public job boards (`--dry-run` writes nothing; `--limit`, `--ats` narrow it) |
 | `npx tsx scripts/check-workday-employers.ts` | One live search per built-in Workday employer; lists broken ones |
 | `npx tsx --env-file-if-exists=.env.local scripts/workday-coverage.ts` | Workday's own totals for your titles vs what's stored |
 | `npx tsx --env-file-if-exists=.env.local scripts/eval-matching.ts …` | The matching eval: sample, label, run, report (data stays in git-ignored `eval-data/`) |

@@ -1,19 +1,26 @@
 name: Workday crawl
 
-# Crawls the Workday career sites users follow, deeper than a 60-second Vercel function can,
-# and writes the postings to the app's database (scripts/crawl-workday.ts). Runs at 04:00 UTC,
-# well before the search cron slots (07:00-09:00), which leave freshly crawled sites alone: scheduled
-# runs often start late, and the two shouldn't share the Gemini quota at once. The night is split fairly between users (each gets a share of the crawl
-# time, then liveness and AI scoring), and the script ends by 85 minutes. Actions minutes are free
-# on a public repo. GitHub pauses schedules after 60 days without repository activity.
+# Two nightly jobs that write to the app's database, with no 60-second Vercel limit:
+# 1. The wide sweep (scripts/sweep-boards.ts): every known public Greenhouse, Lever and Ashby board,
+#    storing postings relevant to users' target titles with keyword scores (stops starting boards
+#    after 25 minutes).
+# 2. The Workday crawl (scripts/crawl-workday.ts) of the Workday sites users follow. Its AI step
+#    evaluates the best of everything, swept roles included, so the two never share the Gemini quota.
+#    It runs even if the sweep fails or times out. The night is split fairly between users, and the
+#    script ends by 85 minutes.
+#
+# Starts at 03:00 UTC: sweep and crawl together take up to ~2 hours, and scheduled runs often start
+# late, yet they should be done before the search cron slots (07:00-09:00), which leave freshly
+# crawled sites alone and use the same Gemini quota. Actions minutes are free on a public repo.
+# GitHub pauses schedules after 60 days without repository activity.
 #
 # Needs repository secrets DATABASE_URL and GEMINI_API_KEY. This workflow runs only on its
 # schedule or by hand, never for pull requests, so forks can't reach the secrets.
-# Logs are public on a public repo: the script prints counts only.
+# Logs are public on a public repo: the scripts print counts only.
 
 on:
   schedule:
-    - cron: "0 4 * * *"
+    - cron: "0 3 * * *"
   workflow_dispatch:
 
 permissions:
@@ -24,7 +31,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Sweep public job boards
+        # A sweep that fails or overruns shouldn't cost the night's crawl.
+        continue-on-error: true
+        timeout-minutes: 30
+        run: npx tsx scripts/sweep-boards.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NODE_ENV: production
+
   crawl:
+    needs: sweep
+    # always(): a timed-out job counts as cancelled, and the crawl should run anyway.
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:

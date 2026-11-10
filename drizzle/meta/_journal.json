@@ -106,6 +106,13 @@
       "when": 1793891905049,
       "tag": "0014_starter_companies",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1794346652326,
+      "tag": "0015_sweep_boards",
+      "breakpoints": true
     }
   ]
 }
