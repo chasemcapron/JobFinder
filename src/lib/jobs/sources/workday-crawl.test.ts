@@ -190,4 +190,11 @@ describe("crawlShareEnd", () => {
     expect(crawlShareEnd({ now: 0, runEnd, usersLeft: 1, tailMs })).toBe(MAX_CRAWL_PER_USER_MS);
     expect(crawlShareEnd({ now: 80 * MIN, runEnd, usersLeft: 2, tailMs })).toBe(80 * MIN);
   });
+
+  it("returns whole milliseconds, since AbortSignal.timeout throws on a fraction", () => {
+    // The nightly crawl crashed with 2008922.5 ms: an odd number of spare ms split between 2 users.
+    const end = crawlShareEnd({ now: 1_000, runEnd: 1_000 + 2 * tailMs + 4_017_845, usersLeft: 2, tailMs });
+    expect(Number.isInteger(end)).toBe(true);
+    expect(() => AbortSignal.timeout(end - 1_000)).not.toThrow();
+  });
 });
