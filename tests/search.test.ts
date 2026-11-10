@@ -360,3 +360,28 @@ describe("runSourceTasks", () => {
     expect(results[1]).toMatchObject({ ok: true });
   });
 });
+
+describe("closeMissingOnBoard", () => {
+  it("closes only the swept board's postings that left it, not a same-named board's", async () => {
+    const { closeMissingOnBoard, storeJobs } = await import("@/lib/jobs/search");
+    const { dedupeJobs } = await import("@/lib/jobs/normalize");
+    const { finalizeJob } = await import("@/lib/jobs/normalize");
+    const make = (slug: string, id: string, title: string) =>
+      finalizeJob({ source: "lever", externalId: `${slug}:${id}`, title, company: "Acme Inc", locationRaw: "Austin, TX", description: "", applyUrl: `https://jobs.lever.co/${slug}/${id}`, postedAt: null });
+    const now = new Date("2026-11-10T03:00:00Z");
+    const stays = make("acme-inc", "1", "SOC Analyst");
+    const leaves = make("acme-inc", "2", "IT Support Specialist");
+    const sibling = make("acme_inc", "3", "Network Technician");
+    await storeJobs(db, dedupeJobs([stays, leaves, sibling]), now);
+
+    const later = new Date("2026-11-11T03:00:00Z");
+    const { dedupeKey } = await import("@/lib/jobs/normalize");
+    expect(await closeMissingOnBoard(db, { source: "lever", slug: "acme-inc" }, [dedupeKey(stays)], later)).toBe(1);
+    // An empty answer could be a hiccup: nothing closes.
+    expect(await closeMissingOnBoard(db, { source: "lever", slug: "acme_inc" }, [], later)).toBe(0);
+
+    const rows = await db.select({ title: schema.jobs.title, closedAt: schema.jobs.closedAt }).from(schema.jobs);
+    const closed = Object.fromEntries(rows.map((r) => [r.title, r.closedAt !== null]));
+    expect(closed).toEqual({ "SOC Analyst": false, "IT Support Specialist": true, "Network Technician": false });
+  });
+});

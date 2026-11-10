@@ -50,6 +50,12 @@ Phases committed one by one, each after lint, typecheck, tests, build and `/code
 
 Checked in a local browser (demo account, sample jobs, throwaway database): the setup guide, Not interested and Undo, the notes form, the delete card. Not checked live: limits on a real invited account, deleting a real Google account (the revoke call), the Settings usage line with a real AI key.
 
+## Wide sweep (2026-11-10, branch `feat/wide-sweep`)
+
+- **Every public Greenhouse, Lever and Ashby board**, nightly, before the Workday crawl (`scripts/sweep-boards.ts`, migration 0015 `sweep_boards`). Stores US postings relevant to a user's target titles; keyword scores, then the crawl's AI step.
+- Dry runs: a scratch sweep of 8,550 Greenhouse and 3,203 Ashby boards took under 5 minutes and found ~2,000 US entry-level IT or security titles; the real script was dry-run against the owner's profile.
+- Not verified yet: a real night (writes, the weekly list refresh, board states, Lever rotation, the crawl's AI step picking up swept roles).
+
 ## Not verified (needs keys or a deploy)
 
 - **Tailor page in a browser**: the steps, downloads and fact gate were run against the real resume from a script, and the PDF and Word files were checked, but nobody has clicked through `/jobs/[id]/tailor` yet. Needs migration 0009 (`npm run db:migrate`).

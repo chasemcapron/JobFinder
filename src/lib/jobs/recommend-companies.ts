@@ -20,8 +20,9 @@ import { findWorkdayEmployer } from "./sources/workday-employers";
  * excluded word is in the title, and it's in a preferred place or remote when places are set (remote
  * only, for a remote-only profile). Employers are ranked by how many postings count.
  *
- * The postings are public, but the pool only holds employers someone here already searches, so a
- * recommendation can reflect another user's employer list (DECISIONS.md). No personal data is read.
+ * The postings are public. The pool holds employers someone here searches and, since the nightly wide
+ * sweep, any public Greenhouse, Lever or Ashby board with a posting relevant to someone's titles, so a
+ * recommendation can reflect another user's employer list or titles (DECISIONS.md). No personal data is read.
  */
 
 /** How many employers a new account starts with. */
@@ -77,7 +78,8 @@ export function boardOf(job: Pick<PoolJob, "source" | "externalId" | "applyUrl">
     }
   }
   if (!(BOARD_SOURCES as readonly string[]).includes(job.source)) return null;
-  const slug = job.externalId.split(":")[0]?.toLowerCase();
+  // As stored: Lever and Ashby slugs are case-sensitive (comparisons lowercase on their own).
+  const slug = job.externalId.split(":")[0];
   return slug ? { ats: job.source as AtsType, slug } : null;
 }
 

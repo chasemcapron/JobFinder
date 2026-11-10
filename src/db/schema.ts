@@ -202,6 +202,33 @@ export const workdayCrawlState = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.slug] })],
 );
 
+export const SWEEP_ATS = ["greenhouse", "lever", "ashby"] as const;
+export type SweepAts = (typeof SWEEP_ATS)[number];
+
+/**
+ * Every public Greenhouse, Lever and Ashby job board the nightly sweep knows (scripts/sweep-boards.ts):
+ * shared, not anyone's personal data. Seeded and refreshed weekly from public lists; boards that keep
+ * answering "not found" are skipped (and retried monthly).
+ */
+export const sweepBoards = pgTable(
+  "sweep_boards",
+  {
+    ats: text("ats").$type<SweepAts>().notNull(),
+    /** As the board's URL spells it: Lever and Ashby slugs are case-sensitive. */
+    slug: text("slug").notNull(),
+    /** Last time a source list named this board. */
+    listedAt: timestamp("listed_at", { mode: "date" }).notNull().defaultNow(),
+    lastSweptAt: timestamp("last_swept_at", { mode: "date" }),
+    /** Postings on the board at the last sweep. */
+    lastJobs: integer("last_jobs").notNull().default(0),
+    /** "Not found" answers in a row; reset by any other answer. */
+    misses: integer("misses").notNull().default(0),
+    /** Postings from this board are stored: it's read in full each night so ones taken down get closed. */
+    hasStored: boolean("has_stored").notNull().default(false),
+  },
+  (t) => [primaryKey({ columns: [t.ats, t.slug] }), index("sweep_boards_swept_idx").on(t.ats, t.lastSweptAt)],
+);
+
 export const MATCH_VERDICTS = ["apply", "maybe", "skip"] as const;
 export type MatchVerdict = (typeof MATCH_VERDICTS)[number];
 export const ROLE_FITS = ["on_target", "adjacent", "off_target"] as const;
