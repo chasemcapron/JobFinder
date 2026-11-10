@@ -108,7 +108,8 @@ async function main() {
     const fetched = new Map<string, JobForScoring>();
     const statusCount: Record<string, number> = {};
     // Sites still running at the share's end are stopped a little after it, so the night keeps to time.
-    const stopSites = AbortSignal.timeout(Math.max(0, crawlEnd - Date.now()) + SITE_OVERRUN_MS);
+    // AbortSignal.timeout throws on a fractional delay ("must be an integer"), which stopped the crawl most nights.
+    const stopSites = AbortSignal.timeout(Math.max(0, Math.ceil(crawlEnd - Date.now())) + SITE_OVERRUN_MS);
     let next = 0;
     const crawlOne = async (slug: string, siteNo: number) => {
       let r: CrawlResult;

@@ -68,7 +68,8 @@ export const MAX_CRAWL_PER_USER_MS = 45 * 60_000;
 export function crawlShareEnd(opts: { now: number; runEnd: number; usersLeft: number; tailMs: number }): number {
   const users = Math.max(1, opts.usersLeft);
   const spare = opts.runEnd - opts.now - users * opts.tailMs;
-  return opts.now + Math.min(MAX_CRAWL_PER_USER_MS, Math.max(0, spare / users));
+  // Whole milliseconds: the result feeds AbortSignal.timeout, which throws on a fraction.
+  return opts.now + Math.min(MAX_CRAWL_PER_USER_MS, Math.max(0, Math.floor(spare / users)));
 }
 
 /** No single request waits longer than this (a hung connection would otherwise stall the whole crawl). */
